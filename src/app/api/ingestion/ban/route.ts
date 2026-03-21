@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
-  const { code_insee, nom, commune_id } = await request.json()
+const { code_insee: codeInsee, nom, commune_id } = await request.json()
 
   const supabase = createAdminClientDirect<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
