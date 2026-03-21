@@ -4,10 +4,8 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 export default function ConfirmPage() {
-  const router = useRouter()
 
   useEffect(() => {
     async function confirm() {
@@ -21,12 +19,12 @@ export default function ConfirmPage() {
           token_hash, 
           type 
         })
-        if (!error && data.session) {
-          router.replace('/dashboard')
-          return
-        }
+   if (!error && data.session) {
+  window.location.href = '/dashboard'
+  return
+}
       }
-      router.replace('/login?error=expired')
+window.location.href = '/login?error=expired'
     }
     confirm()
   }, [])
