@@ -60,7 +60,19 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
       const map = new maplibregl.Map({
         container: containerRef.current!,
         // Plan IGN vectoriel — gratuit, sans clé, en français
-        style: 'https://wxs.ign.fr/static/vectorTiles/styles/PLAN.IGN/essentiels/standard.json',
+       style: {
+  version: 8,
+  glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+    },
+  },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+},
         center: [avgLon, avgLat],
         zoom: 13,
       })
@@ -72,9 +84,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
         map.addSource('satellite', {
           type: 'raster',
           tiles: [
-            'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
-            '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIXSET=PM' +
-            '&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&STYLE=normal&FORMAT=image/jpeg'
+            'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIXSET=PM&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&STYLE=normal&FORMAT=image/jpeg'
           ],
           tileSize: 256,
           attribution: '© IGN Géoportail',
@@ -91,9 +101,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
         map.addSource('cadastre', {
           type: 'raster',
           tiles: [
-            'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
-            '&LAYER=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&TILEMATRIXSET=PM' +
-            '&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&STYLE=normal&FORMAT=image/png'
+           'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&TILEMATRIXSET=PM&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&STYLE=normal&FORMAT=image/png'
           ],
           tileSize: 256,
           attribution: '© IGN — Parcellaire Express (PCI)',
@@ -148,6 +156,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
           source: 'adresses',
           filter: ['has', 'point_count'],
           layout: {
+            'text-font': ['Open Sans Bold'],
             'text-field': ['get', 'point_count_abbreviated'],
             'text-size': 12,
           },
