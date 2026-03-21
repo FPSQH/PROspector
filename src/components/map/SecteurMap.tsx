@@ -237,17 +237,21 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
     }
   }, [adresses, loading])
 
-  // Basculer entre Plan IGN et Satellite
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return
-    try {
-      map.setLayoutProperty(
-        'satellite-layer', 'visibility',
-        activeLayer === 'satellite' ? 'visible' : 'none'
-      )
-    } catch {}
-  }, [activeLayer])
+ // Basculer entre Plan IGN et Satellite
+useEffect(() => {
+  const map = mapRef.current
+  if (!map || !map.isStyleLoaded()) return
+  try {
+    map.setLayoutProperty(
+      'satellite-layer', 'visibility',
+      activeLayer === 'satellite' ? 'visible' : 'none'
+    )
+    map.setLayoutProperty(
+      'osm', 'visibility',
+      activeLayer === 'satellite' ? 'none' : 'visible'
+    )
+  } catch {}
+}, [activeLayer])
 
   // Afficher/masquer le cadastre
   useEffect(() => {
