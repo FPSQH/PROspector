@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
-  const { code_insee, nom, departement, commune_id } = await request.json()
+  const { code_insee, nom, commune_id } = await request.json()
 
   const supabase = createAdminClientDirect<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,95 +17,73 @@ export async function POST(request: Request) {
   )
 
   try {
-    console.log(`[BAN] Ingestion ${nom} (${code_insee}) via CSV département...`)
+    console.log(`[BAN] Ingestion ${nom} (${code_insee})...`)
 
-    // Télécharger le CSV BAN du département (source complète, sans limite)
-    const dept = (departement ?? code_insee.substring(0, 2)).padStart(2, '0')
-    const csvUrl = `https://adresse.data.gouv.fr/data/ban/adresses/latest/csv/adresses-${dept}.csv.gz`
+    // Requêtes parallèles avec toutes les lettres + chiffres
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'.split('')
 
-    const res = await fetch(csvUrl, { signal: AbortSignal.timeout(60000) })
-    if (!res.ok) throw new Error(`CSV fetch failed: ${res.status}`)
+    const fetchChar = async (q: string) => {
+      try {
+        const res = await fetch(
+          `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${code_insee}&limit=50&type=housenumber`,
+          { signal: AbortSignal.timeout(8000) }
+        )
+        if (!res.ok) return []
+        const data = await res.json()
+        return data.features ?? []
+      } catch {
+        return []
+      }
+    }
 
-    // Décompresser le gzip
-    const { createGunzip } = await import('zlib')
-    const { Readable } = await import('stream')
+    // Traitement par lots de 10 pour éviter de surcharger l'API
+    const allFeatures: any[] = []
+    const seen = new Set<string>()
 
-    const buffer = Buffer.from(await res.arrayBuffer())
-    const gunzip = createGunzip()
-    const readable = Readable.from(buffer)
+    for (let i = 0; i < chars.length; i += 10) {
+      const batch = chars.slice(i, i + 10)
+      const results = await Promise.all(batch.map(fetchChar))
+      for (const features of results) {
+        for (const f of features) {
+          const id = f.properties.id
+          if (!id || seen.has(id)) continue
+          seen.add(id)
+          allFeatures.push(f)
+        }
+      }
+    }
 
-    const lines: string[] = []
-    let header = ''
+    console.log(`[BAN] ${allFeatures.length} adresses trouvées pour ${nom}`)
 
-    await new Promise<void>((resolve, reject) => {
-      let remaining = ''
-      readable.pipe(gunzip)
-        .on('data', (chunk: Buffer) => {
-          const text = remaining + chunk.toString('utf8')
-          const parts = text.split('\n')
-          remaining = parts.pop() ?? ''
-          for (const line of parts) {
-            if (!header) { header = line; continue }
-            if (line.includes(`;${code_insee};`) || line.includes(`,${code_insee},`)) {
-              lines.push(line)
-            }
-          }
-        })
-        .on('end', resolve)
-        .on('error', reject)
-    })
-
-    console.log(`[BAN] ${lines.length} adresses trouvées pour ${nom}`)
-
-    if (lines.length === 0) {
+    if (allFeatures.length === 0) {
       await supabase.from('communes').update({ chargee_at: new Date().toISOString() }).eq('id', commune_id)
       return NextResponse.json({ ok: true, count: 0 })
     }
 
-    // Parser le CSV (séparateur ; ou ,)
-    const sep = header.includes(';') ? ';' : ','
-    const cols = header.split(sep)
-    const idx = (name: string) => cols.indexOf(name)
-
-    const idCol = idx('id')
-    const numCol = idx('numero')
-    const voieCol = idx('nom_voie')
-    const cpCol = idx('code_postal')
-    const comCol = idx('nom_commune')
-    const inseeCol = idx('code_insee')
-    const latCol = idx('lat')
-    const lonCol = idx('lon')
-
+    // Insérer par lots de 500
     const BATCH_SIZE = 500
     let totalInserted = 0
 
-    for (let i = 0; i < lines.length; i += BATCH_SIZE) {
-      const batch = lines.slice(i, i + BATCH_SIZE)
-        .map(line => {
-          const c = line.split(sep)
-          const lat = parseFloat(c[latCol])
-          const lon = parseFloat(c[lonCol])
-          if (isNaN(lat) || isNaN(lon)) return null
-          return {
-            id: c[idCol] || `${code_insee}-${c[numCol]}-${c[voieCol]}`.replace(/\s/g, '-').toLowerCase(),
-            code_insee: c[inseeCol] || code_insee,
-            numero: c[numCol] || null,
-            nom_voie: c[voieCol] || 'Voie inconnue',
-            code_postal: c[cpCol] || null,
-            commune: c[comCol] || nom,
-            lat,
-            lon,
-            type_bien: 'inconnu' as const,
-            prospectable: true,
-            source: 'BAN',
-          }
-        })
-        .filter(Boolean) as any[]
+    for (let i = 0; i < allFeatures.length; i += BATCH_SIZE) {
+      const batch = allFeatures.slice(i, i + BATCH_SIZE).map((f: any) => ({
+        id: f.properties.id,
+        code_insee,
+        numero: f.properties.housenumber ?? null,
+        nom_voie: f.properties.street ?? f.properties.label,
+        code_postal: f.properties.postcode,
+        commune: f.properties.city,
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0],
+        type_bien: 'inconnu' as const,
+        prospectable: true,
+        source: 'BAN',
+      }))
 
-      if (batch.length === 0) continue
+      const { error } = await supabase
+        .from('adresses')
+        .upsert(batch, { onConflict: 'id', ignoreDuplicates: true })
 
-      const { error } = await supabase.from('adresses').upsert(batch, { onConflict: 'id', ignoreDuplicates: true })
-      if (error) console.error(`[BAN] Erreur batch ${i}:`, error.message)
+      if (error) console.error(`[BAN] Erreur batch:`, error.message)
       else totalInserted += batch.length
     }
 
