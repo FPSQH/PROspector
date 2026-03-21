@@ -17,70 +17,121 @@ export async function POST(request: Request) {
   )
 
   try {
-    console.log(`[BAN] Ingestion ${nom} (${codeInsee}) via fichier commune...`)
+    console.log(`[BAN] Ingestion ${nom} (${codeInsee})...`)
 
-    // Téléchargement direct du fichier CSV de la commune — toutes les adresses, pas de limite
-    const url = `https://plateforme.adresse.data.gouv.fr/ban/communes/${codeInsee}/download/csv-legacy/adresses`
-    const res = await fetch(url, { signal: AbortSignal.timeout(25000) })
+    // Téléchargement en parallèle : adresses numérotées + lieux-dits
+    const [resAdresses, resLieuxDits] = await Promise.all([
+      fetch(
+        `https://plateforme.adresse.data.gouv.fr/ban/communes/${codeInsee}/download/csv-legacy/adresses`,
+        { signal: AbortSignal.timeout(25000) }
+      ),
+      fetch(
+        `https://plateforme.adresse.data.gouv.fr/ban/communes/${codeInsee}/download/csv-legacy/lieux-dits`,
+        { signal: AbortSignal.timeout(25000) }
+      ),
+    ])
 
-    if (!res.ok) throw new Error(`Fichier commune fetch failed: ${res.status}`)
+    if (!resAdresses.ok) throw new Error(`Adresses fetch failed: ${resAdresses.status}`)
 
-    const csvText = await res.text()
-    const lines = csvText.split('\n').filter(l => l.trim())
+    const csvAdresses = await resAdresses.text()
+    const csvLieuxDits = resLieuxDits.ok ? await resLieuxDits.text() : ''
 
-    if (lines.length < 2) {
+    // Parser les adresses numérotées
+    const parseAdresses = (csv: string) => {
+      const lines = csv.split('\n').filter(l => l.trim())
+      if (lines.length < 2) return []
+      const header = lines[0].split(';')
+      const idx = (n: string) => header.indexOf(n)
+      const idCol     = idx('id')
+      const numCol    = idx('numero')
+      const voieCol   = idx('nom_voie')
+      const cpCol     = idx('code_postal')
+      const comCol    = idx('nom_commune')
+      const inseeCol  = idx('code_insee')
+      const lonCol    = idx('lon')
+      const latCol    = idx('lat')
+
+      return lines.slice(1).map(line => {
+        const c = line.split(';')
+        const lat = parseFloat(c[latCol])
+        const lon = parseFloat(c[lonCol])
+        if (isNaN(lat) || isNaN(lon)) return null
+        const id = c[idCol]?.trim()
+        if (!id) return null
+        return {
+          id,
+          code_insee: c[inseeCol]?.trim() || codeInsee,
+          numero: c[numCol]?.trim() || null,
+          nom_voie: c[voieCol]?.trim() || 'Voie inconnue',
+          code_postal: c[cpCol]?.trim() || null,
+          commune: c[comCol]?.trim() || nom,
+          lat,
+          lon,
+          type_bien: 'inconnu' as const,
+          prospectable: true,
+          source: 'BAN',
+        }
+      }).filter(Boolean)
+    }
+
+    // Parser les lieux-dits (schéma différent : nom_lieu_dit, pas de numero)
+    const parseLieuxDits = (csv: string) => {
+      const lines = csv.split('\n').filter(l => l.trim())
+      if (lines.length < 2) return []
+      const header = lines[0].split(';')
+      const idx = (n: string) => header.indexOf(n)
+      const idCol    = idx('id')
+      const nomCol   = idx('nom_lieu_dit')
+      const cpCol    = idx('code_postal')
+      const comCol   = idx('nom_commune')
+      const inseeCol = idx('code_insee')
+      const lonCol   = idx('lon')
+      const latCol   = idx('lat')
+
+      return lines.slice(1).map(line => {
+        const c = line.split(';')
+        const lat = parseFloat(c[latCol])
+        const lon = parseFloat(c[lonCol])
+        if (isNaN(lat) || isNaN(lon)) return null
+        const id = c[idCol]?.trim()
+        if (!id) return null
+        return {
+          id,
+          code_insee: c[inseeCol]?.trim() || codeInsee,
+          numero: null,
+          nom_voie: c[nomCol]?.trim() || 'Lieu-dit inconnu',
+          code_postal: c[cpCol]?.trim() || null,
+          commune: c[comCol]?.trim() || nom,
+          lat,
+          lon,
+          type_bien: 'inconnu' as const,
+          prospectable: true,
+          source: 'BAN',
+        }
+      }).filter(Boolean)
+    }
+
+    const allAdresses = [
+      ...parseAdresses(csvAdresses),
+      ...parseLieuxDits(csvLieuxDits),
+    ] as any[]
+
+    console.log(`[BAN] ${allAdresses.length} adresses+lieux-dits trouvés pour ${nom}`)
+
+    if (allAdresses.length === 0) {
       await supabase.from('communes').update({ chargee_at: new Date().toISOString() }).eq('id', commune_id)
       return NextResponse.json({ ok: true, count: 0 })
     }
-
-    // Parser le CSV (séparateur ;)
-    const header = lines[0].split(';')
-    const idx = (name: string) => header.indexOf(name)
-
-    const idCol      = idx('id')
-    const numCol     = idx('numero')
-    const voieCol    = idx('nom_voie')
-    const cpCol      = idx('code_postal')
-    const comCol     = idx('nom_commune')
-    const inseeCol   = idx('code_insee')
-    const lonCol     = idx('lon')
-    const latCol     = idx('lat')
-
-    console.log(`[BAN] ${lines.length - 1} lignes trouvées pour ${nom}`)
 
     // Insérer par lots de 500
     const BATCH_SIZE = 500
     let totalInserted = 0
 
-    for (let i = 1; i < lines.length; i += BATCH_SIZE) {
-      const batch = lines.slice(i, i + BATCH_SIZE)
-        .map(line => {
-          const c = line.split(';')
-          const lat = parseFloat(c[latCol])
-          const lon = parseFloat(c[lonCol])
-          if (isNaN(lat) || isNaN(lon)) return null
-          return {
-            id: c[idCol] || `${codeInsee}-${i}`,
-            code_insee: c[inseeCol] || codeInsee,
-            numero: c[numCol] || null,
-            nom_voie: c[voieCol] || 'Voie inconnue',
-            code_postal: c[cpCol] || null,
-            commune: c[comCol] || nom,
-            lat,
-            lon,
-            type_bien: 'inconnu' as const,
-            prospectable: true,
-            source: 'BAN',
-          }
-        })
-        .filter(Boolean) as any[]
-
-      if (batch.length === 0) continue
-
+    for (let i = 0; i < allAdresses.length; i += BATCH_SIZE) {
+      const batch = allAdresses.slice(i, i + BATCH_SIZE)
       const { error } = await supabase
         .from('adresses')
         .upsert(batch, { onConflict: 'id', ignoreDuplicates: true })
-
       if (error) console.error(`[BAN] Erreur batch:`, error.message)
       else totalInserted += batch.length
     }
