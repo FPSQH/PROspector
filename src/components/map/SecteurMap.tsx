@@ -9,7 +9,6 @@ interface Props {
   height?: string
 }
 
-// Couleurs par type de bien
 const TYPE_COLORS: Record<string, string> = {
   maison:          '#1D9E75',
   appartement:     '#378ADD',
@@ -25,10 +24,8 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
   const [loading, setLoading] = useState(true)
   const [counts, setCounts] = useState({ total: 0, prospectables: 0, sociaux: 0 })
 
-  // Charger les adresses depuis Supabase
   useEffect(() => {
     if (communesInsee.length === 0) { setLoading(false); return }
-
     const supabase = createClient()
     supabase
       .from('adresses')
@@ -46,19 +43,29 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
       })
   }, [communesInsee])
 
-  // Initialiser la carte MapLibre
   useEffect(() => {
     if (loading || !containerRef.current || mapRef.current) return
     if (adresses.length === 0) return
 
     import('maplibre-gl').then(({ default: maplibregl }) => {
-      // Centre de la carte = barycentre des adresses
       const avgLat = adresses.reduce((s, a) => s + a.lat, 0) / adresses.length
       const avgLon = adresses.reduce((s, a) => s + a.lon, 0) / adresses.length
 
       const map = new maplibregl.Map({
         container: containerRef.current!,
-
+        style: {
+          version: 8,
+          glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
+          sources: {
+            osm: {
+              type: 'raster',
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: '© OpenStreetMap contributors',
+            },
+          },
+          layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+        },
         center: [avgLon, avgLat],
         zoom: 13,
       })
@@ -66,7 +73,6 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
       mapRef.current = map
 
       map.on('load', () => {
-        // Source GeoJSON des adresses
         const geojson: GeoJSON.FeatureCollection = {
           type: 'FeatureCollection',
           features: adresses.map(a => ({
@@ -83,7 +89,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
 
         map.addSource('adresses', { type: 'geojson', data: geojson, cluster: true, clusterMaxZoom: 14 })
 
-        // Clusters (zoom < 14)
+        // Clusters
         map.addLayer({
           id: 'clusters',
           type: 'circle',
@@ -96,9 +102,21 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
           },
         })
 
-       
+        // Compteur sur les clusters
+        map.addLayer({
+          id: 'cluster-count',
+          type: 'symbol',
+          source: 'adresses',
+          filter: ['has', 'point_count'],
+          layout: {
+            'text-field': ['get', 'point_count_abbreviated'],
+            'text-size': 12,
+            'text-font': ['Open Sans Bold'],
+          },
+          paint: { 'text-color': '#fff' },
+        })
 
-        // Points individuels (zoom ≥ 14)
+        // Points individuels
         map.addLayer({
           id: 'adresses-points',
           type: 'circle',
@@ -120,7 +138,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
           },
         })
 
-        // Popup au clic sur un point
+        // Popup au clic
         map.on('click', 'adresses-points', (e: any) => {
           const props = e.features[0].properties
           new maplibregl.Popup({ closeButton: false, offset: 8 })
@@ -137,7 +155,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
             .addTo(map)
         })
 
-        // Clic sur cluster → zoom
+        // Clic cluster → zoom
         map.on('click', 'clusters', (e: any) => {
           const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })
           const clusterId = features[0].properties.cluster_id
@@ -151,7 +169,6 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
         map.on('mouseenter', 'clusters',        () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'clusters',        () => { map.getCanvas().style.cursor = '' })
 
-        // Ajuster la vue pour englober toutes les adresses
         if (adresses.length > 0) {
           const lons = adresses.map(a => a.lon)
           const lats = adresses.map(a => a.lat)
@@ -186,10 +203,8 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
 
   return (
     <div style={{ position: 'relative', height, borderRadius: 12, overflow: 'hidden' }}>
-      {/* Carte */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }}/>
 
-      {/* Overlay chargement */}
       {loading && (
         <div style={{
           position: 'absolute', inset: 0,
@@ -206,7 +221,6 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
         </div>
       )}
 
-      {/* Badge compteurs */}
       {!loading && adresses.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 12, left: 12,
@@ -222,7 +236,6 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
         </div>
       )}
 
-      {/* Légende */}
       {!loading && adresses.length > 0 && (
         <div style={{
           position: 'absolute', top: 12, right: 12,
