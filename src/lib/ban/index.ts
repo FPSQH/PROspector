@@ -1,5 +1,47 @@
 export async function fetchAdressesByCommune(codeInsee: string): Promise<AdresseBAN[]> {
   const allAdresses: AdresseBAN[] = []
+  const seen = new Set<string>()
+
+  // Lettres courantes pour balayer les adresses
+  const queries = ['rue', 'avenue', 'chemin', 'impasse', 'voie', 'route', 'place', 'allée', 'hameau', 'lieu']
+
+  for (const q of queries) {
+    try {
+      const res = await fetch(
+        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50&type=housenumber`,
+        { signal: AbortSignal.timeout(15000) }
+      )
+      if (!res.ok) continue
+
+      const data = await res.json()
+      const features = data.features ?? []
+
+      for (const f of features) {
+        const id = f.properties.id
+        if (seen.has(id)) continue
+        seen.add(id)
+        allAdresses.push({
+          id,
+          label: f.properties.label,
+          score: f.properties.score,
+          type: f.properties.type,
+          housenumber: f.properties.housenumber,
+          street: f.properties.street,
+          postcode: f.properties.postcode,
+          city: f.properties.city,
+          citycode: f.properties.citycode,
+          context: f.properties.context,
+          x: f.geometry.coordinates[0],
+          y: f.geometry.coordinates[1],
+        })
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return allAdresses
+}
   
   // L'API BAN limite à 200 par requête — on fait plusieurs appels
   const types = ['housenumber', 'street']
