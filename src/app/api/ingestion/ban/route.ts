@@ -20,8 +20,14 @@ export async function POST(request: Request) {
     console.log(`[BAN] Ingestion ${nom} (${code_insee})...`)
 
     // Requêtes parallèles avec toutes les lettres + chiffres
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'.split('')
-
+    const chars = [
+  'rue', 'ker', 'all', 'imp', 'che', 'rou', 'pla', 'ven', 'cit', 'vil',
+  'ham', 'lie', 'bou', 'pas', 'res', 'dom', 'tre', 'lan', 'men', 'pen',
+  'ros', 'bod', 'str', 'bra', 'hen', 'par', 'coa', 'koa', 'tei', 'lez',
+  'loc', 'plo', 'plou', 'beg', 'gui', 'mou', 'pon', 'por', 'ran', 'san',
+  '1 r', '2 r', '3 r', '4 r', '5 r', '6 r', '7 r', '8 r', '9 r', '10 ',
+  '11 ', '12 ', '13 ', '14 ', '15 ', '20 ', '25 ', '30 ', '40 ', '50 ',
+]
     const fetchChar = async (q: string) => {
       try {
         const res = await fetch(
