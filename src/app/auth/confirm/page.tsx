@@ -10,26 +10,26 @@ export default function ConfirmPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const supabase = createClient()
-    const url = new URL(window.location.href)
-    const token_hash = url.searchParams.get('token_hash')
-    const type = url.searchParams.get('type') as any
-    const code = url.searchParams.get('code')
-
     async function confirm() {
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (!error) { router.replace('/dashboard'); return }
-      }
-      if (token_hash && type) {
-        const { error } = await supabase.auth.verifyOtp({ token_hash, type })
-        if (!error) { router.replace('/dashboard'); return }
-      }
-      router.replace('/login?error=auth_callback')
-    }
+      const supabase = createClient()
+      const url = new URL(window.location.href)
+      const token_hash = url.searchParams.get('token_hash')
+      const type = url.searchParams.get('type') as any
 
+      if (token_hash && type) {
+        const { data, error } = await supabase.auth.verifyOtp({ 
+          token_hash, 
+          type 
+        })
+        if (!error && data.session) {
+          router.replace('/dashboard')
+          return
+        }
+      }
+      router.replace('/login?error=expired')
+    }
     confirm()
-  }, [router])
+  }, [])
 
   return (
     <div style={{
