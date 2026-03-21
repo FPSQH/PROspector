@@ -7,10 +7,12 @@ export async function GET(request: Request) {
   if (q.length < 2) return NextResponse.json([])
 
   try {
-    const res = await fetch(
-      `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(q)}&fields=nom,code,codesPostaux,codeDepartement,population&boost=population&limit=8`,
-      { next: { revalidate: 3600 } }
-    )
+    const isCodePostal = /^\d+$/.test(q)
+    const url = isCodePostal
+      ? `https://geo.api.gouv.fr/communes?codePostal=${q}&fields=nom,code,codesPostaux,codeDepartement,population&limit=8`
+      : `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(q)}&fields=nom,code,codesPostaux,codeDepartement,population&boost=population&limit=8`
+
+    const res = await fetch(url, { next: { revalidate: 3600 } })
     const communes = await res.json()
 
     const results = communes.slice(0, 8).map((c: any) => ({
