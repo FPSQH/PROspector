@@ -20,7 +20,7 @@ export default function LoginPage() {
     const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
       options: {
-       emailRedirectTo: `${window.location.origin}/auth/confirm`,
+        emailRedirectTo: `${window.location.origin}/auth/confirm`,
         shouldCreateUser: false,
       },
     })
@@ -57,7 +57,6 @@ export default function LoginPage() {
             Square Habitat – Outil de prospection
           </p>
         </div>
-
         {sent ? (
           <div style={{ textAlign: 'center' }}>
             <div style={{
