@@ -157,12 +157,16 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
 
         // Clic cluster → zoom
         map.on('click', 'clusters', (e: any) => {
-          const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })
-          const clusterId = features[0].properties.cluster_id
-          ;(map.getSource('adresses') as any).getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
-            if (!err) map.easeTo({ center: (features[0].geometry as any).coordinates, zoom })
-          })
-        })
+  e.preventDefault()
+  const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })
+  if (!features.length) return
+  const clusterId = features[0].properties.cluster_id
+  const coords = (features[0].geometry as any).coordinates
+  ;(map.getSource('adresses') as any).getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+    if (err) return
+    map.easeTo({ center: coords, zoom: Math.min(zoom, 16), duration: 500 })
+  })
+})
 
         map.on('mouseenter', 'adresses-points', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'adresses-points', () => { map.getCanvas().style.cursor = '' })
