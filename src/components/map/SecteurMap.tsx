@@ -58,19 +58,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
 
       const map = new maplibregl.Map({
         container: containerRef.current!,
-        style: {
-  version: 8,
-  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
-    },
-  },
-  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-},
+
         center: [avgLon, avgLat],
         zoom: 13,
       })
@@ -108,18 +96,7 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
           },
         })
 
-        map.addLayer({
-          id: 'cluster-count',
-          type: 'symbol',
-          source: 'adresses',
-          filter: ['has', 'point_count'],
-          layout: {
-            'text-field': '{point_count_abbreviated}',
-            'text-size': 12,
-            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          },
-          paint: { 'text-color': '#fff' },
-        })
+       
 
         // Points individuels (zoom ≥ 14)
         map.addLayer({
