@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+build/
+
+# Env (NE JAMAIS committer)
+.env.local
+.env.*.local
+
+# PWA
+public/sw.js
+public/workbox-*.js
+public/worker-*.js
+
+# Misc
+.DS_Store
+*.pem
+.vercel
