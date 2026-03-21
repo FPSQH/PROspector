@@ -29,18 +29,24 @@ export async function POST(request: Request) {
   '11 ', '12 ', '13 ', '14 ', '15 ', '20 ', '25 ', '30 ', '40 ', '50 ',
 ]
     const fetchChar = async (q: string) => {
-      try {
-        const res = await fetch(
-         `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50`,
-          { signal: AbortSignal.timeout(8000) }
-        )
-        if (!res.ok) return []
-        const data = await res.json()
-        return data.features ?? []
-      } catch {
-        return []
-      }
+  try {
+    const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50`
+    console.log(`[BAN] Fetch: ${url}`)
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    console.log(`[BAN] Response ${q}: status=${res.status}`)
+    if (!res.ok) {
+      const text = await res.text()
+      console.log(`[BAN] Error body: ${text}`)
+      return []
     }
+    const data = await res.json()
+    console.log(`[BAN] Features pour "${q}": ${data.features?.length ?? 0}`)
+    return data.features ?? []
+  } catch (e: any) {
+    console.log(`[BAN] Exception pour "${q}": ${e.message}`)
+    return []
+  }
+}
 
     // Traitement par lots de 10 pour éviter de surcharger l'API
     const allFeatures: any[] = []
