@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const fetchChar = async (q: string) => {
       try {
         const res = await fetch(
-          `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${code_insee}&limit=50&type=housenumber`,
+         `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50`,
           { signal: AbortSignal.timeout(8000) }
         )
         if (!res.ok) return []
