@@ -59,17 +59,18 @@ export function SecteurMap({ communesInsee, height = '100%' }: Props) {
       const map = new maplibregl.Map({
         container: containerRef.current!,
         style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: 'raster',
-              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-              tileSize: 256,
-              attribution: '© OpenStreetMap contributors',
-            },
-          },
-          layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-        },
+  version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+    },
+  },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+},
         center: [avgLon, avgLat],
         zoom: 13,
       })
