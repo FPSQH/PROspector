@@ -1,132 +1,139 @@
 'use client'
 
+// Force le rendu dynamique - empêche Next.js de pré-générer cette page
+export const dynamic = 'force-dynamic'
+
+import { createClient } from '@/lib/supabase/client'
+import { useSearchParams } from 'next/navigation'
 import { useState, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
-import { SearchCommune } from '@/components/onboarding/SearchCommune'
-import { CommuneCard } from '@/components/onboarding/CommuneCard'
-import { SecteurMap } from '@/components/map/SecteurMap'
-import { useCommercial } from '@/hooks/useCommercial'
-import { useCommunes } from '@/hooks/useCommunes'
 
-function OnboardingContent() {
-  const router = useRouter()
-  const { commercial } = useCommercial()
-  const { communes, refresh } = useCommunes(commercial?.id)
-  const [adding, setAdding] = useState(false)
+function LoginForm() {
+  const searchParams = useSearchParams()
+  const errorParam = searchParams.get('error')
+  const supabase = createClient()
 
-  const communesInsee = communes.map(c => c.code_insee)
-  const toutesChargees = communes.length > 0 && communes.every(c => !!c.chargee_at)
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState(errorParam ?? '')
 
-  async function handleAddCommune(c: { code_insee: string; nom: string; code_postal: string; departement: string }) {
-    setAdding(true)
-    await fetch('/api/communes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(c),
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.trim()) return
+    setLoading(true)
+    setError('')
+
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        shouldCreateUser: false,
+      },
     })
-    await refresh()
-    setAdding(false)
+
+    setLoading(false)
+    if (err) {
+      setError('Email non reconnu. Contactez votre responsable pour créer votre accès.')
+    } else {
+      setSent(true)
+    }
   }
 
-  function handleRemove() { refresh() }
-
   return (
-    <div style={{ minHeight: '100dvh', background: '#f8f7f4', display: 'flex', flexDirection: 'column' }}>
-      <div style={{
-        background: '#fff', borderBottom: '1px solid #e8e7e0',
-        padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12,
-      }}>
+    <div style={{
+      background: '#fff', borderRadius: '16px', padding: '2.5rem 2rem',
+      width: '100%', maxWidth: '380px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06)',
+    }}>
+      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10, background: '#1D9E75',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 52, height: 52, borderRadius: '14px', background: '#1D9E75', marginBottom: '1rem',
         }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round">
-            <path d="M12 2L2 7v10l10 5 10-5V7L12 2z"/>
-            <path d="M12 22V12M2 7l10 5 10-5"/>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round"/>
+            <path d="M12 22V12M2 7l10 5 10-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
         </div>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: '1rem', color: '#1a1a18' }}>PROspector</div>
-          <div style={{ fontSize: '0.8rem', color: '#9b9b96' }}>Configuration de votre secteur</div>
-        </div>
+        <h1 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#1a1a18', margin: 0 }}>PROspector</h1>
+        <p style={{ fontSize: '0.875rem', color: '#6b6b67', marginTop: '0.25rem' }}>
+          Square Habitat – Outil de prospection
+        </p>
       </div>
 
-      <div style={{
-        flex: 1, display: 'grid',
-        gridTemplateColumns: 'minmax(0, 420px) 1fr',
-        maxWidth: 1280, margin: '0 auto', width: '100%',
-        padding: 24, gap: 24,
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#1a1a18', marginBottom: 4 }}>
-              Bonjour {commercial?.prenom ?? ''} 👋
-            </h1>
-            <p style={{ fontSize: '0.9rem', color: '#5F5E5A', lineHeight: 1.6 }}>
-              Commencez par définir les communes de votre secteur.
-            </p>
+      {sent ? (
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: '50%', background: '#E1F5EE',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
+          }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="2" strokeLinecap="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
           </div>
-
-          <div>
-            <label style={{ fontSize: '0.8rem', fontWeight: 500, color: '#5F5E5A', display: 'block', marginBottom: 6 }}>
-              Ajouter une commune
-            </label>
-            <SearchCommune onSelect={handleAddCommune} communesActives={communesInsee} />
-          </div>
-
-          {communes.length > 0 && (
-            <div>
-              <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#5F5E5A', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Communes du secteur ({communes.length})</span>
-                {toutesChargees && (
-                  <span style={{ color: '#1D9E75' }}>✓ Tout chargé</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {communes.map(c => (
-                  <CommuneCard key={c.id} commune={c} onRemove={handleRemove} />
-                ))}
-              </div>
+          <p style={{ fontWeight: 600, color: '#1a1a18', marginBottom: 8 }}>Vérifiez votre boîte mail</p>
+          <p style={{ fontSize: '0.875rem', color: '#6b6b67', lineHeight: 1.6 }}>
+            Un lien de connexion a été envoyé à <strong>{email}</strong>.<br/>
+            Cliquez sur le lien pour accéder à l'application.
+          </p>
+          <button onClick={() => { setSent(false); setEmail('') }} style={{
+            marginTop: '1.25rem', fontSize: '0.8rem', color: '#1D9E75',
+            background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline',
+          }}>
+            Utiliser un autre email
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          {error && (
+            <div style={{
+              background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px',
+              padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.875rem', color: '#991f1f',
+            }}>
+              {error}
             </div>
           )}
-
-          {communes.length > 0 && (
-            <button
-              onClick={() => router.push('/dashboard')}
-              style={{
-                marginTop: 'auto', padding: '14px 20px',
-                background: toutesChargees ? '#1D9E75' : '#9FE1CB',
-                color: '#fff', border: 'none', borderRadius: 10,
-                fontSize: '0.9375rem', fontWeight: 500,
-                cursor: toutesChargees ? 'pointer' : 'default',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              }}
-            >
-              {toutesChargees ? 'Continuer vers le tableau de bord →' : 'Chargement en cours…'}
-            </button>
-          )}
-
-          <p style={{ fontSize: '0.75rem', color: '#B4B2A9', lineHeight: 1.5 }}>
-            Les adresses sont issues de la Base Adresse Nationale (données publiques).
+          <label style={{ fontSize: '0.8rem', fontWeight: 500, color: '#5F5E5A', display: 'block', marginBottom: 6 }}>
+            Adresse email professionnelle
+          </label>
+          <input
+            type="email" value={email} onChange={e => setEmail(e.target.value)}
+            placeholder="prenom.nom@squarehabitat.fr" required
+            style={{
+              width: '100%', padding: '12px 14px', border: '1.5px solid #d1d0c8',
+              borderRadius: '10px', fontSize: '0.9375rem', color: '#1a1a18',
+              background: '#fff', outline: 'none', marginBottom: '1rem',
+            }}
+          />
+          <button type="submit" disabled={loading || !email.trim()} style={{
+            width: '100%', padding: '13px',
+            background: loading || !email.trim() ? '#9FE1CB' : '#1D9E75',
+            color: '#fff', border: 'none', borderRadius: '10px',
+            fontSize: '0.9375rem', fontWeight: 500,
+            cursor: loading || !email.trim() ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            {loading ? 'Envoi…' : 'Recevoir le lien de connexion'}
+          </button>
+          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#9b9b96', marginTop: '1.25rem' }}>
+            Un lien de connexion vous sera envoyé par email.
           </p>
-        </div>
-
-        <div style={{ borderRadius: 12, overflow: 'hidden', minHeight: 500, border: '1.5px solid #e8e7e0' }}>
-          <SecteurMap communesInsee={communesInsee} height="100%" />
-        </div>
-      </div>
+        </form>
+      )}
     </div>
   )
 }
 
-export default function OnboardingPage() {
+export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f7f4' }}>
-        <div style={{ color: '#9b9b96', fontSize: '0.875rem' }}>Chargement…</div>
-      </div>
-    }>
-      <OnboardingContent />
-    </Suspense>
+    <div style={{
+      minHeight: '100dvh', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: '#f8f7f4', padding: '1rem',
+    }}>
+      <Suspense fallback={<div style={{ color: '#9b9b96' }}>Chargement…</div>}>
+        <LoginForm />
+      </Suspense>
+    </div>
   )
 }
