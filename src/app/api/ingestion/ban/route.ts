@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
-const { code_insee: codeInsee, nom, commune_id } = await request.json()
+  const { code_insee: codeInsee, nom, commune_id } = await request.json()
 
   const supabase = createAdminClientDirect<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,51 +17,34 @@ const { code_insee: codeInsee, nom, commune_id } = await request.json()
   )
 
   try {
-    console.log(`[BAN] Ingestion ${nom} (${code_insee})...`)
+    console.log(`[BAN] Ingestion ${nom} (${codeInsee})...`)
 
-    // Requêtes parallèles avec toutes les lettres + chiffres
-    const chars = [
-  'rue', 'ker', 'all', 'imp', 'che', 'rou', 'pla', 'ven', 'cit', 'vil',
-  'ham', 'lie', 'bou', 'pas', 'res', 'dom', 'tre', 'lan', 'men', 'pen',
-  'ros', 'bod', 'str', 'bra', 'hen', 'par', 'coa', 'koa', 'tei', 'lez',
-  'loc', 'plo', 'plou', 'beg', 'gui', 'mou', 'pon', 'por', 'ran', 'san',
-  '1 r', '2 r', '3 r', '4 r', '5 r', '6 r', '7 r', '8 r', '9 r', '10 ',
-  '11 ', '12 ', '13 ', '14 ', '15 ', '20 ', '25 ', '30 ', '40 ', '50 ',
-]
-    const fetchChar = async (q: string) => {
-  try {
-    const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50`
-    console.log(`[BAN] Fetch: ${url}`)
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
-    console.log(`[BAN] Response ${q}: status=${res.status}`)
-    if (!res.ok) {
-      const text = await res.text()
-      console.log(`[BAN] Error body: ${text}`)
-      return []
+    const queries = ['ker', 'rue', 'all', 'che', 'imp', 'rou', 'pla', 'ham', 'res', 'bou']
+
+    const fetchQuery = async (q: string) => {
+      try {
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50`
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+        if (!res.ok) return []
+        const data = await res.json()
+        console.log(`[BAN] "${q}": ${data.features?.length ?? 0} résultats`)
+        return data.features ?? []
+      } catch (e: any) {
+        console.log(`[BAN] Exception "${q}": ${e.message}`)
+        return []
+      }
     }
-    const data = await res.json()
-    console.log(`[BAN] Features pour "${q}": ${data.features?.length ?? 0}`)
-    return data.features ?? []
-  } catch (e: any) {
-    console.log(`[BAN] Exception pour "${q}": ${e.message}`)
-    return []
-  }
-}
 
-    // Traitement par lots de 10 pour éviter de surcharger l'API
+    const results = await Promise.all(queries.map(fetchQuery))
     const allFeatures: any[] = []
     const seen = new Set<string>()
 
-    for (let i = 0; i < chars.length; i += 10) {
-      const batch = chars.slice(i, i + 10)
-      const results = await Promise.all(batch.map(fetchChar))
-      for (const features of results) {
-        for (const f of features) {
-          const id = f.properties.id
-          if (!id || seen.has(id)) continue
-          seen.add(id)
-          allFeatures.push(f)
-        }
+    for (const features of results) {
+      for (const f of features) {
+        const id = f.properties.id
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        allFeatures.push(f)
       }
     }
 
@@ -72,14 +55,13 @@ const { code_insee: codeInsee, nom, commune_id } = await request.json()
       return NextResponse.json({ ok: true, count: 0 })
     }
 
-    // Insérer par lots de 500
     const BATCH_SIZE = 500
     let totalInserted = 0
 
     for (let i = 0; i < allFeatures.length; i += BATCH_SIZE) {
       const batch = allFeatures.slice(i, i + BATCH_SIZE).map((f: any) => ({
         id: f.properties.id,
-        code_insee,
+        code_insee: codeInsee,
         numero: f.properties.housenumber ?? null,
         nom_voie: f.properties.street ?? f.properties.label,
         code_postal: f.properties.postcode,
