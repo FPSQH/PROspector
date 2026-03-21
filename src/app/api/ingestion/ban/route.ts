@@ -17,61 +17,65 @@ export async function POST(request: Request) {
   )
 
   try {
-    console.log(`[BAN] Ingestion ${nom} (${codeInsee})...`)
+    console.log(`[BAN] Ingestion ${nom} (${codeInsee}) via fichier commune...`)
 
-    const queries = ['ker', 'rue', 'all', 'che', 'imp', 'rou', 'pla', 'ham', 'res', 'bou']
+    // Téléchargement direct du fichier CSV de la commune — toutes les adresses, pas de limite
+    const url = `https://plateforme.adresse.data.gouv.fr/ban/communes/${codeInsee}/download/csv-legacy/adresses`
+    const res = await fetch(url, { signal: AbortSignal.timeout(25000) })
 
-    const fetchQuery = async (q: string) => {
-      try {
-        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50`
-        const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
-        if (!res.ok) return []
-        const data = await res.json()
-        console.log(`[BAN] "${q}": ${data.features?.length ?? 0} résultats`)
-        return data.features ?? []
-      } catch (e: any) {
-        console.log(`[BAN] Exception "${q}": ${e.message}`)
-        return []
-      }
-    }
+    if (!res.ok) throw new Error(`Fichier commune fetch failed: ${res.status}`)
 
-    const results = await Promise.all(queries.map(fetchQuery))
-    const allFeatures: any[] = []
-    const seen = new Set<string>()
+    const csvText = await res.text()
+    const lines = csvText.split('\n').filter(l => l.trim())
 
-    for (const features of results) {
-      for (const f of features) {
-        const id = f.properties.id
-        if (!id || seen.has(id)) continue
-        seen.add(id)
-        allFeatures.push(f)
-      }
-    }
-
-    console.log(`[BAN] ${allFeatures.length} adresses trouvées pour ${nom}`)
-
-    if (allFeatures.length === 0) {
+    if (lines.length < 2) {
       await supabase.from('communes').update({ chargee_at: new Date().toISOString() }).eq('id', commune_id)
       return NextResponse.json({ ok: true, count: 0 })
     }
 
+    // Parser le CSV (séparateur ;)
+    const header = lines[0].split(';')
+    const idx = (name: string) => header.indexOf(name)
+
+    const idCol      = idx('id')
+    const numCol     = idx('numero')
+    const voieCol    = idx('nom_voie')
+    const cpCol      = idx('code_postal')
+    const comCol     = idx('nom_commune')
+    const inseeCol   = idx('code_insee')
+    const lonCol     = idx('lon')
+    const latCol     = idx('lat')
+
+    console.log(`[BAN] ${lines.length - 1} lignes trouvées pour ${nom}`)
+
+    // Insérer par lots de 500
     const BATCH_SIZE = 500
     let totalInserted = 0
 
-    for (let i = 0; i < allFeatures.length; i += BATCH_SIZE) {
-      const batch = allFeatures.slice(i, i + BATCH_SIZE).map((f: any) => ({
-        id: f.properties.id,
-        code_insee: codeInsee,
-        numero: f.properties.housenumber ?? null,
-        nom_voie: f.properties.street ?? f.properties.label,
-        code_postal: f.properties.postcode,
-        commune: f.properties.city,
-        lat: f.geometry.coordinates[1],
-        lon: f.geometry.coordinates[0],
-        type_bien: 'inconnu' as const,
-        prospectable: true,
-        source: 'BAN',
-      }))
+    for (let i = 1; i < lines.length; i += BATCH_SIZE) {
+      const batch = lines.slice(i, i + BATCH_SIZE)
+        .map(line => {
+          const c = line.split(';')
+          const lat = parseFloat(c[latCol])
+          const lon = parseFloat(c[lonCol])
+          if (isNaN(lat) || isNaN(lon)) return null
+          return {
+            id: c[idCol] || `${codeInsee}-${i}`,
+            code_insee: c[inseeCol] || codeInsee,
+            numero: c[numCol] || null,
+            nom_voie: c[voieCol] || 'Voie inconnue',
+            code_postal: c[cpCol] || null,
+            commune: c[comCol] || nom,
+            lat,
+            lon,
+            type_bien: 'inconnu' as const,
+            prospectable: true,
+            source: 'BAN',
+          }
+        })
+        .filter(Boolean) as any[]
+
+      if (batch.length === 0) continue
 
       const { error } = await supabase
         .from('adresses')
