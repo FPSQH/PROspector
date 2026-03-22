@@ -44,10 +44,10 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
       while (true) {
         const { data, error } = await supabase
           .from('adresses')
-          .select('id, latitude, longitude, type_bien, numero, nom_voie')
+          .select('id, lat, lon, type_bien, numero, nom_voie')
           .in('code_insee', batchInsee)
-          .not('latitude', 'is', null)
-          .not('longitude', 'is', null)
+          .not('lat', 'is', null)
+          .not('lon', 'is', null)
           .range(from, from + 999)
 
         if (error || !data || data.length === 0) break
@@ -70,7 +70,7 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
       },
       geometry: {
         type: 'Point',
-        coordinates: [a.longitude, a.latitude],
+        coordinates: [a.lon, a.lat],
       },
     }))
 
@@ -135,8 +135,8 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
     }
 
     // Ajuster la vue
-    const lons = allAdresses.map((a) => a.longitude)
-    const lats = allAdresses.map((a) => a.latitude)
+    const lons = allAdresses.map((a) => a.lon)
+    const lats = allAdresses.map((a) => a.lat)
     map.fitBounds(
       [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
       { padding: 40, duration: 500 }
