@@ -15,8 +15,8 @@ interface Zone {
 
 interface Adresse {
   id: string
-  latitude: number
-  longitude: number
+  lat: number
+  lon: number
   numero?: string
   nom_voie?: string
   type_bien?: string
@@ -204,14 +204,14 @@ export default function ZonesMap({
     const selectedZone = zones.find((z) => z.id === selectedZoneId)
     const couleur = selectedZone?.couleur ?? '#1D9E75'
 
-    const adresseFeatures = itineraire.filter((a) => a.latitude && a.longitude).map((a, idx) => ({
+    const adresseFeatures = itineraire.filter((a) => a.lat && a.lon).map((a, idx) => ({
       type: 'Feature' as const,
       properties: { id: a.id, ordre: idx + 1, couleur },
-      geometry: { type: 'Point', coordinates: [a.longitude, a.latitude] },
+      geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
     }))
     ;(map.getSource('adresses') as any)?.setData({ type: 'FeatureCollection', features: adresseFeatures })
 
-    const coords = itineraire.filter((a) => a.latitude && a.longitude).map((a) => [a.longitude, a.latitude])
+    const coords = itineraire.filter((a) => a.lat && a.lon).map((a) => [a.lon, a.lat])
     ;(map.getSource('itineraire') as any)?.setData({
       type: 'FeatureCollection',
       features: coords.length >= 2
