@@ -16,39 +16,48 @@ const TYPE_COLORS: Record<string, string> = {
   inconnu:         '#d1d5db',
 }
 
+// Découpe un tableau en chunks de taille n
+function chunk<T>(arr: T[], n: number): T[][] {
+  const result: T[][] = []
+  for (let i = 0; i < arr.length; i += n) result.push(arr.slice(i, i + n))
+  return result
+}
+
 export function SecteurMap({ communesInsee, height = 500 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<any>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [nbPoints, setNbPoints]   = useState(0)
 
-  // Charger les adresses SANS limite (pagination 1000 par batch)
+  // Charge toutes les adresses en batches (5 codes INSEE max par requête)
   const loadAdresses = useCallback(async (map: any, codesInsee: string[]) => {
     if (codesInsee.length === 0) return
 
     const supabase = createClient()
     const allAdresses: any[] = []
-    const PAGE = 1000
-    let from = 0
 
-    // Pagination pour contourner la limite Supabase de 1000 lignes
-    while (true) {
-      const { data, error } = await supabase
-        .from('adresses')
-        .select('id, latitude, longitude, type_bien, numero, nom_voie')
-        .in('code_insee', codesInsee)
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
-        .range(from, from + PAGE - 1)
+    // Batch par 5 codes INSEE ET par 1000 lignes
+    const batches = chunk(codesInsee, 5)
 
-      if (error || !data || data.length === 0) break
-      allAdresses.push(...data)
-      if (data.length < PAGE) break // dernière page
-      from += PAGE
+    for (const batchInsee of batches) {
+      let from = 0
+      while (true) {
+        const { data, error } = await supabase
+          .from('adresses')
+          .select('id, latitude, longitude, type_bien, numero, nom_voie')
+          .in('code_insee', batchInsee)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .range(from, from + 999)
+
+        if (error || !data || data.length === 0) break
+        allAdresses.push(...data)
+        if (data.length < 1000) break
+        from += 1000
+      }
     }
 
     if (allAdresses.length === 0) return
-
     setNbPoints(allAdresses.length)
 
     const features = allAdresses.map((a) => ({
@@ -67,17 +76,16 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
 
     const geojson = { type: 'FeatureCollection', features }
 
-    // Source déjà existante → mettre à jour, sinon créer
     if (map.getSource('adresses')) {
       ;(map.getSource('adresses') as any).setData(geojson)
     } else {
-      map.addSource('adresses', { type: 'geojson', data: geojson, cluster: true, clusterRadius: 40, clusterMaxZoom: 14 })
+      map.addSource('adresses', {
+        type: 'geojson', data: geojson,
+        cluster: true, clusterRadius: 40, clusterMaxZoom: 14,
+      })
 
-      // Clusters
       map.addLayer({
-        id: 'clusters',
-        type: 'circle',
-        source: 'adresses',
+        id: 'clusters', type: 'circle', source: 'adresses',
         filter: ['has', 'point_count'],
         paint: {
           'circle-color': '#1D9E75',
@@ -86,23 +94,16 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         },
       })
       map.addLayer({
-        id: 'cluster-count',
-        type: 'symbol',
-        source: 'adresses',
+        id: 'cluster-count', type: 'symbol', source: 'adresses',
         filter: ['has', 'point_count'],
         layout: {
           'text-field': '{point_count_abbreviated}',
           'text-size': 12,
-          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
         },
         paint: { 'text-color': '#fff' },
       })
-
-      // Points individuels
       map.addLayer({
-        id: 'adresses-points',
-        type: 'circle',
-        source: 'adresses',
+        id: 'adresses-points', type: 'circle', source: 'adresses',
         filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-color': ['get', 'couleur'],
@@ -113,7 +114,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         },
       })
 
-      // Popup au clic
       map.on('click', 'adresses-points', (e: any) => {
         const f = e.features?.[0]
         if (!f) return
@@ -124,18 +124,17 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
           .addTo(map)
       })
 
-      // Zoom sur cluster
       map.on('click', 'clusters', (e: any) => {
         const f = e.features?.[0]
         if (!f) return
-        const src = map.getSource('adresses') as any
-        src.getClusterExpansionZoom(f.properties.cluster_id, (_: any, zoom: number) => {
-          map.easeTo({ center: (f.geometry as any).coordinates, zoom })
-        })
+        ;(map.getSource('adresses') as any).getClusterExpansionZoom(
+          f.properties.cluster_id,
+          (_: any, zoom: number) => map.easeTo({ center: (f.geometry as any).coordinates, zoom })
+        )
       })
     }
 
-    // Ajuster la vue sur les adresses
+    // Ajuster la vue
     const lons = allAdresses.map((a) => a.longitude)
     const lats = allAdresses.map((a) => a.latitude)
     map.fitBounds(
@@ -144,10 +143,8 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
     )
   }, [])
 
-  // Init carte
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
-
     let map: any
 
     const init = async () => {
@@ -159,12 +156,14 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         container: containerRef.current!,
         style: {
           version: 8,
+          // glyphs requis pour les labels de texte
+          glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
           sources: {
             osm: {
               type: 'raster',
               tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
               tileSize: 256,
-              attribution: '© OpenStreetMap contributors',
+              attribution: '© OpenStreetMap',
               maxzoom: 19,
             },
           },
@@ -176,7 +175,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
       })
 
       map.addControl(new ml.NavigationControl(), 'top-right')
-
       map.on('load', () => {
         mapRef.current = map
         setMapLoaded(true)
@@ -188,7 +186,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recharger les adresses quand les communes changent
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || communesInsee.length === 0) return
     loadAdresses(mapRef.current, communesInsee)
@@ -198,32 +195,29 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
     <div style={{ position: 'relative', width: '100%', height }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Badge compteur */}
       {nbPoints > 0 && (
         <div style={{
           position: 'absolute', bottom: 12, left: 12,
-          background: 'rgba(255,255,255,0.92)',
-          backdropFilter: 'blur(6px)',
+          background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
           borderRadius: 8, padding: '5px 10px',
           fontSize: '0.75rem', color: '#5F5E5A',
-          border: '1px solid #e8e7e0',
-          pointerEvents: 'none',
+          border: '1px solid #e8e7e0', pointerEvents: 'none',
         }}>
           📍 {nbPoints.toLocaleString('fr-FR')} adresses chargées
         </div>
       )}
 
-      {/* Légende */}
       <div style={{
         position: 'absolute', bottom: 12, right: 12,
-        background: 'rgba(255,255,255,0.92)',
-        backdropFilter: 'blur(6px)',
+        background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
         borderRadius: 8, padding: '8px 12px',
         fontSize: '0.72rem', color: '#5F5E5A',
-        border: '1px solid #e8e7e0',
-        pointerEvents: 'none',
+        border: '1px solid #e8e7e0', pointerEvents: 'none',
       }}>
-        {Object.entries({ maison: 'Maison', appartement: 'Appartement', commerce: 'Commerce', logement_social: 'Log. social' }).map(([k, label]) => (
+        {Object.entries({
+          maison: 'Maison', appartement: 'Appartement',
+          commerce: 'Commerce', logement_social: 'Log. social',
+        }).map(([k, label]) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_COLORS[k] }}/>
             <span>{label}</span>
@@ -235,8 +229,7 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         <div style={{
           position: 'absolute', inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#f8f7f4', borderRadius: 12,
-          fontSize: '0.875rem', color: '#9b9b96',
+          background: '#f8f7f4', fontSize: '0.875rem', color: '#9b9b96',
         }}>
           Chargement de la carte…
         </div>
