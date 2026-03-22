@@ -76,6 +76,11 @@ export async function POST(req: Request) {
     points, nb_zones, capacite_cible, rayon_alerte_metres
   )
 
+  // Log de debug pour comprendre l'algorithme
+  console.log(`[ZONES] ${prospectables.length} adresses prospectables`)
+  console.log(`[ZONES] ${densityZones.length} zones générées, ${horsZone.length} adresses hors-zone`)
+  densityZones.forEach((z, i) => console.log(`[ZONES] Zone ${i+1}: ${z.points.length} adresses, rayon ${z.rayon_metres}m`))
+
   if (densityZones.length === 0)
     return NextResponse.json({
       error: "Aucune zone dense trouvée. Essayez d'augmenter le rayon ou de réduire la capacité cible."
