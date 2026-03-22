@@ -46,10 +46,10 @@ export async function POST(req: Request) {
     while (true) {
       const { data, error } = await supabase
         .from('adresses')
-        .select('id, latitude, longitude, type_bien')
+        .select('id, lat, lon, type_bien')
         .in('code_insee', batchInsee)
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
+        .not('lat', 'is', null)
+        .not('lon', 'is', null)
         .range(from, from + 999)
 
       if (error || !data || data.length === 0) break
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
 
   // ── Clustering K-means++ ──
   const points = prospectables.map((a: any) => ({
-    id: a.id, lat: a.latitude, lon: a.longitude, prospectable: true,
+    id: a.id, lat: a.lat, lon: a.lon, prospectable: true,
   }))
 
   const clusters = bestKMeans(points, nb_zones, 5)
