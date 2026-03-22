@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 export interface ZoneConfig {
   nb_zones:         number   // nombre de zones cibles
   capacite_cible:   number   // adresses cibles par zone
-  rayon_max_metres: number   // rayon max à pied (mètres)
+  rayon_alerte_metres: number   // seuil d'alerte uniquement — pas une limite dure
   exclure_commerces: boolean // exclure les commerces
   exclure_logements_sociaux: boolean // toujours true par défaut
 }
@@ -13,7 +13,7 @@ export interface ZoneConfig {
 export const DEFAULT_CONFIG: ZoneConfig = {
   nb_zones:                  12,
   capacite_cible:            100,
-  rayon_max_metres:          700,
+  rayon_alerte_metres:       500,
   exclure_commerces:         false,
   exclure_logements_sociaux: true,
 }
@@ -209,12 +209,15 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
           />
 
           <Slider
-            label="Rayon max à pied"
-            value={config.rayon_max_metres}
+            label="Seuil d'alerte rayon"
+            value={config.rayon_alerte_metres}
             min={300} max={1500} step={50} unit="m"
-            onChange={(v) => set('rayon_max_metres', v)}
-            hint="Zone couvrable en 2h"
+            onChange={(v) => set('rayon_alerte_metres', v)}
+            hint="↑ zone étendue → alerte ⚠️"
           />
+          <div style={{ fontSize: '0.72rem', color: '#5F5E5A', background: '#f8f7f4', borderRadius: 6, padding: '6px 10px', marginTop: -12, marginBottom: 16 }}>
+            ℹ️ Le rayon s'adapte automatiquement à la densité. Ce seuil déclenche une alerte ⚠️ si une zone dépasse cette distance — elle reste créée.
+          </div>
 
           {/* Types à exclure */}
           <div style={{ marginBottom: 20 }}>
