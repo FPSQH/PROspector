@@ -39,21 +39,47 @@ export default function OnboardingPage() {
 
   useEffect(() => { loadCommunes() }, [loadCommunes])
 
-  // Polling léger : vérifier si des BAN sont encore en cours
+  // Polling avec timeout automatique (90s max par commune)
   useEffect(() => {
     const enCours = communes.filter((c) => !c.chargee_at)
     if (enCours.length === 0) return
 
+    let attempts = 0
+    const MAX_ATTEMPTS = 22 // 22 × 4s = ~90 secondes
+
     const interval = setInterval(async () => {
-      const res  = await fetch('/api/communes/statut')
-      const data = await res.json()
-      if (data.statuts) {
+      attempts++
+      try {
+        const res  = await fetch('/api/communes/statut')
+        const data = await res.json()
+        if (data.statuts) {
+          setCommunes((prev) =>
+            prev.map((c) => {
+              const s = data.statuts.find((s: any) => s.code_insee === c.code_insee)
+              if (!s) return c
+              // Considérer comme chargée si chargee_at est défini OU si des adresses existent
+              const effectivementChargee = !!s.chargee_at || s.nb_adresses > 0
+              return {
+                ...c,
+                chargee_at: effectivementChargee ? (s.chargee_at ?? new Date().toISOString()) : c.chargee_at,
+                nb_adresses: s.nb_adresses,
+              }
+            })
+          )
+        }
+      } catch (e) {
+        // Ignorer les erreurs réseau temporaires
+      }
+
+      // Timeout : après MAX_ATTEMPTS, forcer le statut "chargé" pour débloquer l'UI
+      if (attempts >= MAX_ATTEMPTS) {
         setCommunes((prev) =>
           prev.map((c) => {
-            const s = data.statuts.find((s: any) => s.code_insee === c.code_insee)
-            return s ? { ...c, chargee_at: s.chargee_at, nb_adresses: s.nb_adresses } : c
+            if (c.chargee_at) return c
+            return { ...c, chargee_at: new Date().toISOString() }
           })
         )
+        clearInterval(interval)
       }
     }, 4000)
 
