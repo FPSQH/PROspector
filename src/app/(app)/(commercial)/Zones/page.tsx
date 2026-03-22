@@ -19,8 +19,8 @@ interface Zone {
 
 interface AdresseItineraire {
   id: string          // TEXT — identifiant BAN (ex: "22168_0440_00003")
-  latitude: number
-  longitude: number
+  lat: number
+  lon: number
   numero?: string
   nom_voie?: string
   type_bien?: string
