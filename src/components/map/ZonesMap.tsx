@@ -76,6 +76,7 @@ export default function ZonesMap({
         map.addSource('labels',        { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('itineraire',    { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('adresses',      { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addSource('hors-zone',     { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
 
         map.addLayer({
           id: 'zones-fill', type: 'fill', source: 'zones-fill',
@@ -113,6 +114,15 @@ export default function ZonesMap({
           paint: {
             'line-color': '#1a1a18', 'line-width': 1.5,
             'line-opacity': 0.5, 'line-dasharray': [2, 3],
+          },
+        })
+        map.addLayer({
+          id: 'hors-zone-circle', type: 'circle', source: 'hors-zone',
+          paint: {
+            'circle-radius': 4,
+            'circle-color': '#9b9b96',
+            'circle-opacity': 0.4,
+            'circle-stroke-width': 0,
           },
         })
         map.addLayer({
