@@ -1,60 +1,94 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-export async function POST(request: Request) {
-  const supabase = createClient()
+// GET /api/communes — liste des communes du commercial connecté
+export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ communes: [] })
+
+  const { data: communes } = await supabase
+    .from('communes')
+    .select('id, code_insee, nom, code_postal, departement, chargee_at')
+    .eq('commercial_id', user.id)
+    .order('nom')
+
+  // Pour chaque commune chargée, compter les adresses
+  const result = await Promise.all(
+    (communes ?? []).map(async (c: any) => {
+      if (!c.chargee_at) return { ...c, nb_adresses: 0 }
+      const { count } = await supabase
+        .from('adresses')
+        .select('id', { count: 'exact', head: true })
+        .eq('code_insee', c.code_insee)
+      return { ...c, nb_adresses: count ?? 0 }
+    })
+  )
+
+  return NextResponse.json({ communes: result })
+}
+
+// POST /api/communes — ajouter une commune et déclencher l'ingestion BAN
+export async function POST(req: Request) {
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const body = await request.json()
-  const { code_insee, nom, code_postal, departement } = body
-
-  if (!code_insee || !nom) {
-    return NextResponse.json({ error: 'code_insee et nom requis' }, { status: 400 })
+  const body = await req.json().catch(() => null)
+  if (!body?.code_insee) {
+    return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
   }
 
-  // Insérer la commune (idempotent grâce à ON CONFLICT)
-  const { data, error } = await supabase
+  const { code_insee, nom, code_postal, departement } = body
+
+  // Vérifier si déjà présente
+  const { data: existing } = await supabase
     .from('communes')
-    .upsert({
+    .select('id')
+    .eq('commercial_id', user.id)
+    .eq('code_insee', code_insee)
+    .single()
+
+  if (existing) {
+    return NextResponse.json({ commune: existing, already_exists: true })
+  }
+
+  // Insérer la commune
+  const { data: commune, error } = await supabase
+    .from('communes')
+    .insert({
       commercial_id: user.id,
       code_insee,
-      nom,
-      code_postal,
-      departement,
-      chargee_at: null,  // sera mis à jour après ingestion BAN
-    }, { onConflict: 'commercial_id,code_insee' })
+      nom:         nom ?? '',
+      code_postal: code_postal ?? '',
+      departement: departement ?? '',
+    })
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
-  // Lancer l'ingestion BAN en arrière-plan (fire & forget)
-  // Ne pas attendre la réponse pour ne pas bloquer l'UI
-  fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ingestion/ban`, {
+  // Déclencher ingestion BAN en arrière-plan (fire & forget)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    ?? process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000'
+
+  fetch(`${baseUrl}/api/ingestion/ban`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-internal-key': process.env.SUPABASE_SERVICE_ROLE_KEY! },
-    body: JSON.stringify({ code_insee, nom, departement, commune_id: data.id }),
-  }).catch(console.error)
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-key': process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    },
+    body: JSON.stringify({
+      code_insee,
+      nom,
+      departement,
+      commune_id: commune.id,
+    }),
+  }).catch((e) => console.error('[BAN] fire & forget error:', e))
 
-  return NextResponse.json({ commune: data, ingestion: 'started' })
-}
-
-export async function DELETE(request: Request) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-
-  const { searchParams } = new URL(request.url)
-  const code_insee = searchParams.get('code_insee')
-  if (!code_insee) return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
-
-  const { error } = await supabase
-    .from('communes')
-    .delete()
-    .eq('commercial_id', user.id)
-    .eq('code_insee', code_insee)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ commune })
 }
