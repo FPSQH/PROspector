@@ -24,8 +24,8 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const nb_zones:          number  = body.nb_zones          ?? 12
   const capacite_cible:    number  = body.capacite_cible    ?? 100
-  const rayon_max_metres:  number  = body.rayon_max_metres  ?? 700
-  const exclure_commerces: boolean = body.exclure_commerces ?? false
+  const rayon_alerte_metres: number  = body.rayon_alerte_metres ?? 500
+  const exclure_commerces:    boolean = body.exclure_commerces ?? false
 
   const { data: commercial } = await supabase
     .from('commerciaux').select('id').eq('id', user.id).single()
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
 
   // Nouvel algorithme density-based
   const { zones: densityZones, horsZone } = generateDensityZones(
-    points, nb_zones, capacite_cible, rayon_max_metres
+    points, nb_zones, capacite_cible, rayon_alerte_metres
   )
 
   if (densityZones.length === 0)
@@ -98,9 +98,9 @@ export async function POST(req: Request) {
   for (let i = 0; i < densityZones.length; i++) {
     const dz = densityZones[i]
 
-    if (dz.tronquee) {
+    if (dz.depasse_seuil) {
       warnings.push(
-        `Zone ${i+1} : ${dz.points.length} adresses seulement (rayon ${rayon_max_metres}m atteint avant ${capacite_cible})`
+        `Zone ${i+1} : ${dz.points.length} adresses seulement (seuil ${rayon_alerte_metres}m atteint avant ${capacite_cible})`
       )
     }
 
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
         nb_adresses:          dz.points.length,
         nb_prospectables:     dz.points.length,
         nb_logements_sociaux: 0,
-        statut:               dz.tronquee ? 'attention' : 'active',
+        statut:               dz.depasse_seuil ? 'attention' : 'active',
         polygone:             polygonWKT || undefined,
       })
       .select().single()
@@ -135,7 +135,7 @@ export async function POST(req: Request) {
       await supabase.from('itineraires_zone').insert(b)
     }
 
-    createdZones.push({ ...zone, rayon_metres: dz.rayon_metres, tronquee: dz.tronquee })
+    createdZones.push({ ...zone, rayon_metres: dz.rayon_metres, tronquee: dz.depasse_seuil })
   }
 
   return NextResponse.json({
@@ -145,6 +145,6 @@ export async function POST(req: Request) {
     nb_hors_zone: horsZone.length,
     nb_prospectables: prospectables.length,
     warnings,
-    config: { nb_zones, capacite_cible, rayon_max_metres, exclure_commerces },
+    config: { nb_zones, capacite_cible, rayon_alerte_metres, exclure_commerces },
   })
 }
