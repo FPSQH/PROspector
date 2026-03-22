@@ -23,7 +23,7 @@ export async function GET(_req: Request, { params }: Params) {
     .select(`
       ordre,
       adresse:adresses (
-        id, latitude, longitude, numero, nom_voie, type_bien, nb_bal
+        id, lat, lon, numero, nom_voie, type_bien, nb_bal
       )
     `)
     .eq('zone_id', params.id)
