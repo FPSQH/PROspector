@@ -8,6 +8,23 @@ import type { ZoneConfig } from '@/components/zones/ZoneConfigModal'
 
 const ZonesMap = dynamic(() => import('@/components/map/ZonesMap'), { ssr: false })
 
+interface Chevauchement {
+  zone_a_id:   string
+  zone_a_nom:  string
+  zone_b_id:   string
+  zone_b_nom:  string
+  nb_adresses: number
+}
+
+interface VersionHistorique {
+  id:          string
+  version:     number
+  nom:         string
+  nb_adresses: number
+  type_modif:  string
+  created_at:  string
+}
+
 interface Zone {
   id: string
   nom: string
@@ -49,6 +66,10 @@ export default function ZonesPage() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [warnings, setWarnings]       = useState<string[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [chevauchements, setChevauchements] = useState<Chevauchement[]>([])
+  const [historique, setHistorique] = useState<VersionHistorique[]>([])
+  const [loadingHistorique, setLoadingHistorique] = useState(false)
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
   const [nbAdressesTotal, setNbAdressesTotal] = useState(0)
 
   const loadZones = useCallback(async () => {
@@ -62,6 +83,12 @@ export default function ZonesPage() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const loadChevauchements = useCallback(async () => {
+    const res  = await fetch('/api/zones/chevauchements')
+    const data = await res.json()
+    setChevauchements(data.chevauchements ?? [])
   }, [])
 
   // Charger aussi le nb total d'adresses du secteur si pas encore dans /api/zones
@@ -104,7 +131,7 @@ export default function ZonesPage() {
         body: JSON.stringify({
           nb_zones:          config.nb_zones,
           capacite_cible:    config.capacite_cible,
-          rayon_max_metres:  config.rayon_max_metres,
+          rayon_alerte_metres: config.rayon_alerte_metres,
           exclure_commerces: config.exclure_commerces,
         }),
       })
@@ -126,11 +153,17 @@ export default function ZonesPage() {
   }
 
   // Édition zone
-  const openEdit = (zone: Zone, e: React.MouseEvent) => {
+  const openEdit = async (zone: Zone, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingZone(zone)
     setEditNom(zone.nom)
     setEditCouleur(zone.couleur)
+    setHistorique([])
+    setLoadingHistorique(true)
+    const res  = await fetch(`/api/zones/${zone.id}/historique`)
+    const data = await res.json()
+    setHistorique(data.historique ?? [])
+    setLoadingHistorique(false)
   }
 
   const saveEdit = async () => {
@@ -144,7 +177,25 @@ export default function ZonesPage() {
     if (res.ok) {
       setSaveStatus('saved')
       await loadZones()
+      await loadChevauchements()
       setTimeout(() => { setEditingZone(null); setSaveStatus('idle') }, 700)
+    }
+  }
+
+  const handleRestaurer = async (version: number) => {
+    if (!editingZone) return
+    if (!confirm(`Restaurer la version ${version} de cette zone ?`)) return
+    setRestoringVersion(version)
+    const res = await fetch(`/api/zones/${editingZone.id}/restaurer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
+    })
+    setRestoringVersion(null)
+    if (res.ok) {
+      await loadZones()
+      await loadChevauchements()
+      setEditingZone(null)
     }
   }
 
@@ -236,6 +287,19 @@ export default function ZonesPage() {
         }}>
           <span>⚠ {generateError}</span>
           <button onClick={() => setGenerateError(null)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
+
+      {/* Chevauchements détectés */}
+      {chevauchements.length > 0 && (
+        <div style={{
+          background: '#fef2f2', borderBottom: '1px solid #fecaca',
+          padding: '8px 20px', fontSize: '0.8rem', color: '#dc2626',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontWeight: 600 }}>⚠ {chevauchements.length} chevauchement{chevauchements.length > 1 ? 's' : ''} détecté{chevauchements.length > 1 ? 's' : ''} :</span>
+          <span>{chevauchements.map(c => `${c.zone_a_nom} ↔ ${c.zone_b_nom} (${c.nb_adresses} adresses)`).join(' · ')}</span>
+          <button onClick={loadChevauchements} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}>↺</button>
         </div>
       )}
 
@@ -342,6 +406,7 @@ export default function ZonesPage() {
             zones={zones}
             selectedZoneId={selectedZone?.id}
             itineraire={itineraire}
+            chevauchements={chevauchements}
             onZoneClick={handleSelectZone}
           />
 
