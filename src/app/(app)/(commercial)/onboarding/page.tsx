@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { SearchCommune } from '@/components/onboarding/SearchCommune'
 import { SecteurMap } from '@/components/map/SecteurMap'
@@ -25,70 +25,94 @@ interface CommuneResult {
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const [communes, setCommunes]     = useState<Commune[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [navigating, setNavigating] = useState(false)
+  const [communes, setCommunes]       = useState<Commune[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [navigating, setNavigating]   = useState(false)
+  // Ref pour le polling — évite les boucles de dépendances
+  const pollingRef    = useRef<NodeJS.Timeout | null>(null)
+  const attemptsRef   = useRef(0)
+  const MAX_ATTEMPTS  = 22 // 90 secondes max
 
-  // Charger les communes actuelles
   const loadCommunes = useCallback(async () => {
     const res  = await fetch('/api/communes')
     const data = await res.json()
     setCommunes(data.communes ?? [])
     setLoading(false)
+    return data.communes ?? []
   }, [])
 
   useEffect(() => { loadCommunes() }, [loadCommunes])
 
-  // Polling avec timeout automatique (90s max par commune)
+  // Démarrer/arrêter le polling selon les communes en cours
   useEffect(() => {
     const enCours = communes.filter((c) => !c.chargee_at)
-    if (enCours.length === 0) return
 
-    let attempts = 0
-    const MAX_ATTEMPTS = 22 // 22 × 4s = ~90 secondes
+    // Plus rien en cours → stopper le polling
+    if (enCours.length === 0) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+        attemptsRef.current = 0
+      }
+      return
+    }
 
-    const interval = setInterval(async () => {
-      attempts++
+    // Déjà un polling actif → ne pas en créer un nouveau
+    if (pollingRef.current) return
+
+    attemptsRef.current = 0
+
+    pollingRef.current = setInterval(async () => {
+      attemptsRef.current++
+
       try {
         const res  = await fetch('/api/communes/statut')
         const data = await res.json()
+
         if (data.statuts) {
           setCommunes((prev) =>
             prev.map((c) => {
               const s = data.statuts.find((s: any) => s.code_insee === c.code_insee)
               if (!s) return c
-              // Considérer comme chargée si chargee_at est défini OU si des adresses existent
               const effectivementChargee = !!s.chargee_at || s.nb_adresses > 0
               return {
                 ...c,
-                chargee_at: effectivementChargee ? (s.chargee_at ?? new Date().toISOString()) : c.chargee_at,
+                chargee_at: effectivementChargee
+                  ? (s.chargee_at ?? new Date().toISOString())
+                  : c.chargee_at,
                 nb_adresses: s.nb_adresses,
               }
             })
           )
         }
-      } catch (e) {
-        // Ignorer les erreurs réseau temporaires
+      } catch {
+        // Erreur réseau — on continue
       }
 
-      // Timeout : après MAX_ATTEMPTS, forcer le statut "chargé" pour débloquer l'UI
-      if (attempts >= MAX_ATTEMPTS) {
+      // Timeout : forcer le passage au vert après MAX_ATTEMPTS
+      if (attemptsRef.current >= MAX_ATTEMPTS) {
         setCommunes((prev) =>
-          prev.map((c) => {
-            if (c.chargee_at) return c
-            return { ...c, chargee_at: new Date().toISOString() }
-          })
+          prev.map((c) =>
+            c.chargee_at ? c : { ...c, chargee_at: new Date().toISOString() }
+          )
         )
-        clearInterval(interval)
+        clearInterval(pollingRef.current!)
+        pollingRef.current = null
+        attemptsRef.current = 0
       }
     }, 4000)
 
-    return () => clearInterval(interval)
-  }, [communes])
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  // Intentionnellement vide : on gère manuellement le cycle de vie du polling
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [communes.map((c) => c.code_insee).join(',')])
 
-  // Ajouter une ou plusieurs communes
   const handleAdd = async (results: CommuneResult[]) => {
-    // Ajout séquentiel (fire & forget pour l'ingestion BAN)
     for (const commune of results) {
       await fetch('/api/communes', {
         method: 'POST',
@@ -104,16 +128,14 @@ export default function OnboardingPage() {
     await loadCommunes()
   }
 
-  // Supprimer une commune
   const handleRemove = async (codeInsee: string) => {
     await fetch(`/api/communes/${codeInsee}`, { method: 'DELETE' })
     await loadCommunes()
   }
 
-  const communesInsee       = communes.map((c) => c.code_insee)
-  const toutesChargees      = communes.every((c) => !!c.chargee_at)
-  const nbEnCours           = communes.filter((c) => !c.chargee_at).length
-  const canGoToDashboard    = communes.length > 0 // accessible même si BAN pas fini
+  const communesInsee    = communes.filter((c) => !!c.chargee_at || (c.nb_adresses ?? 0) > 0).map((c) => c.code_insee)
+  const nbEnCours        = communes.filter((c) => !c.chargee_at).length
+  const canGoToDashboard = communes.length > 0
 
   const handleDashboard = () => {
     setNavigating(true)
@@ -122,8 +144,6 @@ export default function OnboardingPage() {
 
   return (
     <div style={{ minHeight: '100dvh', background: '#f8f7f4' }}>
-
-      {/* Header */}
       <header style={{
         background: '#fff', borderBottom: '1px solid #e8e7e0',
         padding: '0 24px', height: 56,
@@ -134,45 +154,33 @@ export default function OnboardingPage() {
             width: 30, height: 30, borderRadius: 8, background: '#1D9E75',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
-              stroke="#fff" strokeWidth="1.5" strokeLinejoin="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round">
               <path d="M12 2L2 7v10l10 5 10-5V7L12 2z"/>
               <path d="M12 22V12M2 7l10 5 10-5"/>
             </svg>
           </div>
           <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1a1a18' }}>PROspector</span>
         </div>
-
         {canGoToDashboard && (
-          <button
-            onClick={handleDashboard}
-            disabled={navigating}
-            style={{
-              padding: '7px 18px', borderRadius: 8,
-              background: navigating ? '#9b9b96' : '#1D9E75',
-              color: '#fff', border: 'none',
-              fontSize: '0.875rem', fontWeight: 600,
-              cursor: navigating ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
+          <button onClick={handleDashboard} disabled={navigating} style={{
+            padding: '7px 18px', borderRadius: 8,
+            background: navigating ? '#9b9b96' : '#1D9E75',
+            color: '#fff', border: 'none',
+            fontSize: '0.875rem', fontWeight: 600,
+            cursor: navigating ? 'not-allowed' : 'pointer',
+          }}>
             {navigating ? 'Chargement…' : 'Accéder au Dashboard →'}
           </button>
         )}
       </header>
 
-      {/* Corps */}
       <main style={{
-        display: 'grid',
-        gridTemplateColumns: '380px 1fr',
-        gap: 0, height: 'calc(100dvh - 56px)',
+        display: 'grid', gridTemplateColumns: '380px 1fr',
+        height: 'calc(100dvh - 56px)',
       }}>
-
-        {/* Colonne gauche */}
         <aside style={{
-          borderRight: '1px solid #e8e7e0',
-          background: '#fff',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
+          borderRight: '1px solid #e8e7e0', background: '#fff',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
           <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid #f0efeb' }}>
             <h1 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#1a1a18', margin: '0 0 4px' }}>
@@ -183,15 +191,10 @@ export default function OnboardingPage() {
             </p>
           </div>
 
-          {/* Recherche */}
           <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0efeb' }}>
-            <SearchCommune
-              onAdd={handleAdd}
-              communesExistantes={communesInsee}
-            />
+            <SearchCommune onAdd={handleAdd} communesExistantes={communes.map((c) => c.code_insee)} />
           </div>
 
-          {/* Liste des communes */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {loading ? (
               <div style={{ padding: 24, color: '#9b9b96', fontSize: '0.875rem' }}>Chargement…</div>
@@ -201,7 +204,7 @@ export default function OnboardingPage() {
                 <p style={{ fontSize: '0.875rem', color: '#5F5E5A', lineHeight: 1.5 }}>
                   Aucune commune dans votre secteur.
                 </p>
-                <p style={{ fontSize: '0.8rem', color: '#9b9b96', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '0.8rem', color: '#9b9b96' }}>
                   Recherchez par nom ou code postal.
                 </p>
               </div>
@@ -219,19 +222,14 @@ export default function OnboardingPage() {
                   const chargee = !!commune.chargee_at
                   return (
                     <div key={commune.code_insee} style={{
-                      padding: '12px 24px',
-                      borderBottom: '1px solid #f8f7f4',
+                      padding: '12px 24px', borderBottom: '1px solid #f8f7f4',
                       display: 'flex', alignItems: 'center', gap: 12,
                     }}>
-                      {/* Indicateur statut */}
                       <div style={{
                         width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
                         background: chargee ? '#22c55e' : '#f59e0b',
-                        boxShadow: chargee
-                          ? '0 0 0 3px rgba(34,197,94,0.15)'
-                          : '0 0 0 3px rgba(245,158,11,0.15)',
+                        boxShadow: chargee ? '0 0 0 3px rgba(34,197,94,0.15)' : '0 0 0 3px rgba(245,158,11,0.15)',
                       }}/>
-
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#1a1a18' }}>
                           {commune.nom}
@@ -245,8 +243,6 @@ export default function OnboardingPage() {
                           )}
                         </div>
                       </div>
-
-                      {/* Badge BAN en cours */}
                       {!chargee && (
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 5,
@@ -260,11 +256,8 @@ export default function OnboardingPage() {
                           BAN…
                         </div>
                       )}
-
-                      {/* Supprimer */}
                       <button
                         onClick={() => handleRemove(commune.code_insee)}
-                        title="Retirer"
                         style={{
                           width: 28, height: 28, borderRadius: 6,
                           border: '1px solid #e8e7e0', background: 'transparent',
@@ -295,7 +288,6 @@ export default function OnboardingPage() {
             )}
           </div>
 
-          {/* Footer : bouton Dashboard */}
           <div style={{ padding: '16px 24px', borderTop: '1px solid #f0efeb' }}>
             {communes.length === 0 ? (
               <div style={{
@@ -306,33 +298,23 @@ export default function OnboardingPage() {
                 Ajoutez au moins une commune pour continuer
               </div>
             ) : (
-              <button
-                onClick={handleDashboard}
-                disabled={navigating}
-                style={{
-                  width: '100%', padding: '10px',
-                  borderRadius: 9, border: 'none',
-                  background: navigating ? '#9b9b96' : '#1D9E75',
-                  color: '#fff', fontWeight: 600,
-                  fontSize: '0.9rem', cursor: navigating ? 'not-allowed' : 'pointer',
-                  transition: 'background 0.2s',
-                }}>
-                {navigating
-                  ? 'Chargement…'
-                  : toutesChargees
-                  ? 'Accéder au Dashboard →'
-                  : `Dashboard (${nbEnCours} BAN en cours…)`}
+              <button onClick={handleDashboard} disabled={navigating} style={{
+                width: '100%', padding: '10px', borderRadius: 9, border: 'none',
+                background: navigating ? '#9b9b96' : '#1D9E75',
+                color: '#fff', fontWeight: 600, fontSize: '0.9rem',
+                cursor: navigating ? 'not-allowed' : 'pointer',
+              }}>
+                {navigating ? 'Chargement…' : nbEnCours > 0
+                  ? `Dashboard (${nbEnCours} BAN en cours…)`
+                  : 'Accéder au Dashboard →'
+                }
               </button>
             )}
           </div>
         </aside>
 
-        {/* Carte */}
         <div style={{ overflow: 'hidden' }}>
-          <SecteurMap
-            communesInsee={communesInsee}
-            height="100%"
-          />
+          <SecteurMap communesInsee={communesInsee} height="100%" />
         </div>
       </main>
 
