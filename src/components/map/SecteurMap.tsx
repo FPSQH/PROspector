@@ -16,7 +16,6 @@ const TYPE_COLORS: Record<string, string> = {
   inconnu:         '#d1d5db',
 }
 
-// Découpe un tableau en chunks de taille n
 function chunk<T>(arr: T[], n: number): T[][] {
   const result: T[][] = []
   for (let i = 0; i < arr.length; i += n) result.push(arr.slice(i, i + n))
@@ -24,22 +23,20 @@ function chunk<T>(arr: T[], n: number): T[][] {
 }
 
 export function SecteurMap({ communesInsee, height = 500 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef       = useRef<any>(null)
+  const containerRef    = useRef<HTMLDivElement>(null)
+  const mapRef          = useRef<any>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [nbPoints, setNbPoints]   = useState(0)
+  // Garder trace des codes INSEE déjà chargés pour éviter les rechargements inutiles
+  const loadedCodesRef  = useRef<string>('')
 
-  // Charge toutes les adresses en batches (5 codes INSEE max par requête)
   const loadAdresses = useCallback(async (map: any, codesInsee: string[]) => {
     if (codesInsee.length === 0) return
 
     const supabase = createClient()
     const allAdresses: any[] = []
 
-    // Batch par 5 codes INSEE ET par 1000 lignes
-    const batches = chunk(codesInsee, 5)
-
-    for (const batchInsee of batches) {
+    for (const batchInsee of chunk(codesInsee, 5)) {
       let from = 0
       while (true) {
         const { data, error } = await supabase
@@ -68,14 +65,12 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         label:     `${a.numero ?? ''} ${a.nom_voie ?? ''}`.trim(),
         couleur:   TYPE_COLORS[a.type_bien ?? 'inconnu'] ?? TYPE_COLORS.inconnu,
       },
-      geometry: {
-        type: 'Point',
-        coordinates: [a.lon, a.lat],
-      },
+      geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
     }))
 
     const geojson = { type: 'FeatureCollection', features }
 
+    // Toujours REMPLACER, jamais accumuler
     if (map.getSource('adresses')) {
       ;(map.getSource('adresses') as any).setData(geojson)
     } else {
@@ -96,10 +91,7 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
       map.addLayer({
         id: 'cluster-count', type: 'symbol', source: 'adresses',
         filter: ['has', 'point_count'],
-        layout: {
-          'text-field': '{point_count_abbreviated}',
-          'text-size': 12,
-        },
+        layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 12 },
         paint: { 'text-color': '#fff' },
       })
       map.addLayer({
@@ -123,7 +115,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
           .setHTML(`<div style="font-size:0.8rem;padding:4px 6px">${f.properties.label || f.properties.type_bien}</div>`)
           .addTo(map)
       })
-
       map.on('click', 'clusters', (e: any) => {
         const f = e.features?.[0]
         if (!f) return
@@ -134,7 +125,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
       })
     }
 
-    // Ajuster la vue
     const lons = allAdresses.map((a) => a.lon)
     const lats = allAdresses.map((a) => a.lat)
     map.fitBounds(
@@ -156,7 +146,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         container: containerRef.current!,
         style: {
           version: 8,
-          // glyphs requis pour les labels de texte
           glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
           sources: {
             osm: {
@@ -169,16 +158,11 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
           },
           layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
         },
-        center: [2.5, 46.8],
-        zoom: 5,
+        center: [2.5, 46.8], zoom: 5,
         attributionControl: false,
       })
-
       map.addControl(new ml.NavigationControl(), 'top-right')
-      map.on('load', () => {
-        mapRef.current = map
-        setMapLoaded(true)
-      })
+      map.on('load', () => { mapRef.current = map; setMapLoaded(true) })
     }
 
     init()
@@ -186,15 +170,21 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Ne recharger que si la liste des communes change réellement (pas juste l'objet)
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || communesInsee.length === 0) return
+
+    const codesSorted = [...communesInsee].sort().join(',')
+    // Éviter les rechargements si les codes INSEE n'ont pas changé
+    if (codesSorted === loadedCodesRef.current) return
+    loadedCodesRef.current = codesSorted
+
     loadAdresses(mapRef.current, communesInsee)
   }, [mapLoaded, communesInsee, loadAdresses])
 
   return (
     <div style={{ position: 'relative', width: '100%', height }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-
       {nbPoints > 0 && (
         <div style={{
           position: 'absolute', bottom: 12, left: 12,
@@ -206,7 +196,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
           📍 {nbPoints.toLocaleString('fr-FR')} adresses chargées
         </div>
       )}
-
       <div style={{
         position: 'absolute', bottom: 12, right: 12,
         background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
@@ -214,17 +203,14 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         fontSize: '0.72rem', color: '#5F5E5A',
         border: '1px solid #e8e7e0', pointerEvents: 'none',
       }}>
-        {Object.entries({
-          maison: 'Maison', appartement: 'Appartement',
-          commerce: 'Commerce', logement_social: 'Log. social',
-        }).map(([k, label]) => (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_COLORS[k] }}/>
-            <span>{label}</span>
-          </div>
-        ))}
+        {Object.entries({ maison: 'Maison', appartement: 'Appartement', commerce: 'Commerce', logement_social: 'Log. social' })
+          .map(([k, label]) => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_COLORS[k] }}/>
+              <span>{label}</span>
+            </div>
+          ))}
       </div>
-
       {!mapLoaded && (
         <div style={{
           position: 'absolute', inset: 0,
