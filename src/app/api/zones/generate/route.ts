@@ -140,6 +140,13 @@ export async function POST(req: Request) {
       await supabase.from('itineraires_zone').insert(b)
     }
 
+    // Sauvegarder la version initiale dans l'historique
+    await supabase.rpc('save_zone_version', {
+      p_zone_id:     zone.id,
+      p_type_modif:  'creation',
+      p_modifie_par: commercial.id,
+    })
+
     createdZones.push({ ...zone, rayon_metres: dz.rayon_metres, tronquee: dz.depasse_seuil })
   }
 
