@@ -131,9 +131,6 @@ export async function POST(req: Request) {
       await supabase.from('adresses').update({ zone_id: zone.id }).in('id', b)
     }
 
-    // Calculer le polygone via ST_ConcaveHull PostGIS (colle aux adresses réelles)
-    await supabase.rpc('compute_zone_polygon', { p_zone_id: zone.id })
-
     const route = nearestNeighborTSP(dz.points.map((p) => ({ id: p.id, lat: p.lat, lon: p.lon })))
     for (const b of chunk(route.map((p, idx) => ({ zone_id: zone.id, adresse_id: p.id, ordre: idx + 1 })), 100)) {
       await supabase.from('itineraires_zone').insert(b)
@@ -147,6 +144,12 @@ export async function POST(req: Request) {
     })
 
     createdZones.push({ ...zone, rayon_metres: dz.rayon_metres, tronquee: dz.depasse_seuil })
+  }
+
+  // Calculer les polygones Voronoï une fois toutes les zones créées
+  // → garantit zéro chevauchement entre zones
+  if (createdZones.length > 0) {
+    await supabase.rpc('compute_voronoi_zones', { p_commercial_id: commercial.id })
   }
 
   return NextResponse.json({
