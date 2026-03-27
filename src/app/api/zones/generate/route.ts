@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateDensityZones } from '@/lib/geo/densityZones'
-import { pointsToPolygonWKT } from '@/lib/geo/convexHull'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
 
 const ZONE_COLORS = [
@@ -109,10 +108,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const polygonWKT = pointsToPolygonWKT(
-      dz.points.map((p) => ({ lon: p.lon, lat: p.lat })), 0.001
-    )
-
+    // Insérer la zone sans polygone d'abord
     const { data: zone, error: errZone } = await supabase
       .from('zones_prospection')
       .insert({
@@ -125,15 +121,18 @@ export async function POST(req: Request) {
         nb_prospectables:     dz.points.length,
         nb_logements_sociaux: 0,
         statut:               dz.depasse_seuil ? 'attention' : 'active',
-        polygone:             polygonWKT || undefined,
       })
       .select().single()
 
     if (errZone || !zone) continue
 
+    // Assigner les adresses à la zone
     for (const b of chunk(dz.points.map((p) => p.id), 100)) {
       await supabase.from('adresses').update({ zone_id: zone.id }).in('id', b)
     }
+
+    // Calculer le polygone via ST_ConcaveHull PostGIS (colle aux adresses réelles)
+    await supabase.rpc('compute_zone_polygon', { p_zone_id: zone.id })
 
     const route = nearestNeighborTSP(dz.points.map((p) => ({ id: p.id, lat: p.lat, lon: p.lon })))
     for (const b of chunk(route.map((p, idx) => ({ zone_id: zone.id, adresse_id: p.id, ordre: idx + 1 })), 100)) {
