@@ -30,7 +30,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const body = await req.json().catch(() => ({}))
   const allowed = ['nom','prenom','tel1','tel2','email1','email2',
-    'type_contact','note','date_relance','statut_pipeline']
+    'type_contact','notes','date_relance','statut_pipeline']
 
   const updates: any = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
