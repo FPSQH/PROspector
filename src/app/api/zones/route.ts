@@ -62,14 +62,18 @@ export async function POST(req: Request) {
     .from('commerciaux').select('id').eq('id', user.id).single()
   if (!commercial) return NextResponse.json({ error: 'Commercial non trouvé' }, { status: 404 })
 
-  // Prochain numéro
-  const { count } = await supabase
-    .from('zones_prospection')
-    .select('id', { count: 'exact', head: true })
-    .eq('commercial_id', commercial.id)
-
-  const numero = (count ?? 0) + 1
   const COLORS = ['#E63946','#2196F3','#FF9800','#4CAF50','#9C27B0','#00BCD4','#FF5722','#607D8B','#795548','#E91E63','#00897B','#F57F17']
+
+  // Numérotation intelligente : trouver le premier numéro manquant dans la séquence
+  const { data: existingZones } = await supabase
+    .from('zones_prospection')
+    .select('numero')
+    .eq('commercial_id', commercial.id)
+    .order('numero')
+
+  const numerosExistants = new Set((existingZones ?? []).map((z: any) => z.numero))
+  let numero = 1
+  while (numerosExistants.has(numero)) numero++
 
   // Convertir GeoJSON → WKT
   const ring = polygone_geojson?.coordinates?.[0] ?? polygone_geojson?.geometry?.coordinates?.[0]
