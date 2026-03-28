@@ -58,7 +58,7 @@ export default async function DashboardPage() {
 
   return (
     <div style={{ minHeight: '100dvh', background: '#f8f7f4' }}>
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @media (max-width: 768px) {
           .dash-header { padding: 0 16px !important; }
           .dash-header-date { display: none !important; }
@@ -70,7 +70,7 @@ export default async function DashboardPage() {
           .dash-setup-btn { margin-left: 0 !important; width: 100% !important; text-align: center !important; }
           .dash-zone-bar-label { width: 56px !important; }
         }
-      `}</style>
+      ` }} />
 
       {/* ── Header page (léger, sans logo — AppShell gère la nav) ── */}
       <div style={{
