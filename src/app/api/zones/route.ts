@@ -46,3 +46,61 @@ export async function GET() {
 
   return NextResponse.json({ zones: zonesData, nb_adresses_total: nbAdressesTotal })
 }
+
+// POST /api/zones — créer une zone manuellement depuis l'éditeur
+// Body : { nom, polygone_geojson }
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const body = await req.json().catch(() => ({}))
+  const { nom, polygone_geojson } = body
+  if (!polygone_geojson) return NextResponse.json({ error: 'polygone_geojson requis' }, { status: 400 })
+
+  const { data: commercial } = await supabase
+    .from('commerciaux').select('id').eq('id', user.id).single()
+  if (!commercial) return NextResponse.json({ error: 'Commercial non trouvé' }, { status: 404 })
+
+  // Prochain numéro
+  const { count } = await supabase
+    .from('zones_prospection')
+    .select('id', { count: 'exact', head: true })
+    .eq('commercial_id', commercial.id)
+
+  const numero = (count ?? 0) + 1
+  const COLORS = ['#E63946','#2196F3','#FF9800','#4CAF50','#9C27B0','#00BCD4','#FF5722','#607D8B','#795548','#E91E63','#00897B','#F57F17']
+
+  // Convertir GeoJSON → WKT
+  const ring = polygone_geojson?.coordinates?.[0] ?? polygone_geojson?.geometry?.coordinates?.[0]
+  if (!ring) return NextResponse.json({ error: 'Polygone invalide' }, { status: 400 })
+  const coords = ring.map((c: number[]) => `${c[0]} ${c[1]}`).join(', ')
+  const wkt = `SRID=4326;POLYGON((${coords}))`
+
+  const { data: zone, error } = await supabase
+    .from('zones_prospection')
+    .insert({
+      commercial_id: commercial.id,
+      nom:           nom ?? `Zone ${numero}`,
+      numero,
+      couleur:       COLORS[(numero - 1) % COLORS.length],
+      statut:        'active',
+      capacite_theorique: 150,
+      nb_adresses:        0,
+      nb_prospectables:   0,
+      nb_logements_sociaux: 0,
+      polygone:      wkt,
+    })
+    .select().single()
+
+  if (error || !zone) return NextResponse.json({ error: error?.message ?? 'Erreur création' }, { status: 500 })
+
+  // Assigner les adresses incluses dans le polygone
+  const { data: result } = await supabase.rpc('recalc_zone_adresses', {
+    p_zone_id:       zone.id,
+    p_commercial_id: commercial.id,
+  })
+
+  const nb_adresses = result?.[0]?.nb_incluses ?? 0
+  return NextResponse.json({ ok: true, id: zone.id, nom: zone.nom, nb_adresses })
+}
