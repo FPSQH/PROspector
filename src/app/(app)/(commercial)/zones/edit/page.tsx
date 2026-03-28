@@ -41,6 +41,7 @@ export default function ZonesEditPage() {
 
   // Confirmation transfert
   const [confirmTransfert, setConfirmTransfert] = useState<{ nb: number; pendingGeoJSON: any } | null>(null)
+  const [confirmDelete, setConfirmDelete]         = useState<Zone | null>(null)
 
   // Polygone en cours d'édition (vient de ZoneEditorMap)
   const pendingPolygonRef = useRef<any>(null)
@@ -215,6 +216,21 @@ export default function ZonesEditPage() {
     setSelectedZone(null)
   }
 
+  const handleDelete = async () => {
+    if (!confirmDelete) return
+    setSaving(true)
+    const res = await fetch(`/api/zones/${confirmDelete.id}`, { method: 'DELETE' })
+    setSaving(false)
+    setConfirmDelete(null)
+    if (!res.ok) { showStatus('error', 'Erreur lors de la suppression'); return }
+    showStatus('success', `"${confirmDelete.nom}" supprimée`)
+    if (selectedZone?.id === confirmDelete.id) {
+      setSelectedZone(null)
+      setMode('idle')
+    }
+    await loadZones()
+  }
+
   const handleCancel = () => {
     setMode('idle')
     setSelectedZone(null)
@@ -341,6 +357,15 @@ export default function ZonesEditPage() {
                     fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left',
                   }}>
                   Diviser cette zone
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(selectedZone)}
+                  style={{
+                    padding: '8px 12px', borderRadius: 7, border: 'none',
+                    background: '#fef2f2', color: '#991b1b',
+                    fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left',
+                  }}>
+                  Supprimer cette zone
                 </button>
               </>
             )}
@@ -570,6 +595,48 @@ export default function ZonesEditPage() {
           />
         </div>
       </div>
+
+      {/* ── Modal confirmation suppression ── */}
+      {confirmDelete && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: '24px 28px',
+            width: 380, boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+          }}>
+            <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 10 }}>
+              Supprimer cette zone ?
+            </div>
+            <div style={{ fontSize: '0.875rem', color: '#5F5E5A', lineHeight: 1.6, marginBottom: 20 }}>
+              <strong>{confirmDelete.nom}</strong> ({confirmDelete.nb_adresses} adresses) sera définitivement supprimée.
+              Les adresses seront libérées (hors zone). Cette action ne peut pas être annulée.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleDelete}
+                disabled={saving}
+                style={{
+                  flex: 1, padding: '9px', borderRadius: 8, border: 'none',
+                  background: saving ? '#9b9b96' : '#dc2626',
+                  color: '#fff', fontWeight: 600, fontSize: '0.875rem', cursor: saving ? 'not-allowed' : 'pointer',
+                }}>
+                {saving ? 'Suppression…' : 'Supprimer définitivement'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                style={{
+                  padding: '9px 16px', borderRadius: 8,
+                  border: '1px solid #e8e7e0', background: '#fff',
+                  color: '#5F5E5A', fontSize: '0.875rem', cursor: 'pointer',
+                }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal confirmation transfert ── */}
       {confirmTransfert && (
