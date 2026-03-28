@@ -259,6 +259,19 @@ export default function ZonesPage() {
             }}>
             {sidebarOpen ? '◀' : '▶ Zones'}
           </button>
+          {zones.length > 0 && (
+            <Link
+              href="/zones/edit"
+              style={{
+                padding: '7px 14px', borderRadius: 8,
+                background: '#f0fdf4', color: '#16a34a',
+                border: '1px solid #bbf7d0',
+                fontSize: '0.875rem', fontWeight: 600,
+                textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5,
+              }}>
+              ✏️ Éditer les zones
+            </Link>
+          )}
           <button
             onClick={handleGenerateClick}
             disabled={generating}
