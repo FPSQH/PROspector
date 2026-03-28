@@ -58,19 +58,7 @@ export default async function DashboardPage() {
 
   return (
     <div style={{ minHeight: '100dvh', background: '#f8f7f4' }}>
-      <style dangerouslySetInnerHTML={{ __html: `
-        @media (max-width: 768px) {
-          .dash-header { padding: 0 16px !important; }
-          .dash-header-date { display: none !important; }
-          .dash-main { padding: 16px !important; }
-          .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-          .dash-grid { grid-template-columns: 1fr !important; }
-          .dash-col-right { order: -1; }
-          .dash-setup { flex-direction: column !important; gap: 12px !important; }
-          .dash-setup-btn { margin-left: 0 !important; width: 100% !important; text-align: center !important; }
-          .dash-zone-bar-label { width: 56px !important; }
-        }
-      ` }} />
+
 
       {/* ── Header page (léger, sans logo — AppShell gère la nav) ── */}
       <div style={{
