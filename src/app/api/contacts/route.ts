@@ -1,25 +1,18 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// GET /api/contacts?adresse_id=&a_relancer=true
 export async function GET(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const adresse_id  = searchParams.get('adresse_id')
-  const a_relancer  = searchParams.get('a_relancer')
+  const adresse_id = searchParams.get('adresse_id')
+  const a_relancer = searchParams.get('a_relancer')
 
   let query = supabase
     .from('contacts')
-    .select(`
-      id, adresse_id, interaction_id,
-      nom, prenom, tel1, tel2, email1, email2,
-      type_contact, notes, date_relance, statut_pipeline,
-      created_at, updated_at,
-      adresses (numero, nom_voie, commune, code_postal)
-    `)
+    .select('id, adresse_id, interaction_id, nom, prenom, tel1, tel2, email1, email2, type_contact, notes, date_relance, statut_pipeline, created_at, updated_at')
     .eq('commercial_id', user.id)
     .order('created_at', { ascending: false })
 
@@ -35,44 +28,40 @@ export async function GET(req: Request) {
   return NextResponse.json({ contacts: data ?? [] })
 }
 
-// POST /api/contacts — créer ou mettre à jour une fiche contact
 export async function POST(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({}))
-  const {
-    adresse_id, interaction_id,
-    nom, prenom, tel1, tel2, email1, email2,
-    type_contact, notes, date_relance, statut_pipeline,
-  } = body
+  let body: any = {}
+  try { body = await req.json() } catch {}
 
-  // Insert uniquement les colonnes connues, en loggant l'erreur
-  const insertData: Record<string, any> = {
-    commercial_id: user.id,
-  }
-  if (adresse_id)     insertData.adresse_id     = adresse_id
-  if (interaction_id) insertData.interaction_id = interaction_id
-  if (nom)            insertData.nom            = nom
-  if (prenom)         insertData.prenom         = prenom
-  if (tel1)           insertData.tel1           = tel1
-  if (tel2)           insertData.tel2           = tel2
-  if (email1)         insertData.email1         = email1
-  if (email2)         insertData.email2         = email2
-  if (type_contact)   insertData.type_contact   = type_contact
-  if (notes)          insertData.notes          = notes
-  if (date_relance)   insertData.date_relance   = date_relance
+  const row: any = { commercial_id: user.id }
+
+  if (body.adresse_id)     row.adresse_id     = body.adresse_id
+  if (body.interaction_id) row.interaction_id = body.interaction_id
+  if (body.nom)            row.nom            = body.nom
+  if (body.prenom)         row.prenom         = body.prenom
+  if (body.tel1)           row.tel1           = body.tel1
+  if (body.tel2)           row.tel2           = body.tel2
+  if (body.email1)         row.email1         = body.email1
+  if (body.email2)         row.email2         = body.email2
+  if (body.type_contact)   row.type_contact   = body.type_contact
+  if (body.date_relance)   row.date_relance   = body.date_relance
+  // Accepter 'note' ou 'notes' depuis le client
+  const noteValue = body.notes ?? body.note
+  if (noteValue)           row.notes          = noteValue
 
   const { data: contact, error } = await supabase
     .from('contacts')
-    .insert(insertData)
+    .insert(row)
     .select()
     .single()
 
   if (error) {
-    console.error('[contacts POST] erreur Supabase:', error.message, error.details, error.hint)
-    return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
+    console.error('[contacts POST]', error.message, error.details, error.hint, JSON.stringify(row))
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
   return NextResponse.json({ contact })
 }
