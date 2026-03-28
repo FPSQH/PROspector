@@ -95,7 +95,7 @@ export async function POST(req: Request) {
   if (existingFull && existingFull.length > 0) {
     // Creer le snapshot
     await supabase.from('zones_snapshots').insert({
-      commercial_id: commercial.id,
+      commercial_id: user.id,
       nom:           `Découpage ${new Date().toLocaleDateString('fr-FR')} — ${existingFull.length} zones`,
       nb_zones:      existingFull.length,
       zones_data:    JSON.stringify(existingFull),
