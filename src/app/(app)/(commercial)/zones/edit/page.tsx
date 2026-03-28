@@ -143,7 +143,11 @@ export default function ZonesEditPage() {
       showStatus('error', 'Dessinez d\'abord un polygone sur la carte')
       return
     }
-    const nomBase = `Zone ${zones.length + 1}`
+    // Trouver le premier numéro manquant dans la séquence
+    const numerosExistants = new Set(zones.map((z) => z.numero))
+    let nextNumero = 1
+    while (numerosExistants.has(nextNumero)) nextNumero++
+    const nomBase = `Zone ${nextNumero}`
     setSaving(true)
     const res = await fetch('/api/zones', {
       method: 'POST',
