@@ -173,6 +173,7 @@ export default function TerrainPage() {
     setSheetOpen(false)
     setSelectedAdresse(null)
     setIdxCourant((prev) => Math.min(prev + 1, itineraire.length - 1))
+  }
 
   // Aller à la prochaine adresse non visitée
   const allerAdresseSuivante = () => {
