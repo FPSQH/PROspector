@@ -98,7 +98,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (heure_fin)    updates.heure_fin_reel = heure_fin
   if (nb_portes !== undefined) updates.nb_portes = nb_portes
   if (nb_boites !== undefined) updates.nb_boites = nb_boites
-  if (notes)        updates.notes        = notes
+  if (notes !== undefined) updates.notes = notes
   if (date_session) updates.date_session = date_session
   if (zone_id)      updates.zone_id      = zone_id
 
