@@ -29,7 +29,7 @@ export async function GET(_req: Request, { params }: Params) {
   while (true) {
     const { data, error } = await supabase
       .from('adresses')
-      .select('id, lat, lon, numero, nom_voie, type_bien, nb_bal, prospectable')
+      .select('id, lat, lon, numero, nom_voie, type_bien, nb_bal, nom_boite, prospectable')
       .eq('zone_id', session.zone_id)
       .not('lat', 'is', null)
       .range(from, from + 999)
