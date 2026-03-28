@@ -70,7 +70,7 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
       setStep('main')
       setTypeHabitat(adresse.interaction?.type_habitat ?? '')
       setNbEtages(adresse.interaction?.nb_etages ?? '')
-      setNomBoite(adresse.interaction?.nom_boite ?? '')
+      setNomBoite(adresse.interaction?.nom_boite ?? (adresse as any).nom_boite ?? '')
       setAction(adresse.interaction?.action ?? '')
       setTypeContact(adresse.interaction?.type_contact ?? '')
       setNote(adresse.interaction?.note ?? '')
@@ -83,6 +83,14 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
   // Action rapide : pas de contact + action
   const handleActionRapide = async (act: string) => {
     setSaving(true)
+    // Persister nom_boite sur l'adresse si habitat individuel
+    if (typeHabitat === 'individuel' && nomBoite) {
+      await fetch(`/api/adresses/${adresse.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nom_boite: nomBoite }),
+      })
+    }
     await onQualification({
       resultat:     'pas_de_reponse',
       action:       act,
@@ -97,6 +105,15 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
   const handleSaveContact = async () => {
     if (!typeContact) return
     setSaving(true)
+
+    // Persister nom_boite sur l'adresse si habitat individuel
+    if (typeHabitat === 'individuel' && nomBoite) {
+      await fetch(`/api/adresses/${adresse.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nom_boite: nomBoite }),
+      })
+    }
 
     const interactionData = {
       resultat:     'contact_etabli',
@@ -366,7 +383,15 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
 
               {/* Fiche contact */}
               <button
-                onClick={() => setShowFiche((v) => !v)}
+                onClick={() => {
+                setShowFiche((v) => {
+                  // Pré-remplir le nom si nomBoite renseigné
+                  if (!v && nomBoite) {
+                    setContact((c) => ({ ...c, nom: c.nom || nomBoite }))
+                  }
+                  return !v
+                })
+              }}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '10px 14px', borderRadius: 10,
