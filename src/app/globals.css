@@ -50,3 +50,35 @@ button {
   min-height: 44px;
   min-width: 44px;
 }
+
+/* À AJOUTER à la fin de src/app/globals.css */
+
+/* ─── Mobile responsive — PROspector ─────────────────────────── */
+
+@media (max-width: 768px) {
+
+  /* Dashboard */
+  .dash-header { padding: 0 16px !important; }
+  .dash-header-date { display: none !important; }
+  .dash-main { padding: 16px !important; }
+  .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .dash-grid { grid-template-columns: 1fr !important; }
+  .dash-col-right { order: -1; }
+  .dash-setup { flex-direction: column !important; gap: 12px !important; }
+  .dash-zone-bar-label { width: 56px !important; font-size: 0.72rem !important; }
+
+  /* Zones */
+  .zones-main-layout { flex-direction: column !important; }
+  .zones-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e8e7e0 !important;
+    max-height: 180px !important;
+    overflow-y: auto !important;
+  }
+  .zones-map { min-height: 50dvh !important; }
+
+  /* AppShell — masquer sidebar sur mobile */
+  .appshell-sidebar { display: none !important; }
+}
