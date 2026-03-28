@@ -136,6 +136,20 @@ export async function POST(req: Request) {
       await supabase.from('itineraires_zone').insert(b)
     }
 
+    // Calculer le polygone directement depuis les points de la zone
+    // On passe les coordonnées en JSON pour que PostGIS les traite
+    const coordsJson = dz.points
+      .filter((p) => p.lat && p.lon)
+      .map((p) => `${p.lon} ${p.lat}`)
+      .join(',')
+
+    if (coordsJson && dz.points.length >= 3) {
+      await supabase.rpc('compute_polygon_from_coords', {
+        p_zone_id:   zone.id,
+        p_coords_wkt: coordsJson,
+      })
+    }
+
     // Sauvegarder la version initiale dans l'historique
     await supabase.rpc('save_zone_version', {
       p_zone_id:     zone.id,
@@ -144,12 +158,6 @@ export async function POST(req: Request) {
     })
 
     createdZones.push({ ...zone, rayon_metres: dz.rayon_metres, tronquee: dz.depasse_seuil })
-  }
-
-  // Calculer les polygones Voronoï une fois toutes les zones créées
-  // → garantit zéro chevauchement entre zones
-  if (createdZones.length > 0) {
-    await supabase.rpc('compute_voronoi_zones', { p_commercial_id: commercial.id })
   }
 
   return NextResponse.json({
