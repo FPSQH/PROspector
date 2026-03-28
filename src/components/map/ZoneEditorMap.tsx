@@ -38,10 +38,19 @@ export default function ZoneEditorMap({
   const [nbAdresses, setNbAdresses]           = useState<number | null>(null)
   const [adresses, setAdresses]               = useState<any[]>([])
   const [loadingAdresses, setLoadingAdresses] = useState(false)
+  const [satellite, setSatellite]             = useState(false)
 
   // Garder les refs à jour à chaque render pour éviter les closures stale
   useEffect(() => { zonesRef.current = zones }, [zones])
   useEffect(() => { onZoneClickRef.current = onZoneClick }, [onZoneClick])
+
+  // Basculer entre OSM et satellite
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return
+    const map = mapRef.current
+    map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none')
+    map.setLayoutProperty('osm',       'visibility', satellite ? 'none'    : 'visible')
+  }, [mapLoaded, satellite])
 
   // ── Init carte ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -64,8 +73,18 @@ export default function ZoneEditorMap({
               tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
               tileSize: 256, attribution: '© OpenStreetMap', maxzoom: 19,
             },
+            satellite: {
+              type: 'raster',
+              tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+              tileSize: 256,
+              attribution: '© Esri — Esri, DigitalGlobe, GeoEye, i-cubed, USDA FSA, USGS, AEX, Getmapping, Aerogrid, IGN, IGP, swisstopo',
+              maxzoom: 19,
+            },
           },
-          layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+          layers: [
+            { id: 'osm',       type: 'raster', source: 'osm' },
+            { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' } },
+          ],
         },
         center: [2.5, 46.8], zoom: 5, attributionControl: false,
       })
@@ -520,6 +539,25 @@ export default function ZoneEditorMap({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Bouton satellite */}
+      <button
+        onClick={() => setSatellite((v) => !v)}
+        style={{
+          position: 'absolute', top: 12, right: 50,
+          background: satellite ? '#1a1a18' : 'rgba(255,255,255,0.95)',
+          color: satellite ? '#fff' : '#5F5E5A',
+          border: '1px solid #e8e7e0', borderRadius: 8,
+          padding: '6px 12px', fontSize: '0.75rem',
+          cursor: 'pointer', fontWeight: 500, zIndex: 10,
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        {satellite ? 'Plan' : 'Satellite'}
+      </button>
 
       {/* Légende mode */}
       <div style={{
