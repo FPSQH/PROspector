@@ -203,7 +203,7 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
           <Slider
             label="Capacité cible par zone"
             value={config.capacite_cible}
-            min={40} max={200} step={5} unit=" adresses"
+            min={40} max={400} step={5} unit=" adresses"
             onChange={(v) => set('capacite_cible', v)}
             hint="2h à pied = 80–120 adresses"
           />
