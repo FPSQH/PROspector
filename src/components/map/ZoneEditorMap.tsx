@@ -205,28 +205,45 @@ export default function ZoneEditorMap({
     map.getCanvas().style.cursor = 'crosshair'
 
     const onClick = (e: any) => {
+      // Ignorer les clics droits
+      if (e.originalEvent?.button === 2) return
       const pt: [number,number] = [e.lngLat.lng, e.lngLat.lat]
       drawingRef.current = [...drawingRef.current, pt]
+      setDrawPoints([...drawingRef.current])
+    }
+
+    // Clic droit : supprimer le dernier point
+    const onContextMenu = (e: any) => {
+      e.preventDefault()
+      if (drawingRef.current.length === 0) return
+      drawingRef.current = drawingRef.current.slice(0, -1)
       setDrawPoints([...drawingRef.current])
     }
 
     const onDblClick = (e: any) => {
       e.preventDefault()
       const pts = drawingRef.current
-      if (pts.length < 3) return
-      const closed = [...pts, pts[0]]
+      const finalPts = autocompletePolygon(pts)
+      if (!finalPts) return
+      const closed = [...finalPts, finalPts[0]]
       const geojson = {
         type: 'Feature',
         properties: {},
         geometry: { type: 'Polygon', coordinates: [closed] },
       }
       onPolygonChange(geojson)
-      updateDrawLayers(map, pts)
+      updateDrawLayers(map, finalPts)
     }
 
+    const canvas = map.getCanvas()
+    canvas.addEventListener('contextmenu', onContextMenu)
     map.on('click', onClick)
     map.on('dblclick', onDblClick)
-    return () => { map.off('click', onClick); map.off('dblclick', onDblClick) }
+    return () => {
+      canvas.removeEventListener('contextmenu', onContextMenu)
+      map.off('click', onClick)
+      map.off('dblclick', onDblClick)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded, mode])
 
@@ -337,6 +354,39 @@ export default function ZoneEditorMap({
   }, [mapLoaded, mode, dragIdx])
 
   // ── Helpers ──────────────────────────────────────────────────────────
+
+  // Auto-complétion : si < 3 points, génère les points manquants pour former un polygone
+  // avec le tracé existant comme base (bounding box légèrement étendue)
+  function autocompletePolygon(pts: [number,number][]): [number,number][] | null {
+    if (pts.length === 0) return null
+    if (pts.length >= 3) return pts
+
+    if (pts.length === 1) {
+      // 1 point : carré de ~200m autour du point
+      const d = 0.001
+      const [lon, lat] = pts[0]
+      return [
+        [lon - d, lat - d],
+        [lon + d, lat - d],
+        [lon + d, lat + d],
+        [lon - d, lat + d],
+      ]
+    }
+
+    // 2 points : rectangle autour des 2 points avec buffer
+    const lons = pts.map((p) => p[0])
+    const lats = pts.map((p) => p[1])
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons)
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats)
+    const padLon = Math.max((maxLon - minLon) * 0.3, 0.0005)
+    const padLat = Math.max((maxLat - minLat) * 0.3, 0.0005)
+    return [
+      pts[0],
+      pts[1],
+      [maxLon + padLon, minLat - padLat],
+      [minLon - padLon, minLat - padLat],
+    ]
+  }
   function emptyFC() { return { type: 'FeatureCollection', features: [] } }
   function fc(features: any[]) { return { type: 'FeatureCollection', features } }
   function feature(geometry: any, properties: any) { return { type: 'Feature', properties, geometry } }
@@ -391,7 +441,7 @@ export default function ZoneEditorMap({
         color: '#5F5E5A', border: '1px solid #e8e7e0',
         pointerEvents: 'none',
       }}>
-        {mode === 'draw' && `${drawPoints.length} sommet${drawPoints.length !== 1 ? 's' : ''} — double-clic pour fermer`}
+        {mode === 'draw' && `${drawPoints.length} sommet${drawPoints.length !== 1 ? 's' : ''} — clic droit pour annuler · double-clic pour fermer`}
         {mode === 'edit' && `${editVertices.length} sommets — glissez pour déplacer`}
         {mode === 'merge' && 'Shift+clic sur la zone à fusionner'}
         {mode === 'split' && 'Ajustez la ligne de coupe dans le panneau'}
