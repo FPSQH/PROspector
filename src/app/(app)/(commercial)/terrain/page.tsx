@@ -63,18 +63,30 @@ export default function TerrainPage() {
   // Démarrer une session
   const handleStartSession = async (zone: Zone) => {
     setLoading(true)
-    const res  = await fetch('/api/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zone_id: zone.id }),
-    })
-    const data = await res.json()
-    if (!res.ok || !data.session) { setLoading(false); return }
-
-    setSession(data.session)
-    await loadSessionData(data.session.id)
-    setAppState('en_cours')
-    setLoading(false)
+    try {
+      const res  = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone_id: zone.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.session) {
+        console.error('[terrain] POST /api/sessions erreur:', data)
+        return
+      }
+      setSession(data.session)
+      try {
+        await loadSessionData(data.session.id)
+      } catch (e) {
+        console.error('[terrain] loadSessionData erreur:', e)
+        // On continue quand même — la carte s'affiche vide
+      }
+      setAppState('en_cours')
+    } catch (e) {
+      console.error('[terrain] handleStartSession erreur:', e)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Charger les adresses de la session
