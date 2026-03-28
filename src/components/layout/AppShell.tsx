@@ -76,11 +76,10 @@ const NAV_ITEMS: NavItem[] = [
     match: ['/zones'],
   },
   {
-    href:     '/terrain',
-    label:    'Terrain',
-    icon:     <IconTerrain />,
-    match:    ['/terrain'],
-    disabled: true, // Phase 3
+    href:  '/terrain',
+    label: 'Terrain',
+    icon:  <IconTerrain />,
+    match: ['/terrain'],
   },
   {
     href:     '/contacts',
@@ -102,7 +101,9 @@ export default function AppShell({ children, userName, userInitials }: Props) {
   const [expanded, setExpanded] = useState(false)
 
   // Pages sans sidebar (plein écran)
-  const fullscreen = ['/zones/edit', '/terrain'].some((p) => pathname.startsWith(p))
+  const fullscreen = ['/zones/edit'].some((p) => pathname.startsWith(p))
+  const terrainActif = pathname.startsWith('/terrain')
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   if (fullscreen) return <>{children}</>
 
   const isActive = (item: NavItem) =>
