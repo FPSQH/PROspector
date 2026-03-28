@@ -212,6 +212,21 @@ export default function ZonesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#f8f7f4' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .zones-header { padding: 0 12px !important; height: 48px !important; }
+          .zones-header-title { font-size: 0.875rem !important; }
+          .zones-header-btns { gap: 5px !important; }
+          .zones-header-btn-text { display: none !important; }
+          .zones-edit-link { padding: 6px 10px !important; font-size: 0.78rem !important; }
+          .zones-gen-btn { padding: 6px 10px !important; font-size: 0.78rem !important; }
+          .zones-sidebar { width: 100% !important; max-width: 100% !important; border-right: none !important; border-bottom: 1px solid #e8e7e0 !important; max-height: 200px !important; }
+          .zones-sidebar-item { padding: 8px 12px !important; }
+          .zones-main-layout { flex-direction: column !important; }
+          .zones-map { min-height: 50dvh !important; }
+          .zones-stats-row { font-size: 0.72rem !important; gap: 6px !important; flex-wrap: wrap !important; }
+        }
+      `}</style>
 
       {/* ── Header ── */}
       <header style={{
@@ -329,7 +344,7 @@ export default function ZonesPage() {
       )}
 
       {/* Corps */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }} className="zones-main-layout">
 
         {/* Sidebar */}
         {sidebarOpen && (
