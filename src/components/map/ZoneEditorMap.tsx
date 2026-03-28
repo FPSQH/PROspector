@@ -33,7 +33,9 @@ export default function ZoneEditorMap({
   const [drawPoints, setDrawPoints] = useState<[number,number][]>([])
   const [editVertices, setEditVertices] = useState<[number,number][]>([])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
-  const [nbAdresses, setNbAdresses] = useState<number | null>(null)
+  const [nbAdresses, setNbAdresses]         = useState<number | null>(null)
+  const [adresses, setAdresses]             = useState<any[]>([])
+  const [loadingAdresses, setLoadingAdresses] = useState(false)
 
   // ── Init carte ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -74,6 +76,7 @@ export default function ZoneEditorMap({
         map.addSource('draw-poly',    { type: 'geojson', data: emptyFC() })
         map.addSource('draw-points',  { type: 'geojson', data: emptyFC() })
         map.addSource('edit-vertices',{ type: 'geojson', data: emptyFC() })
+        map.addSource('adresses-zone', { type: 'geojson', data: emptyFC() })
 
         // Toutes les zones — fond atténué
         map.addLayer({ id: 'zones-bg-fill', type: 'fill', source: 'zones-bg',
@@ -109,6 +112,34 @@ export default function ZoneEditorMap({
             'circle-stroke-width': 2,
             'circle-stroke-color': ['case', ['==', ['get', 'midpoint'], true], '#9b9b96', '#1D9E75'],
           },
+        })
+
+        // Adresses de la zone sélectionnée
+        map.addLayer({ id: 'adresses-zone-layer', type: 'circle', source: 'adresses-zone',
+          paint: {
+            'circle-radius': 4,
+            'circle-color': ['get', 'couleur'],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#fff',
+            'circle-opacity': 0.9,
+          },
+        })
+
+        // Tooltip au survol des adresses
+        map.on('mouseenter', 'adresses-zone-layer', (e: any) => {
+          map.getCanvas().style.cursor = 'pointer'
+          const f = e.features?.[0]
+          if (!f) return
+          const [lon, lat] = (f.geometry as any).coordinates
+          new (window as any).maplibregl.Popup({ offset: 8, closeButton: false })
+            .setLngLat([lon, lat])
+            .setHTML(`<div style="font-size:0.75rem;padding:3px 6px">${f.properties.label ?? ''}</div>`)
+            .addTo(map)
+        })
+        map.on('mouseleave', 'adresses-zone-layer', () => {
+          map.getCanvas().style.cursor = ''
+          const popups = document.querySelectorAll('.maplibregl-popup')
+          popups.forEach((p) => p.remove())
         })
 
         // Click sur zones (bg)
@@ -252,6 +283,48 @@ export default function ZoneEditorMap({
     if (!mapLoaded || !mapRef.current || mode !== 'draw') return
     updateDrawLayers(mapRef.current, drawPoints)
   }, [mapLoaded, drawPoints, mode])
+
+  // ── Chargement des adresses de la zone sélectionnée ────────────────
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return
+    const map = mapRef.current
+
+    if (!selectedZoneId) {
+      ;(map.getSource('adresses-zone') as any)?.setData(emptyFC())
+      setAdresses([])
+      return
+    }
+
+    const zone = zones.find((z) => z.id === selectedZoneId)
+    const couleur = zone?.couleur ?? '#1D9E75'
+
+    setLoadingAdresses(true)
+    // Charger via l'API (pas de Supabase direct dans un composant carte)
+    fetch(`/api/zones/${selectedZoneId}/adresses`)
+      .then((r) => r.json())
+      .then((data) => {
+        const items = data.adresses ?? []
+        setAdresses(items)
+        setLoadingAdresses(false)
+
+        const features = items
+          .filter((a: any) => a.lat && a.lon)
+          .map((a: any) => ({
+            type: 'Feature',
+            properties: {
+              id:    a.id,
+              label: [a.numero, a.nom_voie].filter(Boolean).join(' '),
+              couleur,
+            },
+            geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+          }))
+
+        ;(map.getSource('adresses-zone') as any)?.setData({
+          type: 'FeatureCollection', features,
+        })
+      })
+      .catch(() => setLoadingAdresses(false))
+  }, [mapLoaded, selectedZoneId, zones])
 
   // ── Mode édition — sommets déplaçables ──────────────────────────────
   useEffect(() => {
