@@ -58,18 +58,32 @@ export default async function DashboardPage() {
 
   return (
     <div style={{ minHeight: '100dvh', background: '#f8f7f4' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .dash-header { padding: 0 16px !important; }
+          .dash-header-date { display: none !important; }
+          .dash-main { padding: 16px !important; }
+          .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .dash-grid { grid-template-columns: 1fr !important; }
+          .dash-col-right { order: -1; }
+          .dash-setup { flex-direction: column !important; gap: 12px !important; }
+          .dash-setup-btn { margin-left: 0 !important; width: 100% !important; text-align: center !important; }
+          .dash-zone-bar-label { width: 56px !important; }
+        }
+      `}</style>
 
       {/* ── Header page (léger, sans logo — AppShell gère la nav) ── */}
       <div style={{
         background: '#fff', borderBottom: '1px solid #e8e7e0',
         padding: '0 28px', height: 52,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      } as any} className="dash-header"
       }}>
         <div>
           <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1a1a18' }}>
             Bonjour {commercial?.prenom} 👋
           </span>
-          <span style={{ marginLeft: 12, fontSize: '0.8rem', color: '#9b9b96' }}>
+          <span style={{ marginLeft: 12, fontSize: '0.8rem', color: '#9b9b96' }} className="dash-header-date">
             {now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </span>
         </div>
@@ -84,7 +98,7 @@ export default async function DashboardPage() {
         </form>
       </div>
 
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 28px' }}>
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 28px' }} className="dash-main">
 
         {/* ── Bannière setup si pas de zones ── */}
         {etape === 'setup_zones' && (
@@ -118,7 +132,7 @@ export default async function DashboardPage() {
           display: 'grid',
           gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gap: 12, marginBottom: 24,
-        }}>
+        }} className="dash-kpis">
           {[
             {
               label: 'Communes',
@@ -186,7 +200,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* ── Grille principale ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }} className="dash-grid">
 
           {/* Colonne gauche */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
