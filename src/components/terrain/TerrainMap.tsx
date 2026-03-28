@@ -22,12 +22,13 @@ const STATUT_COLOR: Record<string, string> = {
 }
 
 interface Props {
-  adresses:      Adresse[]
-  zonePolygon:   any
-  onAdresseClick:(adresse: Adresse) => void
+  adresses:           Adresse[]
+  zonePolygon:        any
+  prochaineAdresseId: string | null
+  onAdresseClick:     (adresse: Adresse) => void
 }
 
-export default function TerrainMap({ adresses, zonePolygon, onAdresseClick }: Props) {
+export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, onAdresseClick }: Props) {
   const containerRef  = useRef<HTMLDivElement>(null)
   const mapRef        = useRef<any>(null)
   const adressesRef   = useRef<Adresse[]>([])
@@ -40,6 +41,7 @@ export default function TerrainMap({ adresses, zonePolygon, onAdresseClick }: Pr
 
   useEffect(() => { adressesRef.current = adresses }, [adresses])
   useEffect(() => { onClickRef.current = onAdresseClick }, [onAdresseClick])
+  useEffect(() => { prochaineRef.current = prochaineAdresseId }, [prochaineAdresseId])
 
   // ── Init carte ──────────────────────────────────────────────────
   useEffect(() => {
@@ -125,13 +127,25 @@ export default function TerrainMap({ adresses, zonePolygon, onAdresseClick }: Pr
           paint: {
             'circle-radius': [
               'case',
+              ['==', ['get', 'prochaine'], true], 14,
               ['==', ['get', 'statut'], 'a_faire'], 8,
               6,
             ],
             'circle-color':        ['get', 'couleur'],
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#fff',
+            'circle-stroke-width': ['case', ['==', ['get', 'prochaine'], true], 3, 2],
+            'circle-stroke-color': ['case', ['==', ['get', 'prochaine'], true], '#ffffff', '#fff'],
             'circle-opacity': ['case', ['==', ['get', 'prospectable'], false], 0.4, 1],
+          },
+        })
+
+        // Layer pulsation prochaine adresse
+        map.addLayer({
+          id: 'adresses-prochaine-pulse', type: 'circle', source: 'adresses',
+          filter: ['==', ['get', 'prochaine'], true],
+          paint: {
+            'circle-radius': 20,
+            'circle-color': '#ef4444',
+            'circle-opacity': 0.2,
           },
         })
 
@@ -181,16 +195,18 @@ export default function TerrainMap({ adresses, zonePolygon, onAdresseClick }: Pr
     if (!mapLoaded || !mapRef.current) return
     const map = mapRef.current
 
+    const pId = prochaineAdresseId
     const features = adresses
       .filter((a) => a.lat && a.lon)
       .map((a) => ({
         type: 'Feature' as const,
         properties: {
-          id:          a.id,
-          statut:      a.statut_carte,
-          couleur:     STATUT_COLOR[a.statut_carte] ?? '#9b9b96',
+          id:           a.id,
+          statut:       a.statut_carte,
+          couleur:      STATUT_COLOR[a.statut_carte] ?? '#9b9b96',
           prospectable: a.prospectable !== false,
-          label:       [a.numero, a.nom_voie].filter(Boolean).join(' '),
+          label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
+          prochaine:    a.id === pId,
         },
         geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
       }))
@@ -212,8 +228,13 @@ export default function TerrainMap({ adresses, zonePolygon, onAdresseClick }: Pr
       })
     }
 
-    // Centrer sur les adresses au premier chargement
-    if (adresses.length > 0 && !gpsActive) {
+    // Centrer sur la prochaine adresse si définie, sinon sur toute la zone
+    if (prochaineAdresseId && !gpsActive) {
+      const prochaine = adresses.find((a) => a.id === prochaineAdresseId)
+      if (prochaine?.lat && prochaine?.lon) {
+        map.easeTo({ center: [prochaine.lon, prochaine.lat], zoom: 17, duration: 500 })
+      }
+    } else if (adresses.length > 0 && !gpsActive) {
       const lons = adresses.filter((a) => a.lon).map((a) => a.lon)
       const lats = adresses.filter((a) => a.lat).map((a) => a.lat)
       map.fitBounds(
