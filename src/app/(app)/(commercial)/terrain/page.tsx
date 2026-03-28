@@ -52,6 +52,8 @@ export default function TerrainPage() {
   const [loading, setLoading]       = useState(false)
   const [selectedAdresse, setSelectedAdresse] = useState<Adresse | null>(null)
   const [sheetOpen, setSheetOpen]   = useState(false)
+  const [itineraire, setItineraire] = useState<string[]>([])       // ids ordonnés TSP
+  const [idxCourant, setIdxCourant] = useState(0)                  // index dans l'itinéraire
 
   // Charger les zones
   useEffect(() => {
@@ -94,10 +96,16 @@ export default function TerrainPage() {
     const res  = await fetch(`/api/sessions/${sessionId}`)
     const data = await res.json()
     if (!res.ok) return
-    setAdresses(data.adresses ?? [])
+    const adrs = data.adresses ?? []
+    setAdresses(adrs)
     setNbTotal(data.nb_total ?? 0)
     setNbVisites(data.nb_visites ?? 0)
     setPctCouvert(data.pct_couvert ?? 0)
+
+    // Calculer l'itinéraire TSP
+    const itin = calculerItineraire(adrs)
+    setItineraire(itin)
+    setIdxCourant(0)
   }, [])
 
   // Clic sur une adresse → ouvrir bottom sheet
@@ -142,7 +150,42 @@ export default function TerrainPage() {
 
     setSheetOpen(false)
     setSelectedAdresse(null)
+
+    // Avancer automatiquement dans l'itinéraire
+    setIdxCourant((prev) => Math.min(prev + 1, itineraire.length - 1))
   }
+
+  // Ouvrir Google Maps vers la prochaine adresse
+  const ouvrirGoogleMaps = () => {
+    const prochaineId = itineraire[idxCourant]
+    const prochaine = adresses.find((a) => a.id === prochaineId)
+    if (!prochaine?.lat || !prochaine?.lon) return
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${prochaine.lat},${prochaine.lon}&travelmode=walking`
+    window.open(url, '_blank')
+  }
+
+  // Sélectionner manuellement la prochaine adresse non visitée
+  const allerAdresseSuivante = () => {
+    // Chercher la prochaine non visitée à partir de idxCourant
+    for (let i = idxCourant; i < itineraire.length; i++) {
+      const id = itineraire[i]
+      const adr = adresses.find((a) => a.id === id)
+      if (adr && adr.statut_carte === 'a_faire') {
+        setIdxCourant(i)
+        setSelectedAdresse(adr)
+        setSheetOpen(true)
+        return
+      }
+    }
+    // Si toutes faites → aller à la première non visitée
+    const premiere = adresses.find((a) => a.statut_carte === 'a_faire')
+    if (premiere) {
+      setSelectedAdresse(premiere)
+      setSheetOpen(true)
+    }
+  }
+
+  const prochaineAdresseId = itineraire[idxCourant] ?? null
 
   // Terminer la session
   const handleEndSession = async () => {
@@ -347,6 +390,44 @@ export default function TerrainPage() {
           </span>
         </div>
 
+        {/* Bouton adresse suivante */}
+        {itineraire.length > 0 && (
+          <button
+            onClick={allerAdresseSuivante}
+            style={{
+              padding: '5px 10px', borderRadius: 7,
+              background: '#1D9E75', color: '#fff',
+              border: 'none',
+              fontSize: '0.72rem', fontWeight: 600,
+              cursor: 'pointer', flexShrink: 0,
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+            Suivante
+          </button>
+        )}
+
+        {/* Bouton Google Maps */}
+        {prochaineAdresseId && (
+          <button
+            onClick={ouvrirGoogleMaps}
+            style={{
+              padding: '5px 8px', borderRadius: 7,
+              background: '#eff6ff', color: '#1e40af',
+              border: '1px solid #bfdbfe',
+              fontSize: '0.72rem', fontWeight: 600,
+              cursor: 'pointer', flexShrink: 0,
+            }}
+            title="Naviguer vers cette adresse">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+              <circle cx="12" cy="9" r="2.5"/>
+            </svg>
+          </button>
+        )}
+
         <button
           onClick={handleEndSession}
           disabled={loading}
@@ -366,6 +447,7 @@ export default function TerrainPage() {
         <TerrainMap
           adresses={adresses}
           zonePolygon={null}
+          prochaineAdresseId={prochaineAdresseId}
           onAdresseClick={handleAdresseClick}
         />
 
