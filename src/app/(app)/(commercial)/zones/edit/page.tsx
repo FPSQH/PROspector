@@ -42,9 +42,38 @@ export default function ZonesEditPage() {
   // Confirmation transfert
   const [confirmTransfert, setConfirmTransfert] = useState<{ nb: number; pendingGeoJSON: any } | null>(null)
   const [confirmDelete, setConfirmDelete]         = useState<Zone | null>(null)
+  const [snapshots, setSnapshots]               = useState<any[]>([])
+  const [resetting, setResetting]               = useState(false)
 
   // Polygone en cours d'édition (vient de ZoneEditorMap)
   const pendingPolygonRef = useRef<any>(null)
+
+  const loadSnapshots = useCallback(async () => {
+    const res = await fetch('/api/zones/snapshot')
+    const d   = await res.json()
+    setSnapshots(d.snapshots ?? [])
+  }, [])
+
+  const handleReset = async () => {
+    if (!confirm('Supprimer TOUTES les zones et repartir à zéro ?\nUn snapshot sera sauvegardé.\nLes sessions sont conservées.')) return
+    setResetting(true)
+    const res = await fetch('/api/zones/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sauvegarder: true }),
+    })
+    const data = await res.json()
+    setResetting(false)
+    if (!res.ok) { alert(data.error ?? 'Erreur reset'); return }
+    await loadZones()
+    await loadSnapshots()
+  }
+
+  const handleDeleteSnapshot = async (id: string) => {
+    if (!confirm('Supprimer cet enregistrement ?')) return
+    await fetch(`/api/zones/snapshots/${id}`, { method: 'DELETE' })
+    await loadSnapshots()
+  }
 
   const loadZones = useCallback(async () => {
     setLoading(true)
@@ -54,7 +83,7 @@ export default function ZonesEditPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { loadZones() }, [loadZones])
+  useEffect(() => { loadZones(); loadSnapshots() }, [loadZones, loadSnapshots])
 
   const showStatus = (type: 'success'|'error'|'warn'|'info', msg: string) => {
     setStatus({ type, msg })
@@ -289,15 +318,31 @@ export default function ZonesEditPage() {
             </span>
           )}
         </div>
-        <button
-          onClick={() => router.push('/zones')}
-          style={{
-            padding: '6px 14px', borderRadius: 7,
-            border: '1px solid #e8e7e0', background: '#fff',
-            fontSize: '0.8rem', color: '#5F5E5A', cursor: 'pointer',
-          }}>
-          Fermer l'éditeur
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {zones.length > 0 && (
+            <button
+              onClick={handleReset}
+              disabled={resetting}
+              style={{
+                padding: '6px 12px', borderRadius: 7,
+                background: '#fef2f2', color: '#dc2626',
+                border: '1px solid #fecaca',
+                fontSize: '0.8rem', fontWeight: 600,
+                cursor: resetting ? 'not-allowed' : 'pointer',
+              }}>
+              {resetting ? '…' : '🗑 Reset'}
+            </button>
+          )}
+          <button
+            onClick={() => router.push('/zones')}
+            style={{
+              padding: '6px 14px', borderRadius: 7,
+              border: '1px solid #e8e7e0', background: '#fff',
+              fontSize: '0.8rem', color: '#5F5E5A', cursor: 'pointer',
+            }}>
+            Fermer l'éditeur
+          </button>
+        </div>
       </header>
 
       {/* ── Barre de statut ── */}
@@ -309,6 +354,51 @@ export default function ZonesEditPage() {
           color: STATUS_COLORS[status.type].text, fontWeight: 500,
         }}>
           {status.msg}
+        </div>
+      )}
+
+      {/* ── Panneau snapshots ── */}
+      {snapshots.length > 0 && (
+        <div style={{
+          background: '#fff', borderBottom: '1px solid #e8e7e0',
+          padding: '10px 20px',
+        }}>
+          <div style={{
+            fontSize: '0.75rem', fontWeight: 600, color: '#5F5E5A',
+            marginBottom: 6,
+          }}>
+            🗂 Historique des découpages ({snapshots.length}/5)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {snapshots.map((s: any) => (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '6px 10px', borderRadius: 7,
+                background: '#f8f7f4', border: '1px solid #f0efeb',
+              }}>
+                <div>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#1a1a18' }}>
+                    {s.nom}
+                  </span>
+                  <span style={{ marginLeft: 8, fontSize: '0.7rem', color: '#9b9b96' }}>
+                    {s.nb_zones} zones · {new Date(s.created_at).toLocaleDateString('fr-FR', {
+                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleDeleteSnapshot(s.id)}
+                  style={{
+                    padding: '3px 8px', borderRadius: 5,
+                    background: 'transparent', color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    fontSize: '0.72rem', cursor: 'pointer',
+                  }}>
+                  Supprimer
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
