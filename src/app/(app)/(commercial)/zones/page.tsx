@@ -65,12 +65,21 @@ export default function ZonesPage() {
   const [saveStatus, setSaveStatus]   = useState<'idle'|'saving'|'saved'>('idle')
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [warnings, setWarnings]       = useState<string[]>([])
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen]     = useState(true)
   const [chevauchements, setChevauchements] = useState<Chevauchement[]>([])
+  const [snapshots, setSnapshots]         = useState<any[]>([])
+  const [showSnapshots, setShowSnapshots] = useState(false)
+  const [resetting, setResetting]         = useState(false)
   const [historique, setHistorique] = useState<VersionHistorique[]>([])
   const [loadingHistorique, setLoadingHistorique] = useState(false)
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
   const [nbAdressesTotal, setNbAdressesTotal] = useState(0)
+
+  const loadSnapshots = useCallback(async () => {
+    const res = await fetch('/api/zones/snapshot')
+    const d   = await res.json()
+    setSnapshots(d.snapshots ?? [])
+  }, [])
 
   const loadZones = useCallback(async () => {
     setLoading(true)
@@ -113,6 +122,27 @@ export default function ZonesPage() {
   }, [loadItineraire])
 
   // Ouvrir le modal de config avant de générer
+  const handleReset = async () => {
+    if (!confirm('Supprimer TOUTES les zones et repartir à zéro ?\nUn snapshot sera sauvegardé automatiquement.\nLes sessions de prospection sont conservées.')) return
+    setResetting(true)
+    const res = await fetch('/api/zones/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sauvegarder: true }),
+    })
+    const data = await res.json()
+    setResetting(false)
+    if (!res.ok) { alert(data.error ?? 'Erreur reset'); return }
+    await loadZones()
+    await loadSnapshots()
+  }
+
+  const handleDeleteSnapshot = async (id: string) => {
+    if (!confirm('Supprimer cet enregistrement ?')) return
+    await fetch(`/api/zones/snapshots/${id}`, { method: 'DELETE' })
+    await loadSnapshots()
+  }
+
   const handleGenerateClick = () => {
     setShowConfig(true)
   }
@@ -212,21 +242,6 @@ export default function ZonesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#f8f7f4' }}>
-      <style>{`
-        @media (max-width: 768px) {
-          .zones-header { padding: 0 12px !important; height: 48px !important; }
-          .zones-header-title { font-size: 0.875rem !important; }
-          .zones-header-btns { gap: 5px !important; }
-          .zones-header-btn-text { display: none !important; }
-          .zones-edit-link { padding: 6px 10px !important; font-size: 0.78rem !important; }
-          .zones-gen-btn { padding: 6px 10px !important; font-size: 0.78rem !important; }
-          .zones-sidebar { width: 100% !important; max-width: 100% !important; border-right: none !important; border-bottom: 1px solid #e8e7e0 !important; max-height: 200px !important; }
-          .zones-sidebar-item { padding: 8px 12px !important; }
-          .zones-main-layout { flex-direction: column !important; }
-          .zones-map { min-height: 50dvh !important; }
-          .zones-stats-row { font-size: 0.72rem !important; gap: 6px !important; flex-wrap: wrap !important; }
-        }
-      `}</style>
 
       {/* ── Header ── */}
       <header style={{
@@ -287,6 +302,37 @@ export default function ZonesPage() {
               ✏️ Éditer les zones
             </Link>
           )}
+          {/* Historique snapshots */}
+          {snapshots.length > 0 && (
+            <button
+              onClick={() => setShowSnapshots(v => !v)}
+              style={{
+                padding: '7px 12px', borderRadius: 8,
+                background: showSnapshots ? '#f0efeb' : '#fff',
+                color: '#5F5E5A', border: '1px solid #e8e7e0',
+                fontSize: '0.875rem', fontWeight: 500,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+              🗂 {snapshots.length}
+            </button>
+          )}
+
+          {/* Reset */}
+          {zones.length > 0 && (
+            <button
+              onClick={handleReset}
+              disabled={resetting}
+              style={{
+                padding: '7px 12px', borderRadius: 8,
+                background: '#fef2f2', color: '#dc2626',
+                border: '1px solid #fecaca',
+                fontSize: '0.875rem', fontWeight: 600,
+                cursor: resetting ? 'not-allowed' : 'pointer',
+              }}>
+              {resetting ? '…' : '🗑 Reset'}
+            </button>
+          )}
+
           <button
             onClick={handleGenerateClick}
             disabled={generating}
@@ -305,6 +351,51 @@ export default function ZonesPage() {
           </button>
         </div>
       </header>
+
+      {/* Panneau historique snapshots */}
+      {showSnapshots && (
+        <div style={{
+          background: '#fff', borderBottom: '1px solid #e8e7e0',
+          padding: '12px 20px',
+        }}>
+          <div style={{
+            fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A',
+            marginBottom: 8,
+          }}>
+            Historique des découpages ({snapshots.length}/5)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {snapshots.map((s: any) => (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', borderRadius: 8,
+                background: '#f8f7f4', border: '1px solid #f0efeb',
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#1a1a18' }}>
+                    {s.nom}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#9b9b96', marginTop: 1 }}>
+                    {s.nb_zones} zones · {new Date(s.created_at).toLocaleDateString('fr-FR', {
+                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                    })}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDeleteSnapshot(s.id)}
+                  style={{
+                    padding: '4px 10px', borderRadius: 6,
+                    background: 'transparent', color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    fontSize: '0.75rem', cursor: 'pointer',
+                  }}>
+                  Supprimer
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Erreurs */}
       {generateError && (
@@ -344,7 +435,7 @@ export default function ZonesPage() {
       )}
 
       {/* Corps */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }} className="zones-main-layout">
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* Sidebar */}
         {sidebarOpen && (
