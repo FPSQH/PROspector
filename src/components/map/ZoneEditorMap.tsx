@@ -26,16 +26,22 @@ export default function ZoneEditorMap({
   splitAxis, splitPosition,
   onZoneClick, onPolygonChange,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef       = useRef<any>(null)
-  const drawingRef   = useRef<[number,number][]>([])
+  const containerRef    = useRef<HTMLDivElement>(null)
+  const mapRef          = useRef<any>(null)
+  const drawingRef      = useRef<[number,number][]>([])
+  const zonesRef        = useRef<Zone[]>([])
+  const onZoneClickRef  = useRef<(zone: Zone) => void>(onZoneClick)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [drawPoints, setDrawPoints] = useState<[number,number][]>([])
   const [editVertices, setEditVertices] = useState<[number,number][]>([])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
-  const [nbAdresses, setNbAdresses]         = useState<number | null>(null)
-  const [adresses, setAdresses]             = useState<any[]>([])
+  const [nbAdresses, setNbAdresses]           = useState<number | null>(null)
+  const [adresses, setAdresses]               = useState<any[]>([])
   const [loadingAdresses, setLoadingAdresses] = useState(false)
+
+  // Garder les refs à jour à chaque render pour éviter les closures stale
+  useEffect(() => { zonesRef.current = zones }, [zones])
+  useEffect(() => { onZoneClickRef.current = onZoneClick }, [onZoneClick])
 
   // ── Init carte ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -142,15 +148,24 @@ export default function ZoneEditorMap({
           popups.forEach((p) => p.remove())
         })
 
-        // Click sur zones (bg)
+        // Click sur zones (bg) — utiliser les refs pour éviter les closures stale
         map.on('click', 'zones-bg-fill', (e: any) => {
           const id = e.features?.[0]?.properties?.id
           if (!id) return
-          const zone = zones.find((z) => z.id === id)
-          if (zone) onZoneClick(zone)
+          const zone = zonesRef.current.find((z) => z.id === id)
+          if (zone) onZoneClickRef.current(zone)
         })
-        map.on('mouseenter', 'zones-bg-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-        map.on('mouseleave', 'zones-bg-fill', () => { map.getCanvas().style.cursor = '' })
+        // Click sur zones-sel aussi (zone déjà sélectionnée)
+        map.on('click', 'zones-sel-fill', (e: any) => {
+          const id = e.features?.[0]?.properties?.id
+          if (!id) return
+          const zone = zonesRef.current.find((z) => z.id === id)
+          if (zone) onZoneClickRef.current(zone)
+        })
+        map.on('mouseenter', 'zones-bg-fill',  () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', 'zones-bg-fill',  () => { map.getCanvas().style.cursor = '' })
+        map.on('mouseenter', 'zones-sel-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', 'zones-sel-fill', () => { map.getCanvas().style.cursor = '' })
 
         setMapLoaded(true)
       })
@@ -173,7 +188,7 @@ export default function ZoneEditorMap({
 
     const sel = zonesAvec
       .filter((z) => z.id === selectedZoneId || z.id === mergeTargetId)
-      .map((z) => feature(parseGeo(z.polygone_geojson), { couleur: z.couleur }))
+      .map((z) => feature(parseGeo(z.polygone_geojson), { id: z.id, couleur: z.couleur }))
 
     ;(map.getSource('zones-bg') as any)?.setData(fc(bg))
     ;(map.getSource('zones-sel') as any)?.setData(fc(sel))
