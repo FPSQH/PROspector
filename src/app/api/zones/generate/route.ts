@@ -86,13 +86,43 @@ export async function POST(req: Request) {
       error: "Aucune zone dense trouvée. Essayez d'augmenter le rayon ou de réduire la capacité cible."
     }, { status: 400 })
 
-  // Supprimer zones existantes
-  const { data: existing } = await supabase
-    .from('zones_prospection').select('id').eq('commercial_id', commercial.id)
-  if (existing && existing.length > 0) {
-    await supabase.from('itineraires_zone').delete().in('zone_id', existing.map((z: any) => z.id))
+  // Sauvegarder le snapshot AVANT de supprimer (max 5 snapshots)
+  const { data: existingFull } = await supabase
+    .from('zones_prospection')
+    .select('id, nom, numero, couleur, nb_adresses, nb_prospectables, capacite_theorique, polygone_geojson')
+    .eq('commercial_id', commercial.id)
+
+  if (existingFull && existingFull.length > 0) {
+    // Creer le snapshot
+    await supabase.from('zones_snapshots').insert({
+      commercial_id: commercial.id,
+      nom:           `Découpage ${new Date().toLocaleDateString('fr-FR')} — ${existingFull.length} zones`,
+      nb_zones:      existingFull.length,
+      zones_data:    JSON.stringify(existingFull),
+    })
+
+    // Garder seulement les 5 derniers snapshots
+    const { data: snapshots } = await supabase
+      .from('zones_snapshots')
+      .select('id, created_at')
+      .eq('commercial_id', commercial.id)
+      .order('created_at', { ascending: false })
+
+    if (snapshots && snapshots.length > 5) {
+      const toDelete = snapshots.slice(5).map((s: any) => s.id)
+      await supabase.from('zones_snapshots').delete().in('id', toDelete)
+    }
+
+    // Supprimer proprement dans l'ordre (FK)
+    const existingIds = existingFull.map((z: any) => z.id)
+    await supabase.from('planning_sessions').update({ zone_id: null }).in('zone_id', existingIds)
+    for (const b of chunk(existingIds, 50)) {
+      await supabase.from('itineraires_zone').delete().in('zone_id', b)
+    }
     await supabase.from('zones_prospection').delete().eq('commercial_id', commercial.id)
   }
+
+  // Libérer les adresses
   for (const b of batches) {
     await supabase.from('adresses').update({ zone_id: null }).in('code_insee', b)
   }
