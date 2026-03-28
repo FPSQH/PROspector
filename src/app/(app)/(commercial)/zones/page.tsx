@@ -68,7 +68,6 @@ export default function ZonesPage() {
   const [sidebarOpen, setSidebarOpen]     = useState(true)
   const [chevauchements, setChevauchements] = useState<Chevauchement[]>([])
   const [snapshots, setSnapshots]         = useState<any[]>([])
-  const [showSnapshots, setShowSnapshots] = useState(false)
   const [resetting, setResetting]         = useState(false)
   const [historique, setHistorique] = useState<VersionHistorique[]>([])
   const [loadingHistorique, setLoadingHistorique] = useState(false)
@@ -302,19 +301,17 @@ export default function ZonesPage() {
               ✏️ Éditer les zones
             </Link>
           )}
-          {/* Historique snapshots */}
+          {/* Badge nb snapshots */}
           {snapshots.length > 0 && (
-            <button
-              onClick={() => setShowSnapshots(v => !v)}
-              style={{
-                padding: '7px 12px', borderRadius: 8,
-                background: showSnapshots ? '#f0efeb' : '#fff',
-                color: '#5F5E5A', border: '1px solid #e8e7e0',
-                fontSize: '0.875rem', fontWeight: 500,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-              🗂 {snapshots.length}
-            </button>
+            <span style={{
+              padding: '7px 12px', borderRadius: 8,
+              background: '#f0efeb', color: '#5F5E5A',
+              border: '1px solid #e8e7e0',
+              fontSize: '0.875rem', fontWeight: 500,
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+            }}>
+              🗂 {snapshots.length} sauvegarde{snapshots.length > 1 ? 's' : ''}
+            </span>
           )}
 
           {/* Reset */}
@@ -352,8 +349,8 @@ export default function ZonesPage() {
         </div>
       </header>
 
-      {/* Panneau historique snapshots */}
-      {showSnapshots && (
+      {/* Panneau historique snapshots — toujours visible */}
+      {snapshots.length > 0 && (
         <div style={{
           background: '#fff', borderBottom: '1px solid #e8e7e0',
           padding: '12px 20px',
