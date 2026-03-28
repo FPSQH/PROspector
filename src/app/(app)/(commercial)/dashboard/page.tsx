@@ -65,8 +65,7 @@ export default async function DashboardPage() {
         background: '#fff', borderBottom: '1px solid #e8e7e0',
         padding: '0 28px', height: 52,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      } as any} className="dash-header"
-      }}>
+      }} className="dash-header">
         <div>
           <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1a1a18' }}>
             Bonjour {commercial?.prenom} 👋
