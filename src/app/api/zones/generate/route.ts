@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateDensityZones } from '@/lib/geo/densityZones'
+import { pointsToPolygonWKT } from '@/lib/geo/convexHull'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
 
 const ZONE_COLORS = [
@@ -108,7 +109,12 @@ export async function POST(req: Request) {
       )
     }
 
-    // Insérer la zone sans polygone d'abord
+    // Calculer le polygone en TypeScript (pas de RPC, pas de timeout)
+    // Buffer minimal 0.0001° ≈ 10m pour couvrir les façades
+    const polygonWKT = dz.points.length >= 3
+      ? pointsToPolygonWKT(dz.points.map((p) => ({ lon: p.lon, lat: p.lat })), 0.0001)
+      : undefined
+
     const { data: zone, error: errZone } = await supabase
       .from('zones_prospection')
       .insert({
@@ -120,7 +126,8 @@ export async function POST(req: Request) {
         nb_adresses:          dz.points.length,
         nb_prospectables:     dz.points.length,
         nb_logements_sociaux: 0,
-        statut:               dz.depasse_seuil ? 'attention' : 'active',
+        statut:               'active',
+        polygone:             polygonWKT ?? null,
       })
       .select().single()
 
@@ -135,27 +142,6 @@ export async function POST(req: Request) {
     for (const b of chunk(route.map((p, idx) => ({ zone_id: zone.id, adresse_id: p.id, ordre: idx + 1 })), 100)) {
       await supabase.from('itineraires_zone').insert(b)
     }
-
-    // Calculer le polygone directement depuis les points de la zone
-    // On passe les coordonnées en JSON pour que PostGIS les traite
-    const coordsJson = dz.points
-      .filter((p) => p.lat && p.lon)
-      .map((p) => `${p.lon} ${p.lat}`)
-      .join(',')
-
-    if (coordsJson && dz.points.length >= 3) {
-      await supabase.rpc('compute_polygon_from_coords', {
-        p_zone_id:   zone.id,
-        p_coords_wkt: coordsJson,
-      })
-    }
-
-    // Sauvegarder la version initiale dans l'historique
-    await supabase.rpc('save_zone_version', {
-      p_zone_id:     zone.id,
-      p_type_modif:  'creation',
-      p_modifie_par: commercial.id,
-    })
 
     createdZones.push({ ...zone, rayon_metres: dz.rayon_metres, tronquee: dz.depasse_seuil })
   }
