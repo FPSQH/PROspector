@@ -41,7 +41,6 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
 
   useEffect(() => { adressesRef.current = adresses }, [adresses])
   useEffect(() => { onClickRef.current = onAdresseClick }, [onAdresseClick])
-  useEffect(() => { prochaineRef.current = prochaineAdresseId }, [prochaineAdresseId])
 
   // ── Init carte ──────────────────────────────────────────────────
   useEffect(() => {
