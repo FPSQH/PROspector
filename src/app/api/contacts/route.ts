@@ -48,27 +48,31 @@ export async function POST(req: Request) {
     type_contact, notes, date_relance, statut_pipeline,
   } = body
 
+  // Insert uniquement les colonnes connues, en loggant l'erreur
+  const insertData: Record<string, any> = {
+    commercial_id: user.id,
+  }
+  if (adresse_id)     insertData.adresse_id     = adresse_id
+  if (interaction_id) insertData.interaction_id = interaction_id
+  if (nom)            insertData.nom            = nom
+  if (prenom)         insertData.prenom         = prenom
+  if (tel1)           insertData.tel1           = tel1
+  if (tel2)           insertData.tel2           = tel2
+  if (email1)         insertData.email1         = email1
+  if (email2)         insertData.email2         = email2
+  if (type_contact)   insertData.type_contact   = type_contact
+  if (notes)          insertData.notes          = notes
+  if (date_relance)   insertData.date_relance   = date_relance
+
   const { data: contact, error } = await supabase
     .from('contacts')
-    .insert({
-      commercial_id:  user.id,
-      adresse_id:     adresse_id     ?? null,
-      interaction_id: interaction_id ?? null,
-      nom:             nom             ?? null,
-      prenom:          prenom          ?? null,
-      tel1:            tel1            ?? null,
-      tel2:            tel2            ?? null,
-      email1:          email1          ?? null,
-      email2:          email2          ?? null,
-      type_contact:    type_contact    ?? null,
-      notes:           note            ?? null,
-      date_relance:    date_relance    ?? null,
-      hors_secteur:    false,
-      statut_pipeline: statut_pipeline ?? 'prospect',
-    })
+    .insert(insertData)
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[contacts POST] erreur Supabase:', error.message, error.details, error.hint)
+    return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
+  }
   return NextResponse.json({ contact })
 }
