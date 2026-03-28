@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     .select(`
       id, adresse_id, interaction_id,
       nom, prenom, tel1, tel2, email1, email2,
-      type_contact, note, date_relance, statut_pipeline,
+      type_contact, notes, date_relance, statut_pipeline,
       created_at, updated_at,
       adresses (numero, nom_voie, commune, code_postal)
     `)
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   const {
     adresse_id, interaction_id,
     nom, prenom, tel1, tel2, email1, email2,
-    type_contact, note, date_relance, statut_pipeline,
+    type_contact, notes, date_relance, statut_pipeline,
   } = body
 
   const { data: contact, error } = await supabase
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       email1:         email1         ?? null,
       email2:         email2         ?? null,
       type_contact:   type_contact   ?? null,
-      note:           note           ?? null,
+      notes:          note           ?? null,
       date_relance:   date_relance   ?? null,
       statut_pipeline: statut_pipeline ?? 'prospect',
     })
