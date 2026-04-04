@@ -34,6 +34,22 @@ function haversineMetres(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+/** Met à jour dpe_chargee_at sur la commune, par id ou par code_insee */
+async function marquerCommuneDpeChargee(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  code_insee: string,
+  commune_id?: string
+) {
+  const q = supabase
+    .from('communes')
+    .update({ dpe_chargee_at: new Date().toISOString() })
+  if (commune_id) {
+    await q.eq('id', commune_id)
+  } else {
+    await q.eq('code_insee', code_insee)
+  }
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -97,12 +113,7 @@ export async function POST(req: Request) {
 
     if (dpes.length === 0) {
       // Aucun DPE à matcher — peut-être déjà fait
-      if (commune_id) {
-        await supabase
-          .from('communes')
-          .update({ dpe_chargee_at: new Date().toISOString() })
-          .eq('id', commune_id)
-      }
+      await marquerCommuneDpeChargee(supabase, code_insee, commune_id)
       return NextResponse.json({
         nb_matched_textuel: 0, nb_matched_spatial: 0,
         nb_qualified: 0, nb_unmatched: 0,
@@ -252,12 +263,7 @@ export async function POST(req: Request) {
     }
 
     // ── 7. Marquer la commune comme DPE chargé ────────────────────────────
-    if (commune_id) {
-      await supabase
-        .from('communes')
-        .update({ dpe_chargee_at: new Date().toISOString() })
-        .eq('id', commune_id)
-    }
+    await marquerCommuneDpeChargee(supabase, code_insee, commune_id)
 
     const nbUnmatched = dpes.length - matchedDpes.length
 
