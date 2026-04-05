@@ -22,31 +22,27 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
-  const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: { prenom, nom },
+  // inviteUserByEmail crée l'utilisateur ET envoie l'email d'invitation en une seule opération
+  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+    data: { prenom, nom },
+    redirectTo: 'https://prospector-sooty-seven.vercel.app/onboarding',
   })
 
-  if (createErr || !newUser.user) {
-    return NextResponse.json({ error: createErr?.message ?? 'Erreur création' }, { status: 500 })
+  if (inviteErr || !invited.user) {
+    return NextResponse.json({ error: inviteErr?.message ?? 'Erreur invitation' }, { status: 500 })
   }
 
-  // Créer le profil commerciaux
-  await supabase.from('commerciaux').insert({
-    id:     newUser.user.id,
+  // Upsert du profil commerciaux — gère le cas où un trigger Supabase
+  // a déjà créé l'enregistrement avec role='commercial' par défaut
+  await supabase.from('commerciaux').upsert({
+    id:     invited.user.id,
     email,
     prenom,
     nom,
     role:   role ?? 'commercial',
-  })
+  }, { onConflict: 'id' })
 
-  // Envoyer un magic link d'invitation
-  await admin.auth.admin.inviteUserByEmail(email, {
-  redirectTo: 'https://prospector-sooty-seven.vercel.app/onboarding',
-})
-
-  return NextResponse.json({ success: true, user_id: newUser.user.id })
+  return NextResponse.json({ success: true, user_id: invited.user.id })
 }
 
 // ── DELETE : supprimer un utilisateur ────────────────────────────────────────
