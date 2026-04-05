@@ -3,42 +3,24 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-/** Vérifie que l'appelant est un manager connecté */
-async function checkManager() {
-  const supabase = await createClient()
+// ── POST : créer un utilisateur ──────────────────────────────────────────────
+export async function POST(request: Request) {
+  const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Non autorisé', status: 401, user: null, supabase: null }
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const { data: caller } = await supabase
     .from('commerciaux').select('role').eq('id', user.id).single()
   if (caller?.role !== 'manager') {
-    return { error: 'Réservé aux managers', status: 403, user: null, supabase: null }
+    return NextResponse.json({ error: 'Réservé aux managers' }, { status: 403 })
   }
-  return { error: null, status: 200, user, supabase }
-}
-
-// ── GET : liste des utilisateurs ─────────────────────────────────────────────
-export async function GET() {
-  const { error, status, supabase } = await checkManager()
-  if (error || !supabase) return NextResponse.json({ error }, { status })
-
-  const { data: users } = await supabase
-    .from('commerciaux').select('*').order('nom')
-
-  return NextResponse.json({ users: users ?? [] })
-}
-
-// ── POST : créer un utilisateur ──────────────────────────────────────────────
-export async function POST(request: Request) {
-  const { error, status } = await checkManager()
-  if (error) return NextResponse.json({ error }, { status })
 
   const { email, prenom, nom, role } = await request.json()
   if (!email || !prenom || !nom) {
     return NextResponse.json({ error: 'email, prenom et nom requis' }, { status: 400 })
   }
 
-  const admin = await createAdminClient()
+  const admin = createAdminClient()
 
   const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
     email,
@@ -51,7 +33,6 @@ export async function POST(request: Request) {
   }
 
   // Créer le profil commerciaux
-  const supabase = await createClient()
   await supabase.from('commerciaux').insert({
     id:     newUser.user.id,
     email,
@@ -61,18 +42,22 @@ export async function POST(request: Request) {
   })
 
   // Envoyer un magic link d'invitation
-  await admin.auth.admin.generateLink({
-    type:  'magiclink',
-    email,
-  })
+  await admin.auth.admin.generateLink({ type: 'magiclink', email })
 
   return NextResponse.json({ success: true, user_id: newUser.user.id })
 }
 
 // ── DELETE : supprimer un utilisateur ────────────────────────────────────────
 export async function DELETE(request: Request) {
-  const { error, status, user } = await checkManager()
-  if (error || !user) return NextResponse.json({ error }, { status })
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const { data: caller } = await supabase
+    .from('commerciaux').select('role').eq('id', user.id).single()
+  if (caller?.role !== 'manager') {
+    return NextResponse.json({ error: 'Réservé aux managers' }, { status: 403 })
+  }
 
   const { user_id } = await request.json()
   if (!user_id) {
@@ -84,7 +69,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Vous ne pouvez pas supprimer votre propre compte' }, { status: 400 })
   }
 
-  const admin = await createAdminClient()
+  const admin = createAdminClient()
 
   // Supprimer de auth.users (cascade sur commerciaux si FK configurée)
   const { error: deleteErr } = await admin.auth.admin.deleteUser(user_id)
@@ -92,8 +77,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: deleteErr.message }, { status: 500 })
   }
 
-  // Supprimer le profil commerciaux par sécurité (si pas de cascade)
-  const supabase = await createClient()
+  // Supprimer le profil commerciaux par sécurité
   await supabase.from('commerciaux').delete().eq('id', user_id)
 
   return NextResponse.json({ success: true })
