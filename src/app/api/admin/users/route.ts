@@ -42,7 +42,9 @@ export async function POST(request: Request) {
   })
 
   // Envoyer un magic link d'invitation
-  await admin.auth.admin.generateLink({ type: 'magiclink', email })
+  await admin.auth.admin.inviteUserByEmail(email, {
+  redirectTo: 'https://prospector-sooty-seven.vercel.app/onboarding',
+})
 
   return NextResponse.json({ success: true, user_id: newUser.user.id })
 }
