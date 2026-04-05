@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   // inviteUserByEmail crée l'utilisateur ET envoie l'email d'invitation en une seule opération
   const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
     data: { prenom, nom },
-    redirectTo: 'https://prospector-sooty-seven.vercel.app/onboarding',
+    redirectTo: 'https://prospector-sooty-seven.vercel.app/auth/callback?next=/onboarding',
   })
 
   if (inviteErr || !invited.user) {
