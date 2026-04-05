@@ -35,6 +35,10 @@ interface Zone {
   statut?: string
   polygone_geojson?: any
   centroide_geojson?: any
+  // Champs DPE (renseignés après ingestion DPE)
+  dpe_score?: number | null
+  nb_dpe?: number | null
+  ratio_dpe_recents?: number | null
 }
 
 interface AdresseItineraire {
@@ -44,6 +48,14 @@ interface AdresseItineraire {
   numero?: string
   nom_voie?: string
   type_bien?: string
+}
+
+interface DpeAdresse {
+  id: string
+  lat: number
+  lon: number
+  dpe_etiquette?: string | null
+  dpe_date?: string | null
 }
 
 const PALETTE = [
@@ -74,6 +86,12 @@ export default function ZonesPage() {
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
   const [nbAdressesTotal, setNbAdressesTotal] = useState(0)
 
+  // ── DPE récents ──────────────────────────────────────────────────────────
+  const [showDpeRecents, setShowDpeRecents]   = useState(false)
+  const [dpeAdresses, setDpeAdresses]         = useState<DpeAdresse[]>([])
+  const [loadingDpe, setLoadingDpe]           = useState(false)
+  const [communesCodes, setCommunesCodes]     = useState<string[]>([])
+
   const loadSnapshots = useCallback(async () => {
     const res = await fetch('/api/zones/snapshot')
     const d   = await res.json()
@@ -99,14 +117,43 @@ export default function ZonesPage() {
     setChevauchements(data.chevauchements ?? [])
   }, [])
 
-  // Charger aussi le nb total d'adresses du secteur si pas encore dans /api/zones
+  // Charger les codes INSEE des communes actives (pour l'appel DPE)
+  const loadCommunesCodes = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/communes/statut')
+      const data = await res.json()
+      const codes = (data.statuts ?? [])
+        .filter((s: any) => s.ban_chargee)
+        .map((s: any) => s.code_insee as string)
+      setCommunesCodes(codes)
+    } catch {
+      // silencieux — les communes ne sont pas critiques ici
+    }
+  }, [])
+
   useEffect(() => {
     loadZones()
-    // Charger séparément le nb d'adresses total
-    fetch('/api/communes').then(r => r.json()).then(d => {
-      // On va chercher via une route dédiée ou on le calcule à partir des zones
-    })
-  }, [loadZones])
+    loadSnapshots()
+    loadCommunesCodes()
+  }, [loadZones, loadSnapshots, loadCommunesCodes])
+
+  // ── Fetch DPE récents quand le toggle s'active ────────────────────────────
+  useEffect(() => {
+    if (!showDpeRecents) {
+      setDpeAdresses([])
+      return
+    }
+    if (communesCodes.length === 0) return
+
+    setLoadingDpe(true)
+    fetch(`/api/dpe/recents?code_insee=${communesCodes.join(',')}`)
+      .then(r => r.json())
+      .then(data => {
+        setDpeAdresses(data.adresses ?? [])
+      })
+      .catch(() => setDpeAdresses([]))
+      .finally(() => setLoadingDpe(false))
+  }, [showDpeRecents, communesCodes])
 
   const loadItineraire = useCallback(async (zoneId: string) => {
     const res  = await fetch(`/api/zones/${zoneId}`)
@@ -120,7 +167,6 @@ export default function ZonesPage() {
     loadItineraire(zone.id)
   }, [loadItineraire])
 
-  // Ouvrir le modal de config avant de générer
   const handleReset = async () => {
     if (!confirm('Supprimer TOUTES les zones et repartir à zéro ?\nUn snapshot sera sauvegardé automatiquement.\nLes sessions de prospection sont conservées.')) return
     setResetting(true)
@@ -142,11 +188,8 @@ export default function ZonesPage() {
     await loadSnapshots()
   }
 
-  const handleGenerateClick = () => {
-    setShowConfig(true)
-  }
+  const handleGenerateClick = () => setShowConfig(true)
 
-  // Lancer la génération avec la config choisie
   const handleConfirmGenerate = async (config: ZoneConfig) => {
     setShowConfig(false)
     setGenerating(true)
@@ -181,7 +224,6 @@ export default function ZonesPage() {
     }
   }
 
-  // Édition zone
   const openEdit = async (zone: Zone, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingZone(zone)
@@ -236,8 +278,9 @@ export default function ZonesPage() {
     setEditingZone(null)
   }
 
-  const totalAdresses = zones.reduce((s, z) => s + (z.nb_prospectables ?? 0), 0)
+  const totalAdresses   = zones.reduce((s, z) => s + (z.nb_prospectables ?? 0), 0)
   const zonesEnAttention = zones.filter((z) => z.statut === 'attention').length
+  const nbDpeRecents    = dpeAdresses.length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#f8f7f4' }}>
@@ -288,6 +331,30 @@ export default function ZonesPage() {
             }}>
             {sidebarOpen ? '◀' : '▶ Zones'}
           </button>
+
+          {/* ── Toggle DPE récents ── */}
+          {zones.length > 0 && (
+            <button
+              onClick={() => setShowDpeRecents(v => !v)}
+              disabled={loadingDpe}
+              title={showDpeRecents ? `${nbDpeRecents} DPE récents affichés — cliquer pour masquer` : 'Afficher les adresses avec un DPE < 6 mois'}
+              style={{
+                padding: '6px 12px', borderRadius: 7,
+                border: `1px solid ${showDpeRecents ? '#f59e0b' : '#e8e7e0'}`,
+                background: showDpeRecents ? '#fffbeb' : '#fff',
+                color: showDpeRecents ? '#d97706' : '#5F5E5A',
+                fontSize: '0.8rem', fontWeight: showDpeRecents ? 600 : 400,
+                cursor: loadingDpe ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 5,
+                transition: 'all 0.15s',
+              }}>
+              {loadingDpe
+                ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span> DPE…</>
+                : <>⚡ DPE récents{showDpeRecents && nbDpeRecents > 0 ? ` (${nbDpeRecents})` : ''}</>
+              }
+            </button>
+          )}
+
           {zones.length > 0 && (
             <Link
               href="/zones/edit"
@@ -301,7 +368,6 @@ export default function ZonesPage() {
               ✏️ Éditer les zones
             </Link>
           )}
-          {/* Badge nb snapshots */}
           {snapshots.length > 0 && (
             <span style={{
               padding: '7px 12px', borderRadius: 8,
@@ -313,8 +379,6 @@ export default function ZonesPage() {
               🗂 {snapshots.length} sauvegarde{snapshots.length > 1 ? 's' : ''}
             </span>
           )}
-
-          {/* Reset */}
           {zones.length > 0 && (
             <button
               onClick={handleReset}
@@ -329,7 +393,6 @@ export default function ZonesPage() {
               {resetting ? '…' : '🗑 Reset'}
             </button>
           )}
-
           <button
             onClick={handleGenerateClick}
             disabled={generating}
@@ -349,16 +412,39 @@ export default function ZonesPage() {
         </div>
       </header>
 
-      {/* Panneau historique snapshots — toujours visible */}
+      {/* Légende DPE — visible quand le toggle est actif */}
+      {showDpeRecents && (
+        <div style={{
+          background: '#fffbeb', borderBottom: '1px solid #fde68a',
+          padding: '6px 20px',
+          display: 'flex', alignItems: 'center', gap: 16,
+          fontSize: '0.75rem', color: '#92400e',
+        }}>
+          <span style={{ fontWeight: 600 }}>⚡ DPE établis dans les 6 derniers mois :</span>
+          {[
+            { label: 'A', color: '#16a34a' }, { label: 'B', color: '#4ade80' },
+            { label: 'C', color: '#84cc16' }, { label: 'D', color: '#facc15' },
+            { label: 'E', color: '#f97316' }, { label: 'F', color: '#ef4444' },
+            { label: 'G', color: '#b91c1c' },
+          ].map(({ label, color }) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }}/>
+              {label}
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', color: '#a16207' }}>
+            {nbDpeRecents > 0 ? `${nbDpeRecents} adresses` : 'Aucun DPE récent trouvé'}
+          </span>
+        </div>
+      )}
+
+      {/* Panneau historique snapshots */}
       {snapshots.length > 0 && (
         <div style={{
           background: '#fff', borderBottom: '1px solid #e8e7e0',
           padding: '12px 20px',
         }}>
-          <div style={{
-            fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A',
-            marginBottom: 8,
-          }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A', marginBottom: 8 }}>
             Historique des découpages ({snapshots.length}/5)
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -369,25 +455,18 @@ export default function ZonesPage() {
                 background: '#f8f7f4', border: '1px solid #f0efeb',
               }}>
                 <div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#1a1a18' }}>
-                    {s.nom}
-                  </div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#1a1a18' }}>{s.nom}</div>
                   <div style={{ fontSize: '0.72rem', color: '#9b9b96', marginTop: 1 }}>
                     {s.nb_zones} zones · {new Date(s.created_at).toLocaleDateString('fr-FR', {
                       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
                     })}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDeleteSnapshot(s.id)}
-                  style={{
-                    padding: '4px 10px', borderRadius: 6,
-                    background: 'transparent', color: '#dc2626',
-                    border: '1px solid #fecaca',
-                    fontSize: '0.75rem', cursor: 'pointer',
-                  }}>
-                  Supprimer
-                </button>
+                <button onClick={() => handleDeleteSnapshot(s.id)} style={{
+                  padding: '4px 10px', borderRadius: 6,
+                  background: 'transparent', color: '#dc2626',
+                  border: '1px solid #fecaca', fontSize: '0.75rem', cursor: 'pointer',
+                }}>Supprimer</button>
               </div>
             ))}
           </div>
@@ -406,7 +485,7 @@ export default function ZonesPage() {
         </div>
       )}
 
-      {/* Chevauchements détectés */}
+      {/* Chevauchements */}
       {chevauchements.length > 0 && (
         <div style={{
           background: '#fef2f2', borderBottom: '1px solid #fecaca',
@@ -467,10 +546,7 @@ export default function ZonesPage() {
                         display: 'flex', alignItems: 'center', gap: 10,
                       }}
                     >
-                      <div style={{
-                        width: 12, height: 12, borderRadius: '50%',
-                        background: zone.couleur, flexShrink: 0,
-                      }}/>
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: zone.couleur, flexShrink: 0 }}/>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1a1a18', display: 'flex', alignItems: 'center', gap: 5 }}>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{zone.nom}</span>
@@ -478,8 +554,21 @@ export default function ZonesPage() {
                             <span title="Zone trop grande ou surchargée" style={{ flexShrink: 0 }}>⚠️</span>
                           )}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#5F5E5A', marginTop: 1 }}>
-                          {zone.nb_prospectables} adresses
+                        <div style={{ fontSize: '0.75rem', color: '#5F5E5A', marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{zone.nb_prospectables} adresses</span>
+                          {/* Badge score DPE */}
+                          {zone.dpe_score != null && (
+                            <span style={{
+                              background: zone.dpe_score >= 60 ? '#f0fdf4' : zone.dpe_score >= 35 ? '#fffbeb' : '#f8f7f4',
+                              color:      zone.dpe_score >= 60 ? '#16a34a' : zone.dpe_score >= 35 ? '#d97706' : '#9b9b96',
+                              border:     `1px solid ${zone.dpe_score >= 60 ? '#bbf7d0' : zone.dpe_score >= 35 ? '#fde68a' : '#e8e7e0'}`,
+                              borderRadius: 10, padding: '0px 5px',
+                              fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                            }}
+                              title={`Score DPE : ${zone.dpe_score}/100 — basé sur la densité de DPE récents et le ratio de maisons individuelles`}>
+                              ⚡ {zone.dpe_score}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <button
@@ -510,6 +599,16 @@ export default function ZonesPage() {
                       </div>
                     )
                   })}
+
+                  {/* Résumé DPE récents si actif */}
+                  {showDpeRecents && nbDpeRecents > 0 && (
+                    <div style={{
+                      marginTop: 10, paddingTop: 8, borderTop: '1px solid #f0efeb',
+                      fontSize: '0.72rem', color: '#d97706', fontWeight: 500,
+                    }}>
+                      ⚡ {nbDpeRecents} adresses avec DPE &lt; 6 mois
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -524,6 +623,8 @@ export default function ZonesPage() {
             itineraire={itineraire}
             chevauchements={chevauchements}
             onZoneClick={handleSelectZone}
+            showDpeRecents={showDpeRecents}
+            dpeAdresses={dpeAdresses}
           />
 
           {selectedZone && (
@@ -539,6 +640,11 @@ export default function ZonesPage() {
               {itineraire.length > 0 && (
                 <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600 }}>
                   Itinéraire affiché
+                </span>
+              )}
+              {selectedZone.dpe_score != null && (
+                <span style={{ background: '#fffbeb', color: '#d97706', padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600 }}>
+                  ⚡ Score DPE {selectedZone.dpe_score}/100
                 </span>
               )}
               <button onClick={() => { setSelectedZone(null); setItineraire([]) }}
