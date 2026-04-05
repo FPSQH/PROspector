@@ -22,6 +22,14 @@ interface Adresse {
   type_bien?: string
 }
 
+interface DpeAdresse {
+  id: string
+  lat: number
+  lon: number
+  dpe_etiquette?: string | null
+  dpe_date?: string | null
+}
+
 interface Chevauchement {
   zone_a_id:   string
   zone_b_id:   string
@@ -29,15 +37,32 @@ interface Chevauchement {
 }
 
 interface ZonesMapProps {
-  zones:           Zone[]
-  selectedZoneId?: string | null
-  itineraire?:     Adresse[]
-  chevauchements?: Chevauchement[]
-  onZoneClick?:    (zone: Zone) => void
+  zones:            Zone[]
+  selectedZoneId?:  string | null
+  itineraire?:      Adresse[]
+  chevauchements?:  Chevauchement[]
+  onZoneClick?:     (zone: Zone) => void
+  showDpeRecents?:  boolean
+  dpeAdresses?:     DpeAdresse[]
+}
+
+/** Couleur par étiquette DPE pour le point orange (fallback amber si inconnue) */
+function dpeColor(etiquette?: string | null): string {
+  switch (etiquette?.toUpperCase()) {
+    case 'A': return '#16a34a'
+    case 'B': return '#4ade80'
+    case 'C': return '#84cc16'
+    case 'D': return '#facc15'
+    case 'E': return '#f97316'
+    case 'F': return '#ef4444'
+    case 'G': return '#b91c1c'
+    default:  return '#f59e0b' // amber par défaut
+  }
 }
 
 export default function ZonesMap({
   zones, selectedZoneId, itineraire = [], chevauchements = [], onZoneClick,
+  showDpeRecents = false, dpeAdresses = [],
 }: ZonesMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<any>(null)
@@ -88,6 +113,7 @@ export default function ZonesMap({
         map.addSource('itineraire',     { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('adresses',       { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('hors-zone',      { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addSource('dpe-recents',    { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
 
         map.addLayer({
           id: 'zones-fill', type: 'fill', source: 'zones-fill',
@@ -145,6 +171,27 @@ export default function ZonesMap({
           id: 'hors-zone-circle', type: 'circle', source: 'hors-zone',
           paint: { 'circle-radius': 4, 'circle-color': '#9b9b96', 'circle-opacity': 0.4 },
         })
+
+        // Calque DPE récents — halo blanc + point coloré par étiquette
+        map.addLayer({
+          id: 'dpe-recents-halo', type: 'circle', source: 'dpe-recents',
+          paint: {
+            'circle-radius':       9,
+            'circle-color':        '#ffffff',
+            'circle-opacity':      0.7,
+          },
+        })
+        map.addLayer({
+          id: 'dpe-recents-circle', type: 'circle', source: 'dpe-recents',
+          paint: {
+            'circle-radius':       6,
+            'circle-color':        ['get', 'couleur'],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#ffffff',
+            'circle-opacity':      0.95,
+          },
+        })
+
         map.addLayer({
           id: 'adresses-circle', type: 'circle', source: 'adresses',
           paint: {
@@ -274,6 +321,33 @@ export default function ZonesMap({
       )
     }
   }, [mapLoaded, itineraire, selectedZoneId, zones])
+
+  // Mettre à jour le calque DPE récents
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return
+    const map = mapRef.current
+
+    if (!showDpeRecents || dpeAdresses.length === 0) {
+      ;(map.getSource('dpe-recents') as any)?.setData({ type: 'FeatureCollection', features: [] })
+      return
+    }
+
+    const features = dpeAdresses
+      .filter((a) => a.lat && a.lon)
+      .map((a) => ({
+        type: 'Feature' as const,
+        properties: {
+          id:      a.id,
+          couleur: dpeColor(a.dpe_etiquette),
+          label:   a.dpe_etiquette ?? '?',
+        },
+        geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+      }))
+
+    ;(map.getSource('dpe-recents') as any)?.setData({
+      type: 'FeatureCollection', features,
+    })
+  }, [mapLoaded, showDpeRecents, dpeAdresses])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
