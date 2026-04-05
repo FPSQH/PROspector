@@ -1,9 +1,12 @@
+// src/app/(app)/admin/users/page.tsx
+
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { redirect }     from 'next/navigation'
 import { CreateUserForm } from './CreateUserForm'
+import { UserList }       from './UserList'
 
 export default async function AdminUsersPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -22,45 +25,25 @@ export default async function AdminUsersPage() {
       </h1>
 
       {/* Formulaire ajout */}
-      <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', border: '1.5px solid #e8e7e0', marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '1rem', color: '#1a1a18' }}>
+      <div style={{
+        background: '#fff', borderRadius: 12, padding: '1.25rem',
+        border: '1.5px solid #e8e7e0', marginBottom: '1.5rem',
+      }}>
+        <h2 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '1rem', color: '#1a1a18' }}>
           Créer un accès
         </h2>
         <CreateUserForm />
       </div>
 
-      {/* Liste utilisateurs */}
-      <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8e7e0', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f1efe8', fontSize: '0.8rem', fontWeight: 500, color: '#5F5E5A' }}>
-          {users?.length ?? 0} utilisateur(s)
-        </div>
-        {users?.map(u => (
-          <div key={u.id} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '12px 1.25rem', borderBottom: '1px solid #f8f7f4',
-          }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%', background: '#E1F5EE',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.875rem', fontWeight: 600, color: '#0F6E56', flexShrink: 0,
-            }}>
-              {u.prenom?.[0]}{u.nom?.[0]}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#1a1a18' }}>
-                {u.prenom} {u.nom}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: '#9b9b96' }}>{u.email}</div>
-            </div>
-            <span style={{
-              padding: '3px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 500,
-              background: u.role === 'manager' ? '#E1F5EE' : '#f1efe8',
-              color: u.role === 'manager' ? '#0F6E56' : '#5F5E5A',
-            }}>
-              {u.role}
-            </span>
-          </div>
-        ))}
+      {/* Liste des utilisateurs */}
+      <div style={{
+        background: '#fff', borderRadius: 12, padding: '1.25rem',
+        border: '1.5px solid #e8e7e0',
+      }}>
+        <UserList
+          users={users ?? []}
+          currentUser={user.id}
+        />
       </div>
     </div>
   )
