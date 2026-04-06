@@ -13,9 +13,15 @@ export default async function CommercialLayout({
 
   const { data: commercial } = await supabase
     .from('commerciaux')
-    .select('nom, prenom')
+    .select('nom, prenom, must_change_password')
     .eq('id', user.id)
     .single()
+
+  // Première connexion : forcer le changement de mot de passe
+  // /change-password est dans (app)/ et non (commercial)/ → pas de boucle infinie
+  if (commercial?.must_change_password) {
+    redirect('/change-password')
+  }
 
   const nom      = commercial?.nom     ?? ''
   const prenom   = commercial?.prenom  ?? ''
