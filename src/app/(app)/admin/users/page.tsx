@@ -1,49 +1,78 @@
-// src/app/(app)/admin/users/page.tsx
-
 import { createClient } from '@/lib/supabase/server'
-import { redirect }     from 'next/navigation'
-import { CreateUserForm } from './CreateUserForm'
-import { UserList }       from './UserList'
+import { redirect } from 'next/navigation'
+import CreateUserForm from './CreateUserForm'
+
+interface Commercial {
+  id: string
+  nom: string
+  prenom: string
+  email: string
+  role: string
+  must_change_password: boolean
+}
+
+async function getTeam(managerId: string): Promise<Commercial[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('commerciaux')
+    .select('id, nom, prenom, email, role, must_change_password')
+    .eq('manager_id', managerId)
+    .order('nom')
+  return data ?? []
+}
 
 export default async function AdminUsersPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Réservé aux managers
-  const { data: commercial } = await supabase
+  const { data: caller } = await supabase
     .from('commerciaux').select('role').eq('id', user.id).single()
-  if (commercial?.role !== 'manager') redirect('/dashboard')
+  if (caller?.role !== 'manager') redirect('/dashboard')
 
-  const { data: users } = await supabase
-    .from('commerciaux').select('*').order('nom')
+  const team = await getTeam(user.id)
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '2rem 1.5rem' }}>
-      <h1 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', color: '#1a1a18' }}>
-        Gestion des utilisateurs
-      </h1>
-
-      {/* Formulaire ajout */}
-      <div style={{
-        background: '#fff', borderRadius: 12, padding: '1.25rem',
-        border: '1.5px solid #e8e7e0', marginBottom: '1.5rem',
-      }}>
-        <h2 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '1rem', color: '#1a1a18' }}>
-          Créer un accès
-        </h2>
-        <CreateUserForm />
+    <div className="max-w-3xl mx-auto p-6 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Gestion de l&apos;équipe</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          Créez les comptes de vos commerciaux et consultez leur statut.
+        </p>
       </div>
 
-      {/* Liste des utilisateurs */}
-      <div style={{
-        background: '#fff', borderRadius: 12, padding: '1.25rem',
-        border: '1.5px solid #e8e7e0',
-      }}>
-        <UserList
-          users={users ?? []}
-          currentUser={user.id}
-        />
+      <CreateUserForm />
+
+      <div className="space-y-3">
+        <h2 className="font-semibold text-gray-700">
+          Membres de l&apos;équipe ({team.length})
+        </h2>
+        {team.length === 0 && (
+          <p className="text-gray-400 text-sm">
+            Aucun commercial dans votre équipe pour l&apos;instant.
+          </p>
+        )}
+        {team.map(c => (
+          <div
+            key={c.id}
+            className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-3"
+          >
+            <div>
+              <p className="font-medium text-sm">{c.prenom} {c.nom}</p>
+              <p className="text-gray-400 text-xs">{c.email}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {c.must_change_password && (
+                <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">
+                  1ère connexion
+                </span>
+              )}
+              <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">
+                {c.role}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
