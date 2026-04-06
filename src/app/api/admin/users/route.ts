@@ -3,6 +3,14 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+/** Genère un mot de passe temporaire lisible */
+function genTempPassword(): string {
+  const adj  = ['Bleu', 'Vert', 'Fort', 'Vif', 'Grand']
+  const noun = ['Soleil', 'Ciel', 'Mer', 'Mont', 'Parc']
+  const num  = Math.floor(10 + Math.random() * 90)
+  return `${adj[Math.floor(Math.random()*adj.length)]}${noun[Math.floor(Math.random()*noun.length)]}${num}!`
+}
+
 // ── POST : créer un utilisateur ──────────────────────────────────────────────
 export async function POST(request: Request) {
   const supabase = createClient()
@@ -20,29 +28,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'email, prenom et nom requis' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin       = createAdminClient()
+  const tempPassword = genTempPassword()
 
-  // inviteUserByEmail crée l'utilisateur ET envoie l'email d'invitation en une seule opération
-  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { prenom, nom },
-    redirectTo: 'https://prospector-sooty-seven.vercel.app/auth/callback?next=/onboarding',
+  // Créer l'utilisateur avec mot de passe temporaire
+  const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password:      tempPassword,
+    email_confirm: true,  // pas besoin de confirmer l'email
+    user_metadata: { prenom, nom },
   })
 
-  if (inviteErr || !invited.user) {
-    return NextResponse.json({ error: inviteErr?.message ?? 'Erreur invitation' }, { status: 500 })
+  if (createErr || !newUser.user) {
+    return NextResponse.json({ error: createErr?.message ?? 'Erreur création' }, { status: 500 })
   }
 
-  // Upsert du profil commerciaux — gère le cas où un trigger Supabase
-  // a déjà créé l'enregistrement avec role='commercial' par défaut
+  // Upsert profil commerciaux (gère le trigger Supabase qui crée déjà la ligne)
   await supabase.from('commerciaux').upsert({
-    id:     invited.user.id,
+    id:     newUser.user.id,
     email,
     prenom,
     nom,
     role:   role ?? 'commercial',
   }, { onConflict: 'id' })
 
-  return NextResponse.json({ success: true, user_id: invited.user.id })
+  // Retourner le mot de passe temporaire à afficher dans l'UI admin
+  return NextResponse.json({
+    success:       true,
+    user_id:       newUser.user.id,
+    temp_password: tempPassword,
+  })
 }
 
 // ── DELETE : supprimer un utilisateur ────────────────────────────────────────
@@ -58,25 +73,16 @@ export async function DELETE(request: Request) {
   }
 
   const { user_id } = await request.json()
-  if (!user_id) {
-    return NextResponse.json({ error: 'user_id requis' }, { status: 400 })
-  }
+  if (!user_id) return NextResponse.json({ error: 'user_id requis' }, { status: 400 })
 
-  // Empêcher l'auto-suppression
   if (user_id === user.id) {
     return NextResponse.json({ error: 'Vous ne pouvez pas supprimer votre propre compte' }, { status: 400 })
   }
 
   const admin = createAdminClient()
-
-  // Supprimer de auth.users (cascade sur commerciaux si FK configurée)
   const { error: deleteErr } = await admin.auth.admin.deleteUser(user_id)
-  if (deleteErr) {
-    return NextResponse.json({ error: deleteErr.message }, { status: 500 })
-  }
+  if (deleteErr) return NextResponse.json({ error: deleteErr.message }, { status: 500 })
 
-  // Supprimer le profil commerciaux par sécurité
   await supabase.from('commerciaux').delete().eq('id', user_id)
-
   return NextResponse.json({ success: true })
 }
