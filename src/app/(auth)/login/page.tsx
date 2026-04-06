@@ -4,15 +4,19 @@ export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const supabase   = createClient()
   const router     = useRouter()
-  const [email, setEmail]       = useState('')
+  const searchParams = useSearchParams()
+  const isExpired  = searchParams.get('error') === 'auth_callback'
+
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -25,110 +29,65 @@ export default function LoginPage() {
       password: password,
     })
 
-    setLoading(false)
     if (err) {
       setError('Email ou mot de passe incorrect.')
-    } else {
-      router.push('/dashboard')
-      router.refresh()
+      setLoading(false)
+      return
     }
-  }
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '12px 14px',
-    border: '1.5px solid #d1d0c8', borderRadius: 10,
-    fontSize: '0.9375rem', outline: 'none',
-    background: '#fff', color: '#1a1a18',
-    boxSizing: 'border-box',
+    router.push('/dashboard')
+    router.refresh()
   }
 
   return (
-    <div style={{
-      minHeight: '100dvh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: '#f8f7f4', padding: 20,
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 16, padding: '2.5rem 2rem',
-        width: '100%', maxWidth: 400,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
-        border: '1px solid #e8e7e0',
-      }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 12,
-            background: '#1D9E75', display: 'inline-flex',
-            alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.5rem', marginBottom: 12,
-          }}>🏘️</div>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1a1a18', margin: 0 }}>
-            PROspector
-          </h1>
-          <p style={{ fontSize: '0.875rem', color: '#9b9b96', marginTop: 4 }}>
-            Square Habitat
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="bg-white rounded-xl shadow-lg p-8 max-w-sm w-full space-y-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">PROspector</h1>
+          <p className="text-gray-500 text-sm mt-1">Connectez-vous à votre espace</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          {error && (
-            <div style={{
-              background: '#fef2f2', border: '1px solid #fecaca',
-              borderRadius: 8, padding: '10px 14px',
-              marginBottom: 16, fontSize: '0.875rem', color: '#dc2626',
-            }}>
-              {error}
-            </div>
-          )}
-
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5F5E5A', display: 'block', marginBottom: 6 }}>
-              Email
-            </label>
-            <input
-              style={inputStyle}
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="prenom.nom@squarehabitat.fr"
-              required
-              autoComplete="email"
-            />
+        {isExpired && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+            Le lien a expiré. Reconnectez-vous ou recommencez la procédure.
           </div>
+        )}
 
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5F5E5A', display: 'block', marginBottom: 6 }}>
-              Mot de passe
-            </label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="votre@email.com"
+            required
+            autoComplete="email"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="space-y-1">
             <input
-              style={inputStyle}
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Mot de passe"
               required
               autoComplete="current-password"
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">
+                Mot de passe oublié ?
+              </Link>
+            </div>
           </div>
-
+          {error && <p className="text-red-500 text-sm">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            style={{
-              width: '100%', padding: '13px',
-              background: loading ? '#9b9b96' : '#1D9E75',
-              color: '#fff', border: 'none', borderRadius: 10,
-              fontSize: '0.9375rem', fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}
+            className="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
-
-        <p style={{ fontSize: '0.78rem', color: '#9b9b96', textAlign: 'center', marginTop: 20, lineHeight: 1.5 }}>
-          Accès réservé aux conseillers Square Habitat.<br/>
-          Contactez votre responsable si vous n'avez pas vos identifiants.
-        </p>
       </div>
     </div>
   )
