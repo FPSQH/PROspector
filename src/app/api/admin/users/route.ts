@@ -3,7 +3,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-/** Genère un mot de passe temporaire lisible */
+/** Génère un mot de passe temporaire lisible */
 function genTempPassword(): string {
   const adj  = ['Bleu', 'Vert', 'Fort', 'Vif', 'Grand']
   const noun = ['Soleil', 'Ciel', 'Mer', 'Mont', 'Parc']
