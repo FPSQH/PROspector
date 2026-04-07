@@ -40,16 +40,14 @@ export default async function AdminUsersPage() {
       display: 'flex', flexDirection: 'column', gap: '32px',
     }}>
 
-      {/* Bouton retour */}
       <Link href="/dashboard" style={{
         display: 'inline-flex', alignItems: 'center', gap: '6px',
-        fontSize: '14px', color: '#1D9E75', textDecoration: 'none', fontWeight: 500,
-        width: 'fit-content',
+        fontSize: '14px', color: '#1D9E75', textDecoration: 'none',
+        fontWeight: 500, width: 'fit-content',
       }}>
         ← Tableau de bord
       </Link>
 
-      {/* En-tête */}
       <div>
         <h1 style={{ fontSize: '22px', fontWeight: 700, margin: 0, color: '#2C2C2A' }}>
           Gestion de l&apos;équipe
@@ -59,15 +57,12 @@ export default async function AdminUsersPage() {
         </p>
       </div>
 
-      {/* Formulaire création */}
       <CreateUserForm />
 
-      {/* Liste équipe */}
       <div>
         <p style={{ fontSize: '15px', fontWeight: 600, color: '#2C2C2A', margin: '0 0 12px' }}>
           Membres de l&apos;équipe ({team.length})
         </p>
-
         {team.length === 0 ? (
           <p style={{ fontSize: '14px', color: '#B4B2A9', textAlign: 'center', padding: '32px' }}>
             Aucun commercial dans votre équipe pour l&apos;instant.
