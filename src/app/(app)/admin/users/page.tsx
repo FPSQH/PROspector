@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import CreateUserForm from './CreateUserForm'
 import DeleteButton from './DeleteButton'
 
@@ -39,6 +40,15 @@ export default async function AdminUsersPage() {
       display: 'flex', flexDirection: 'column', gap: '32px',
     }}>
 
+      {/* Bouton retour */}
+      <Link href="/dashboard" style={{
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        fontSize: '14px', color: '#1D9E75', textDecoration: 'none', fontWeight: 500,
+        width: 'fit-content',
+      }}>
+        ← Tableau de bord
+      </Link>
+
       {/* En-tête */}
       <div>
         <h1 style={{ fontSize: '22px', fontWeight: 700, margin: 0, color: '#2C2C2A' }}>
@@ -70,7 +80,6 @@ export default async function AdminUsersPage() {
                 background: '#fff', borderRadius: '12px', border: '1px solid #E8E6DF',
                 padding: '14px 18px',
               }}>
-                {/* Infos */}
                 <div>
                   <p style={{ fontSize: '15px', fontWeight: 600, color: '#2C2C2A', margin: 0 }}>
                     {c.prenom} {c.nom}
@@ -79,8 +88,6 @@ export default async function AdminUsersPage() {
                     {c.email}
                   </p>
                 </div>
-
-                {/* Badges + bouton */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {c.must_change_password && (
                     <span style={{
