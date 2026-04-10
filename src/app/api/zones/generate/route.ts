@@ -26,6 +26,10 @@ export async function POST(req: Request) {
   const capacite_cible:    number  = body.capacite_cible    ?? 100
   const rayon_alerte_metres: number  = body.rayon_alerte_metres ?? 500
   const exclure_commerces:    boolean = body.exclure_commerces ?? false
+  // Parametres DPE
+  const dpe_fenetre_mois:    number  = body.dpe_fenetre_mois    ?? 6
+  const dpe_poids:           number  = body.dpe_poids           ?? 0
+  const dpe_seuil_inclusion: number  = body.dpe_seuil_inclusion ?? 10
 
   const { data: commercial } = await supabase
     .from('commerciaux').select('id').eq('id', user.id).single()
@@ -67,13 +71,45 @@ export async function POST(req: Request) {
     return true
   })
 
+  // Charger les DPE de la fenetre temporelle choisie
+  const dpeMap = new Map<string, { chauds: number; tièdes: number }>()
+  if (dpe_poids > 0) {
+    const dpeWindowMs = dpe_fenetre_mois * 30 * 24 * 60 * 60 * 1000
+    const extWindowMs = dpe_fenetre_mois * 2 * 30 * 24 * 60 * 60 * 1000
+    const now = Date.now()
+
+    for (const batchInsee of batches) {
+      const { data: dpeRows } = await supabase
+        .from('dpe_logement')
+        .select('adresse_id, date_etablissement')
+        .in('code_insee', batchInsee)
+        .not('adresse_id', 'is', null)
+        .gte('date_etablissement', new Date(now - extWindowMs).toISOString().slice(0, 10))
+
+      for (const dpe of dpeRows ?? []) {
+        const ageMs = now - new Date(dpe.date_etablissement).getTime()
+        const entry = dpeMap.get(dpe.adresse_id) ?? { chauds: 0, tièdes: 0 }
+        if (ageMs <= dpeWindowMs)      entry.chauds++
+        else if (ageMs <= extWindowMs) entry.tièdes++
+        dpeMap.set(dpe.adresse_id, entry)
+      }
+    }
+  }
+
   const points = prospectables.map((a: any) => ({
-    id: a.id, lat: a.lat, lon: a.lon, prospectable: true,
+    id:          a.id,
+    lat:         a.lat,
+    lon:         a.lon,
+    prospectable: true,
+    code_insee:  a.code_insee,
+    dpe_chauds:  dpeMap.get(a.id)?.chauds ?? 0,
+    dpe_tièdes:  dpeMap.get(a.id)?.tièdes ?? 0,
   }))
 
   // Nouvel algorithme density-based
   const { zones: densityZones, horsZone } = generateDensityZones(
-    points, nb_zones, capacite_cible, rayon_alerte_metres
+    points, nb_zones, capacite_cible, rayon_alerte_metres,
+    { poids: dpe_poids, seuil_inclusion: dpe_seuil_inclusion }
   )
 
   // Log de debug pour comprendre l'algorithme
@@ -155,6 +191,9 @@ export async function POST(req: Request) {
         capacite_theorique:   capacite_cible,
         nb_adresses:          dz.points.length,
         nb_prospectables:     dz.points.length,
+        nb_dpe_chauds:        (dz as any).nb_dpe_chauds ?? 0,
+        nb_dpe_tièdes:        (dz as any).nb_dpe_tièdes ?? 0,
+        dpe_prioritaire:      (dz as any).dpe_prioritaire ?? false,
         nb_logements_sociaux: 0,
         statut:               'active',
         polygone:             polygonWKT ?? null,
