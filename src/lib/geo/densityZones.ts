@@ -1,11 +1,10 @@
 // ─── Algorithme density-based pour zones de prospection ──────────────────
 // Logique :
 //  1. Grille de densite -> trouver les N pics (zones les plus denses)
-//     Le score de chaque cellule integre la densite d'adresses + bonus DPE
-//  2. Expansion depuis chaque pic -> prendre les K adresses les plus proches
-//     SANS limite de distance (le rayon s'adapte a la densite locale)
-//  3. rayon_alerte = seuil d'information uniquement (zone marquee si depasse)
-//  4. Les adresses non couvertes restent hors-zone
+//     Le score integre : nb adresses + bonus DPE pondere
+//  2. Expansion depuis chaque pic -> K adresses les plus proches
+//  3. Passe de rattrapage DPE -> communes a fort signal DPE garanties
+//  4. rayon_alerte = seuil d'information uniquement
 
 export interface GeoPoint {
   id:           string
@@ -13,9 +12,8 @@ export interface GeoPoint {
   lon:          number
   prospectable: boolean
   code_insee?:  string
-  // DPE enrichissement (optionnel)
-  dpe_chauds?:  number   // nb DPE dans la fenetre courte (ex: < 6 mois)
-  dpe_tièdes?:  number   // nb DPE dans la fenetre etendue (ex: 6-12 mois)
+  dpe_chauds?:  number
+  dpe_tièdes?:  number
 }
 
 export interface DensityZone {
@@ -23,18 +21,17 @@ export interface DensityZone {
   points:          GeoPoint[]
   rayon_metres:    number
   depasse_seuil:   boolean
-  dpe_prioritaire: boolean   // true si zone incluse grace au rattrapage DPE
+  dpe_prioritaire: boolean
   nb_dpe_chauds:   number
   nb_dpe_tièdes:   number
 }
 
-// Parametres DPE passes depuis le route handler
 export interface DpeParams {
-  poids:           number   // 0..1
-  seuil_inclusion: number   // nb DPE chauds min pour forcer une commune
+  poids:           number
+  seuil_inclusion: number
 }
 
-// Distance en metres (haversine)
+// Distance haversine en metres
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R    = 6371000
   const dLat = (lat2 - lat1) * Math.PI / 180
@@ -45,21 +42,18 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-// ── Etape 1 : Grille de densite ──────────────────────────────────────────
+// Etape 1 : Grille de densite avec score composite (adresses + DPE)
 function buildDensityGrid(
   points: GeoPoint[],
   cellSizeDeg: number,
   dpeParams: DpeParams
-): Map<string, { lat: number; lon: number; score: number; dpeChauds: number; dpeTièdes: number }> {
-  const grid = new Map<string, {
-    lat: number; lon: number; count: number;
-    dpeChauds: number; dpeTièdes: number
-  }>()
+): Map<string, { lat: number; lon: number; score: number; dpeChauds: number; dpeTièdes: number; count: number }> {
+  const grid = new Map<string, { lat: number; lon: number; count: number; dpeChauds: number; dpeTièdes: number }>()
 
   for (const p of points) {
-    const gLat = Math.round(p.lat / cellSizeDeg) * cellSizeDeg
-    const gLon = Math.round(p.lon / cellSizeDeg) * cellSizeDeg
-    const key  = `${gLat.toFixed(4)},${gLon.toFixed(4)}`
+    const gLat = Math.floor(p.lat / cellSizeDeg) * cellSizeDeg + cellSizeDeg / 2
+    const gLon = Math.floor(p.lon / cellSizeDeg) * cellSizeDeg + cellSizeDeg / 2
+    const key  = `${gLat.toFixed(5)},${gLon.toFixed(5)}`
     const cell = grid.get(key) ?? { lat: gLat, lon: gLon, count: 0, dpeChauds: 0, dpeTièdes: 0 }
     cell.count++
     cell.dpeChauds  += p.dpe_chauds  ?? 0
@@ -67,15 +61,14 @@ function buildDensityGrid(
     grid.set(key, cell)
   }
 
-  // Convertir en score composite : nb_adresses + bonus DPE
-  // bonus = dpe_poids * (chauds * 2 + tièdes * 1)
-  const result = new Map<string, { lat: number; lon: number; score: number; dpeChauds: number; dpeTièdes: number }>()
+  const result = new Map<string, { lat: number; lon: number; score: number; dpeChauds: number; dpeTièdes: number; count: number }>()
   for (const [key, cell] of grid) {
     const bonusDpe = dpeParams.poids * (cell.dpeChauds * 2 + cell.dpeTièdes * 1)
     result.set(key, {
       lat:       cell.lat,
       lon:       cell.lon,
       score:     cell.count + bonusDpe,
+      count:     cell.count,
       dpeChauds: cell.dpeChauds,
       dpeTièdes: cell.dpeTièdes,
     })
@@ -83,11 +76,12 @@ function buildDensityGrid(
   return result
 }
 
-// ── Etape 2 : Selectionner les N meilleurs pics (non-contigus) ───────────
+// Etape 2 : Selectionner les N meilleurs pics bien espaces
+// minDistDeg calcule depuis l'etendue reelle des donnees, pas depuis cellSizeDeg
 function selectPeaks(
-  grid: Map<string, { lat: number; lon: number; score: number; dpeChauds: number; dpeTièdes: number }>,
+  grid: Map<string, { lat: number; lon: number; score: number; dpeChauds: number; dpeTièdes: number; count: number }>,
   nb_zones: number,
-  minDistanceDeg: number
+  minDistDeg: number
 ): Array<{ lat: number; lon: number; score: number }> {
   const sorted = [...grid.values()].sort((a, b) => b.score - a.score)
   const peaks: Array<{ lat: number; lon: number; score: number }> = []
@@ -95,26 +89,39 @@ function selectPeaks(
   for (const cell of sorted) {
     if (peaks.length >= nb_zones) break
     const tooClose = peaks.some(p =>
-      Math.abs(p.lat - cell.lat) < minDistanceDeg &&
-      Math.abs(p.lon - cell.lon) < minDistanceDeg
+      Math.sqrt((p.lat - cell.lat)**2 + (p.lon - cell.lon)**2) < minDistDeg
     )
     if (!tooClose) peaks.push(cell)
   }
+
+  // Si pas assez de pics -> relaxer la contrainte progressivement
+  if (peaks.length < nb_zones) {
+    let relaxed = minDistDeg * 0.6
+    while (peaks.length < nb_zones && relaxed > 0.001) {
+      for (const cell of sorted) {
+        if (peaks.length >= nb_zones) break
+        if (peaks.some(p => p.lat === cell.lat && p.lon === cell.lon)) continue
+        const tooClose = peaks.some(p =>
+          Math.sqrt((p.lat - cell.lat)**2 + (p.lon - cell.lon)**2) < relaxed
+        )
+        if (!tooClose) peaks.push(cell)
+      }
+      relaxed *= 0.6
+    }
+  }
+
   return peaks
 }
 
-// ── Etape 3 : Expansion depuis chaque pic ───────────────────────────────
+// Etape 3 : Assigner chaque point au pic le plus proche et limiter a capacite
 function expandZones(
   peaks: Array<{ lat: number; lon: number; score: number }>,
-  points:        GeoPoint[],
-  capacite:      number
+  points: GeoPoint[],
+  capacite: number
 ): GeoPoint[][] {
-  // Pour chaque point, trouver le pic le plus proche
   const assigned: GeoPoint[][] = peaks.map(() => [])
-  const unassigned = [...points]
 
-  // Tri par distance au pic le plus proche, assignation greedy
-  for (const p of unassigned) {
+  for (const p of points) {
     let bestIdx = 0
     let bestDist = Infinity
     for (let i = 0; i < peaks.length; i++) {
@@ -124,7 +131,7 @@ function expandZones(
     assigned[bestIdx].push(p)
   }
 
-  // Limiter chaque zone a la capacite cible (garder les plus proches du centroid)
+  // Limiter a la capacite cible (garder les plus proches du centroid)
   return assigned.map((zone, i) => {
     if (zone.length <= capacite) return zone
     return zone
@@ -135,55 +142,68 @@ function expandZones(
   })
 }
 
-// ── Etape 4 : Calculer le centroid et le rayon reel ──────────────────────
-function buildZone(pts: GeoPoint[], rayon_alerte: number, dpeParams: DpeParams, prioritaire = false): DensityZone {
+// Calculer le centroid et rayon d'une zone
+function buildZone(pts: GeoPoint[], rayon_alerte: number, prioritaire = false): DensityZone {
   const lat = pts.reduce((s, p) => s + p.lat, 0) / pts.length
   const lon = pts.reduce((s, p) => s + p.lon, 0) / pts.length
-  const rayon = Math.max(...pts.map(p => haversine(lat, lon, p.lat, p.lon)))
-  const nbChauds = pts.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0)
-  const nbTièdes = pts.reduce((s, p) => s + (p.dpe_tièdes ?? 0), 0)
+  const rayon = pts.length > 1
+    ? Math.max(...pts.map(p => haversine(lat, lon, p.lat, p.lon)))
+    : 0
   return {
     centroid:        { lat, lon },
     points:          pts,
     rayon_metres:    Math.round(rayon),
     depasse_seuil:   rayon > rayon_alerte,
     dpe_prioritaire: prioritaire,
-    nb_dpe_chauds:   nbChauds,
-    nb_dpe_tièdes:   nbTièdes,
+    nb_dpe_chauds:   pts.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0),
+    nb_dpe_tièdes:   pts.reduce((s, p) => s + (p.dpe_tièdes ?? 0), 0),
   }
 }
 
-// ── Fonction principale ──────────────────────────────────────────────────
+// ── Fonction principale ──────────────────────────────────────────────────────
 export function generateDensityZones(
-  points:          GeoPoint[],
-  nb_zones:        number,
-  capacite_cible:  number,
-  rayon_alerte:    number,
-  dpeParams:       DpeParams = { poids: 0, seuil_inclusion: 10 }
+  points:         GeoPoint[],
+  nb_zones:       number,
+  capacite_cible: number,
+  rayon_alerte:   number,
+  dpeParams:      DpeParams = { poids: 0, seuil_inclusion: 10 }
 ): { zones: DensityZone[]; horsZone: GeoPoint[] } {
 
   if (points.length === 0) return { zones: [], horsZone: [] }
 
-  // Taille de cellule adaptative (vise ~15 pts/cellule)
-  const cellSizeDeg  = Math.sqrt(points.length / (nb_zones * 15)) * 0.02
-  const minDistPeaks = cellSizeDeg * 3
+  // Calculer l'etendue geographique reelle des points
+  const lats = points.map(p => p.lat)
+  const lons = points.map(p => p.lon)
+  const latMin = Math.min(...lats), latMax = Math.max(...lats)
+  const lonMin = Math.min(...lons), lonMax = Math.max(...lons)
+  const latRange = latMax - latMin
+  const lonRange = lonMax - lonMin
+
+  // cellSizeDeg : divise la zone en ~(nb_zones * 8) cellules
+  // Cible ~8 cellules par zone pour avoir assez de granularite
+  const area = latRange * lonRange
+  const nbCibles = nb_zones * 8
+  const cellSizeDeg = Math.max(
+    Math.sqrt(area / nbCibles),
+    0.005  // minimum 500m environ
+  )
+
+  // minDistDeg entre pics : espacement naturel si les zones etaient disposees en grille
+  // = cote de la grille / sqrt(nb_zones) avec facteur 0.6 pour autoriser du chevauchement
+  const minDistDeg = Math.min(latRange, lonRange) / Math.sqrt(nb_zones) * 0.6
 
   const grid  = buildDensityGrid(points, cellSizeDeg, dpeParams)
-  const peaks = selectPeaks(grid, nb_zones, minDistPeaks)
+  const peaks = selectPeaks(grid, nb_zones, minDistDeg)
 
   if (peaks.length === 0) return { zones: [], horsZone: points }
 
-  const expandedZones = expandZones(peaks, points, capacite_cible)
-
-  // Construire les zones initiales
-  let zones: DensityZone[] = expandedZones
+  const expanded = expandZones(peaks, points, capacite_cible)
+  let zones: DensityZone[] = expanded
     .filter(z => z.length > 0)
-    .map(z => buildZone(z, rayon_alerte, dpeParams))
+    .map(z => buildZone(z, rayon_alerte))
 
-  // ── Passe de rattrapage DPE ──────────────────────────────────────────
-  // Si dpe_poids > 0, verifier que les communes avec fort signal DPE sont couvertes
+  // ── Passe de rattrapage DPE ──────────────────────────────────────────────
   if (dpeParams.poids > 0 && dpeParams.seuil_inclusion > 0) {
-    // Calculer les DPE chauds par commune
     const dpeParCommune = new Map<string, { count: number; points: GeoPoint[] }>()
     for (const p of points) {
       if (!p.code_insee) continue
@@ -195,7 +215,6 @@ export function generateDensityZones(
       dpeParCommune.set(p.code_insee, entry)
     }
 
-    // Communes deja representees dans les zones
     const communesCouvertes = new Set<string>()
     for (const z of zones) {
       for (const p of z.points) {
@@ -203,31 +222,27 @@ export function generateDensityZones(
       }
     }
 
-    // Pour chaque commune non couverte avec signal DPE fort : forcer l'inclusion
     for (const [insee, data] of dpeParCommune) {
       if (communesCouvertes.has(insee)) continue
       if (data.count < dpeParams.seuil_inclusion) continue
 
-      // Prendre les adresses de cette commune (dans la limite de la capacite)
       const adressesDpe = data.points
         .sort((a, b) => (b.dpe_chauds ?? 0) - (a.dpe_chauds ?? 0))
         .slice(0, capacite_cible)
 
       if (adressesDpe.length === 0) continue
 
-      // Si on a deja nb_zones zones : remplacer la zone la moins peuplee
       if (zones.length >= nb_zones) {
-        const minIdx = zones.reduce((minI, z, i, arr) => z.points.length < arr[minI].points.length ? i : minI, 0)
-        zones[minIdx] = buildZone(adressesDpe, rayon_alerte, dpeParams, true)
+        // Remplacer la zone la moins peuplee
+        const minIdx = zones.reduce((m, z, i, arr) => z.points.length < arr[m].points.length ? i : m, 0)
+        zones[minIdx] = buildZone(adressesDpe, rayon_alerte, true)
       } else {
-        zones.push(buildZone(adressesDpe, rayon_alerte, dpeParams, true))
+        zones.push(buildZone(adressesDpe, rayon_alerte, true))
       }
-
       communesCouvertes.add(insee)
     }
   }
 
-  // Adresses hors-zone
   const assignedIds = new Set(zones.flatMap(z => z.points.map(p => p.id)))
   const horsZone = points.filter(p => !assignedIds.has(p.id))
 
