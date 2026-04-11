@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const nb_zones:          number  = body.nb_zones          ?? 12
   const capacite_cible:    number  = body.capacite_cible    ?? 100
-  const rayon_metres: number = body.rayon_metres ?? body.rayon_alerte_metres ?? 800
+  const rayon_metres: number = body.rayon_metres ?? body.rayon_metres ?? 800
   const exclure_commerces:    boolean = body.exclure_commerces ?? false
   // Parametres DPE
   const dpe_fenetre_mois:    number  = body.dpe_fenetre_mois    ?? 6
@@ -171,7 +171,7 @@ export async function POST(req: Request) {
 
     if (dz.depasse_seuil) {
       warnings.push(
-        `Zone ${i+1} : ${dz.points.length} adresses seulement (seuil ${rayon_alerte_metres}m atteint avant ${capacite_cible})`
+        `Zone ${i+1} : ${dz.points.length} adresses seulement (seuil ${rayon_metres}m atteint avant ${capacite_cible})`
       )
     }
 
@@ -222,6 +222,6 @@ export async function POST(req: Request) {
     nb_hors_zone: horsZone.length,
     nb_prospectables: prospectables.length,
     warnings,
-    config: { nb_zones, capacite_cible, rayon_alerte_metres, exclure_commerces },
+    config: { nb_zones, capacite_cible, rayon_metres, exclure_commerces },
   })
 }
