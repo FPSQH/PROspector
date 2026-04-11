@@ -118,7 +118,8 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
     const interactionData = {
       resultat:     'contact_etabli',
       type_contact: typeContact,
-      note:         note || null,
+      notes:        note || null,
+      statut_pipeline: 'prospect',
       date_relance: dateRelance || null,
     }
 
@@ -132,7 +133,8 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
         body: JSON.stringify({
           adresse_id:  adresse.id,
           type_contact: typeContact,
-          note:         note || null,
+          notes:        note || null,
+          statut_pipeline: 'prospect',
           date_relance: dateRelance || null,
           ...contact,
         }),
