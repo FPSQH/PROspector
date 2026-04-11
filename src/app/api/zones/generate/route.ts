@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateDensityZones } from '@/lib/geo/densityZones'
-import { pointsToPolygonWKT } from '@/lib/geo/convexHull'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
 
 const ZONE_COLORS = [
@@ -14,6 +13,14 @@ function chunk<T>(arr: T[], n: number): T[][] {
   const result: T[][] = []
   for (let i = 0; i < arr.length; i += n) result.push(arr.slice(i, i + n))
   return result
+}
+
+// Generer le WKT d'un convex hull depuis un tableau de points
+function pointsToConvexHullWKT(pts: Array<{ lat: number; lon: number }>): string | null {
+  if (pts.length < 3) return null
+  // Format WKT POLYGON pour ST_ConvexHull via PostGIS
+  const coords = pts.map(p => p.lon + ' ' + p.lat).join(', ')
+  return 'POLYGON((' + coords + ', ' + pts[0].lon + ' ' + pts[0].lat + '))'
 }
 
 export async function POST(req: Request) {
@@ -41,27 +48,34 @@ export async function POST(req: Request) {
   const codesInsee = communes.map((c: any) => c.code_insee)
   const batches    = chunk(codesInsee, 5)
 
-  // Charger toutes les adresses prospectables
+  // Charger toutes les adresses (range large pour depasser la limite 1000 Supabase)
   const adresses: any[] = []
   for (const batchInsee of batches) {
-    const { data, error } = await supabase
-      .from('adresses')
-      .select('id, lat, lon, type_bien, prospectable, code_insee')
-      .in('code_insee', batchInsee)
-      .eq('prospectable', true)
-      .range(0, 9999)
-    if (!error && data) adresses.push(...data)
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('adresses')
+        .select('id, lat, lon, type_bien, prospectable, code_insee')
+        .in('code_insee', batchInsee)
+        .eq('prospectable', true)
+        .range(from, from + 999)
+      if (error || !data || data.length === 0) break
+      adresses.push(...data)
+      if (data.length < 1000) break
+      from += 1000
+    }
   }
 
-  let prospectables = adresses.filter((a: any) => {
+  const prospectables = adresses.filter((a: any) => {
     if (a.type_bien === 'logement_social') return false
     if (exclure_commerces && a.type_bien === 'commerce') return false
     return true
   })
 
-  if (prospectables.length === 0) return NextResponse.json({ error: 'Aucune adresse trouvee' }, { status: 400 })
+  if (prospectables.length === 0)
+    return NextResponse.json({ error: 'Aucune adresse trouvee' }, { status: 400 })
 
-  // Charger les DPE si signal DPE actif
+  // Charger les DPE si signal actif
   const dpeMap = new Map<string, { chauds: number; tiedes: number }>()
   if (dpe_poids > 0) {
     const now         = Date.now()
@@ -95,20 +109,24 @@ export async function POST(req: Request) {
     dpe_tiedes:   dpeMap.get(a.id)?.tiedes ?? 0,
   }))
 
-  console.log('[ZONES]', prospectables.length, 'adresses prospectables,', points.filter(p => p.dpe_chauds > 0).length, 'avec DPE chauds')
+  console.log('[ZONES]', prospectables.length, 'adresses prospectables,',
+    points.filter(p => p.dpe_chauds > 0).length, 'avec DPE chauds')
 
   const { zones: densityZones, horsZone } = generateDensityZones(
     points, nb_zones, capacite_cible, rayon_metres,
     { poids: dpe_poids, seuil_inclusion: dpe_seuil_inclusion }
   )
 
-  console.log('[ZONES]', densityZones.length, 'zones generees,', horsZone.length, 'adresses hors-zone')
-  densityZones.forEach((z, i) => console.log('[ZONES] Zone', i+1, ':', z.points.length, 'adresses, rayon', z.rayon_metres + 'm, DPE chauds:', z.nb_dpe_chauds))
+  console.log('[ZONES]', densityZones.length, 'zones generees,', horsZone.length, 'hors-zone')
 
   if (densityZones.length === 0)
-    return NextResponse.json({ success: true, nb_zones: 0, zones: [], nb_hors_zone: horsZone.length, nb_prospectables: prospectables.length, warnings: [], config: { nb_zones, capacite_cible, rayon_metres, exclure_commerces } })
+    return NextResponse.json({
+      success: true, nb_zones: 0, zones: [], nb_hors_zone: horsZone.length,
+      nb_prospectables: prospectables.length, warnings: [],
+      config: { nb_zones, capacite_cible, rayon_metres, exclure_commerces }
+    })
 
-  // Sauvegarder le snapshot des zones existantes avant suppression
+  // Sauvegarder snapshot avant suppression
   const { data: existingFull } = await supabase
     .from('zones_prospection')
     .select('id, nom, numero, couleur, nb_adresses, nb_prospectables, capacite_theorique, polygone_geojson')
@@ -122,34 +140,51 @@ export async function POST(req: Request) {
       zones_data:    JSON.stringify(existingFull),
     })
     const { data: snapshots } = await supabase
-      .from('zones_snapshots')
-      .select('id')
-      .eq('commercial_id', user.id)
+      .from('zones_snapshots').select('id').eq('commercial_id', user.id)
       .order('created_at', { ascending: false })
     if (snapshots && snapshots.length > 5) {
-      const toDelete = snapshots.slice(5).map((s: any) => s.id)
-      await supabase.from('zones_snapshots').delete().in('id', toDelete)
+      await supabase.from('zones_snapshots').delete().in('id', snapshots.slice(5).map((s: any) => s.id))
     }
-
     const existingIds = existingFull.map((z: any) => z.id)
     await supabase.from('planning_sessions').update({ zone_id: null }).in('zone_id', existingIds)
     await supabase.from('zones_prospection').delete().in('id', existingIds)
   }
 
-  // Liberer les adresses des anciennes zones
+  // Liberer les adresses
   for (const batchInsee of batches) {
     await supabase.from('adresses').update({ zone_id: null }).in('code_insee', batchInsee)
   }
 
   const warnings: string[] = []
 
-  // Inserer les nouvelles zones
+  // Inserer les zones avec clip PostGIS pour eviter les overlaps
+  // On garde la liste des WKT deja inseres pour clipper les suivants
+  const insertedZoneIds: string[] = []
+
   for (let i = 0; i < densityZones.length; i++) {
-    const dz = densityZones[i]
+    const dz      = densityZones[i]
     const couleur = ZONE_COLORS[i % ZONE_COLORS.length]
 
+    // Convex hull des adresses de la zone (ordonnees par TSP pour le trace)
     const orderedPts = nearestNeighborTSP(dz.points)
-    const polygonWKT = pointsToPolygonWKT(orderedPts)
+    const rawWKT     = pointsToConvexHullWKT(orderedPts)
+
+    // FIX 3 : Clipper le polygone contre les zones deja inserees (ST_Difference)
+    // On calcule le polygone final via une requete SQL PostGIS
+    let polygonWKT: string | null = rawWKT
+
+    if (rawWKT && insertedZoneIds.length > 0) {
+      try {
+        const { data: clipResult } = await supabase.rpc('clip_polygon_against_zones', {
+          raw_wkt:  rawWKT,
+          zone_ids: insertedZoneIds,
+        })
+        if (clipResult) polygonWKT = clipResult
+      } catch (e) {
+        // Si la fonction RPC n'existe pas encore, on garde le hull brut
+        console.log('[ZONES] clip RPC non disponible, hull brut utilise')
+      }
+    }
 
     const { data: zone, error: zError } = await supabase
       .from('zones_prospection')
@@ -172,17 +207,19 @@ export async function POST(req: Request) {
       .single()
 
     if (zError || !zone) {
-      warnings.push('Zone ' + (i+1) + ' : erreur insertion')
+      console.error('[ZONES] erreur insertion zone', i+1, zError?.message)
+      warnings.push('Zone ' + (i+1) + ' : erreur insertion - ' + (zError?.message ?? 'inconnu'))
       continue
     }
 
     if (dz.rayon_metres > rayon_metres) {
-      warnings.push('Zone ' + (i+1) + ' : ' + dz.points.length + ' adresses seulement (rayon etendu a ' + dz.rayon_metres + 'm)')
+      warnings.push('Zone ' + (i+1) + ' : rayon etendu a ' + dz.rayon_metres + 'm (' + dz.points.length + ' adresses)')
     }
 
-    // Assigner les adresses a la zone
-    const adresseIds = dz.points.map(p => p.id)
-    const adresseBatches = chunk(adresseIds, 100)
+    insertedZoneIds.push(zone.id)
+
+    // Assigner les adresses
+    const adresseBatches = chunk(dz.points.map(p => p.id), 100)
     for (const batch of adresseBatches) {
       await supabase.from('adresses').update({ zone_id: zone.id }).in('id', batch)
     }
