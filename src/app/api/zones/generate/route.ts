@@ -78,21 +78,21 @@ export async function POST(req: Request) {
     const extWindowMs = dpe_fenetre_mois * 2 * 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
 
-    for (const batchInsee of batches) {
-      const { data: dpeRows } = await supabase
-        .from('dpe_logement')
-        .select('adresse_id, date_etablissement')
-        .in('code_insee', batchInsee)
-        .not('adresse_id', 'is', null)
-        .gte('date_etablissement', new Date(now - extWindowMs).toISOString().slice(0, 10))
+    // Requete unique pour toutes les communes (perf)
+    const sinceDate = new Date(now - extWindowMs).toISOString().slice(0, 10)
+    const { data: dpeRows } = await supabase
+      .from('dpe_logement')
+      .select('adresse_id, date_etablissement')
+      .in('code_insee', codesInsee)
+      .not('adresse_id', 'is', null)
+      .gte('date_etablissement', sinceDate)
 
-      for (const dpe of dpeRows ?? []) {
-        const ageMs = now - new Date(dpe.date_etablissement).getTime()
-        const entry = dpeMap.get(dpe.adresse_id) ?? { chauds: 0, tiedes: 0 }
-        if (ageMs <= dpeWindowMs)      entry.chauds++
-        else if (ageMs <= extWindowMs) entry.tiedes++
-        dpeMap.set(dpe.adresse_id, entry)
-      }
+    for (const dpe of dpeRows ?? []) {
+      const ageMs = now - new Date(dpe.date_etablissement).getTime()
+      const entry = dpeMap.get(dpe.adresse_id) ?? { chauds: 0, tiedes: 0 }
+      if (ageMs <= dpeWindowMs)      entry.chauds++
+      else if (ageMs <= extWindowMs) entry.tiedes++
+      dpeMap.set(dpe.adresse_id, entry)
     }
   }
 
