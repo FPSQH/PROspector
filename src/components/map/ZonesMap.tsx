@@ -61,7 +61,7 @@ export default function ZonesMap({
 
   // Qualification rapide d'une adresse
   const [qualifyPopup, setQualifyPopup] = useState<{
-    id: string; lat: number; lon: number; type_bien?: string
+    id: string; lat: number; lon: number; type_bien?: string; has_commerce?: boolean
     x: number; y: number
   } | null>(null)
 
@@ -182,9 +182,9 @@ export default function ZonesMap({
           const feat = e.features?.[0]
           if (!feat) return
           e.originalEvent.stopPropagation()
-          const { id, type_bien } = feat.properties
+          const { id, type_bien, has_commerce } = feat.properties
           const { x, y } = e.point
-          setQualifyPopup({ id, lat: feat.geometry.coordinates[1], lon: feat.geometry.coordinates[0], type_bien, x, y })
+          setQualifyPopup({ id, lat: feat.geometry.coordinates[1], lon: feat.geometry.coordinates[0], type_bien, has_commerce, x, y })
           map.getCanvas().style.cursor = 'default'
         })
         map.on('mouseenter', 'all-addr-layer', () => { map.getCanvas().style.cursor = 'pointer' })
@@ -264,7 +264,7 @@ export default function ZonesMap({
       const fc = { type: 'FeatureCollection' as const, features: data.adresses.map((a: any) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-        properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu' }
+        properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu', has_commerce: a.has_commerce ?? false }
       }))}
       ;(map.getSource('all-addr') as any)?.setData(fc)
       map.setLayoutProperty('all-addr-layer', 'visibility', 'visible')
@@ -292,15 +292,14 @@ export default function ZonesMap({
   }, [showDpe, mapLoaded])
 
   // ── Qualification adresse ───────────────────────────────────────────────
-  const qualifyAdresse = useCallback(async (id: string, type_bien: string) => {
+  const qualifyAdresse = useCallback(async (id: string, type_bien: string, has_commerce: boolean) => {
     setQualifyPopup(null)
     await fetch('/api/adresses/' + id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type_bien }),
+      body: JSON.stringify({ type_bien, has_commerce }),
     })
-    // Mettre à jour localement le point sur la carte
-    setAllAddr(prev => prev.map(a => a.id === id ? { ...a, type_bien } : a))
+    setAllAddr(prev => prev.map(a => a.id === id ? { ...a, type_bien, has_commerce } : a))
     const map = mapRef.current
     if (!map) return
     const fc = { type: 'FeatureCollection' as const, features: allAddr.map((a: any) => ({
@@ -402,7 +401,26 @@ export default function ZonesMap({
                 </button>
               ))}
             </div>
-            <button
+            {/* Checkbox has_commerce — visible seulement pour appartement */}
+            {qualifyPopup.type_bien === 'appartement' && (
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginTop: 8,
+                padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
+                border: '1.5px solid ' + (qualifyPopup.has_commerce ? '#FF9800' : '#E8E6DF'),
+                background: qualifyPopup.has_commerce ? '#FFF3E0' : '#F8F7F4',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={qualifyPopup.has_commerce ?? false}
+                  onChange={e => setQualifyPopup(p => p ? { ...p, has_commerce: e.target.checked } : p)}
+                  style={{ accentColor: '#FF9800', width: 15, height: 15, flexShrink: 0 }}
+                />
+                <span style={{ fontSize: 13, color: '#2C2C2A' }}>
+                  🏪 Commerce en rez-de-chaussee
+                </span>
+              </label>
+            )}
+                        <button
               onClick={() => setQualifyPopup(null)}
               style={{ marginTop: 8, width: '100%', padding: '5px', borderRadius: 6, border: '1px solid #E8E6DF', background: '#F8F7F4', cursor: 'pointer', fontSize: 12, color: '#5F5E5A' }}
             >
