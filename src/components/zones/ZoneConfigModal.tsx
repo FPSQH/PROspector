@@ -80,6 +80,21 @@ function dpePoidLabel(poids: number): string {
 }
 
 export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props) {
+    const [prequalLoading, setPrequalLoading] = useState(false)
+  const [prequalResult, setPrequalResult]   = useState<{ nb_qualifiees: number; nb_adresses_distinctes: number } | null>(null)
+
+  const runPrequalifier = async () => {
+    setPrequalLoading(true)
+    setPrequalResult(null)
+    try {
+      const res = await fetch('/api/adresses/prequalifier', { method: 'POST' })
+      const data = await res.json()
+      setPrequalResult(data)
+    } finally {
+      setPrequalLoading(false)
+    }
+  }
+
   const [config, setConfig] = useState<ZoneConfig>(DEFAULT_CONFIG)
   const set = (key: keyof ZoneConfig, value: number | boolean) =>
     setConfig(prev => ({ ...prev, [key]: value }))
@@ -225,6 +240,37 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
           </div>
 
           {/* Boutons */}
+          
+          {/* ─── Section : Pre-qualification DPE ─── */}
+          <div style={{ borderTop: '1px solid #E8E6DF', paddingTop: 20, marginBottom: 20 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#B4B2A9', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 10px' }}>
+              Pre-qualification depuis les DPE
+            </p>
+            <p style={{ fontSize: 12, color: '#5F5E5A', marginBottom: 12, lineHeight: 1.5 }}>
+              Qualifie automatiquement les adresses ayant un DPE : maison, appartement ou immeuble mixte (appart + commerce).
+              Les qualifications manuelles existantes ne sont pas ecrasees.
+            </p>
+            <button
+              onClick={runPrequalifier}
+              disabled={prequalLoading}
+              style={{
+                width: '100%', padding: '9px 16px', borderRadius: 8,
+                background: prequalLoading ? '#E8E6DF' : '#F0FDF4',
+                border: '1.5px solid ' + (prequalLoading ? '#E8E6DF' : '#1D9E75'),
+                color: prequalLoading ? '#B4B2A9' : '#0F6E56',
+                cursor: prequalLoading ? 'not-allowed' : 'pointer',
+                fontSize: 13, fontWeight: 600,
+              }}
+            >
+              {prequalLoading ? 'Qualification en cours...' : 'Qualifier les adresses depuis les DPE'}
+            </button>
+            {prequalResult && (
+              <div style={{ marginTop: 10, background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#0F6E56' }}>
+                {prequalResult.nb_qualifiees} adresse(s) qualifiee(s) sur {prequalResult.nb_adresses_distinctes} adresses avec DPE.
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
             <button onClick={onCancel} style={{
               padding: '9px 20px', borderRadius: 8, border: '1px solid #E8E6DF',
