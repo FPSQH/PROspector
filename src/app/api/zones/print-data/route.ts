@@ -10,7 +10,6 @@ export async function GET(req: Request) {
   const ids = (searchParams.get('ids') ?? '').split(',').filter(Boolean)
   if (!ids.length) return NextResponse.json({ zones: [] })
 
-  // Charger les zones
   const { data: zonesRaw } = await supabase
     .from('zones_prospection')
     .select('id, nom, numero, couleur, nb_adresses, nb_prospectables, nb_dpe_chauds')
@@ -20,9 +19,14 @@ export async function GET(req: Request) {
 
   if (!zonesRaw?.length) return NextResponse.json({ zones: [] })
 
-  // Charger les adresses de chaque zone
+  // Calculer les DPE < 6 mois reels par zone (depuis dpe_logement)
+  const since6m = new Date()
+  since6m.setMonth(since6m.getMonth() - 6)
+  const since6mStr = since6m.toISOString().slice(0, 10)
+
   const zones = []
   for (const z of zonesRaw) {
+    // Adresses de la zone
     const adresses: any[] = []
     let from = 0
     while (true) {
@@ -36,7 +40,20 @@ export async function GET(req: Request) {
       if (data.length < 1000) break
       from += 1000
     }
-    zones.push({ ...z, adresses })
+
+    // Compter les DPE < 6 mois matches sur les adresses de cette zone
+    // Via une requete sur dpe_logement jointe aux adresses de la zone
+    const { count: dpeCount } = await supabase
+      .from('dpe_logement')
+      .select('id', { count: 'exact', head: true })
+      .gte('date_etablissement', since6mStr)
+      .not('adresse_id', 'is', null)
+      .in('adresse_id', adresses.slice(0, 400).map(a => a.id).filter(Boolean))
+
+    // nb_dpe_chauds depuis la colonne zone si dispo, sinon count live
+    const nbDpeChauds = z.nb_dpe_chauds > 0 ? z.nb_dpe_chauds : (dpeCount ?? 0)
+
+    zones.push({ ...z, nb_dpe_chauds: nbDpeChauds, adresses })
   }
 
   return NextResponse.json({ zones })
