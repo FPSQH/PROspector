@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const nb_zones:          number  = body.nb_zones          ?? 12
   const capacite_cible:    number  = body.capacite_cible    ?? 100
-  const rayon_alerte_metres: number  = body.rayon_alerte_metres ?? 500
+  const rayon_metres: number = body.rayon_metres ?? body.rayon_alerte_metres ?? 800
   const exclure_commerces:    boolean = body.exclure_commerces ?? false
   // Parametres DPE
   const dpe_fenetre_mois:    number  = body.dpe_fenetre_mois    ?? 6
@@ -103,12 +103,12 @@ export async function POST(req: Request) {
     prospectable: true,
     code_insee:  a.code_insee,
     dpe_chauds:  dpeMap.get(a.id)?.chauds ?? 0,
-    dpe_tièdes:  dpeMap.get(a.id)?.tièdes ?? 0,
+    dpe_tiedes:  dpeMap.get(a.id)?.tièdes ?? 0,
   }))
 
   // Nouvel algorithme density-based
   const { zones: densityZones, horsZone } = generateDensityZones(
-    points, nb_zones, capacite_cible, rayon_alerte_metres,
+    points, nb_zones, capacite_cible, rayon_metres,
     { poids: dpe_poids, seuil_inclusion: dpe_seuil_inclusion }
   )
 
@@ -192,7 +192,7 @@ export async function POST(req: Request) {
         nb_adresses:          dz.points.length,
         nb_prospectables:     dz.points.length,
         nb_dpe_chauds:        (dz as any).nb_dpe_chauds ?? 0,
-        nb_dpe_tièdes:        (dz as any).nb_dpe_tièdes ?? 0,
+        nb_dpe_tiedes:        (dz as any).nb_dpe_tiedes ?? 0,
         dpe_prioritaire:      (dz as any).dpe_prioritaire ?? false,
         nb_logements_sociaux: 0,
         statut:               'active',
