@@ -5,13 +5,12 @@ import { useState } from 'react'
 interface ZoneConfig {
   nb_zones:                  number
   capacite_cible:            number
-  rayon_alerte_metres:       number
+  rayon_metres:              number   // LIMITE DURE
   exclure_commerces:         boolean
   exclure_logements_sociaux: boolean
-  // Parametres DPE
-  dpe_fenetre_mois:    number   // 3 | 6 | 12 | 24
-  dpe_poids:           number   // 0..1  (0 = ignore, 1 = dominant)
-  dpe_seuil_inclusion: number   // nb DPE min pour forcer l'inclusion d'une commune
+  dpe_fenetre_mois:          number   // 3 | 6 | 12 | 24
+  dpe_poids:                 number   // 0..2 (0% a 200%)
+  dpe_seuil_inclusion:       number
 }
 
 export type { ZoneConfig }
@@ -19,11 +18,11 @@ export type { ZoneConfig }
 const DEFAULT_CONFIG: ZoneConfig = {
   nb_zones:                  12,
   capacite_cible:            100,
-  rayon_alerte_metres:       500,
+  rayon_metres:              800,
   exclure_commerces:         false,
   exclure_logements_sociaux: true,
   dpe_fenetre_mois:          6,
-  dpe_poids:                 0.4,
+  dpe_poids:                 1.0,
   dpe_seuil_inclusion:       10,
 }
 
@@ -34,15 +33,18 @@ interface Props {
 }
 
 function Slider({
-  label, value, min, max, step = 1, unit = '', onChange, hint,
+  label, value, min, max, step = 1, unit = '', onChange, hint, sublabel,
 }: {
   label: string; value: number; min: number; max: number
-  step?: number; unit?: string; onChange: (v: number) => void; hint?: string
+  step?: number; unit?: string; onChange: (v: number) => void; hint?: string; sublabel?: string
 }) {
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>{label}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div>
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#2C2C2A' }}>{label}</span>
+          {sublabel && <span style={{ fontSize: 11, color: '#B4B2A9', marginLeft: 6 }}>{sublabel}</span>}
+        </div>
         <span style={{ fontSize: 13, fontWeight: 700, color: '#1D9E75' }}>{value}{unit}</span>
       </div>
       <div style={{ position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}>
@@ -69,22 +71,22 @@ const DPE_FENETRES = [
   { label: '24 mois', value: 24, desc: 'Tous les diagnostics recents (signal large)' },
 ]
 
+function dpePoidLabel(poids: number): string {
+  if (poids === 0)       return 'DPE ignore — selection par densite uniquement'
+  if (poids <= 0.5)      return 'Faible — DPE complement a la densite'
+  if (poids <= 1.0)      return 'Equilibre — densite et DPE a egalite'
+  if (poids <= 1.5)      return 'Fort — DPE priorise sur la densite'
+  return                        'Dominant — DPE determinant dans la selection'
+}
+
 export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props) {
   const [config, setConfig] = useState<ZoneConfig>(DEFAULT_CONFIG)
   const set = (key: keyof ZoneConfig, value: number | boolean) =>
     setConfig(prev => ({ ...prev, [key]: value }))
 
   const zonesRecommandees = Math.ceil(nbAdressesTotal / config.capacite_cible)
-  const totalEstime = config.nb_zones * config.capacite_cible
   const dpeActif = config.dpe_poids > 0
-  const dpePoidsPct = Math.round(config.dpe_poids * 100)
-
-  const dpePoidLabel =
-    config.dpe_poids === 0   ? 'DPE ignore — selection par densite uniquement' :
-    config.dpe_poids <= 0.2  ? 'Faible — legende complement' :
-    config.dpe_poids <= 0.5  ? 'Equilibre — densite et DPE poids egaux' :
-    config.dpe_poids <= 0.7  ? 'Fort — DPE prioritaire' :
-                               'Dominant — DPE presque exclusif'
+  const dpePct   = Math.round(config.dpe_poids * 100)
 
   return (
     <div onClick={onCancel} style={{
@@ -120,22 +122,25 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
 
         <div style={{ padding: '20px 24px' }}>
 
-          {/* ─── Section : Zones ─── */}
+          {/* Section zones */}
           <p style={{ fontSize: 11, fontWeight: 700, color: '#B4B2A9', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 14px' }}>
             Decoupage en zones
           </p>
 
-          <Slider label="Nombre de zones" value={config.nb_zones} min={6} max={30}
+          <Slider label="Nombre de zones" value={config.nb_zones} min={3} max={30}
             onChange={v => set('nb_zones', v)}
             hint={'recommande : ' + zonesRecommandees} />
 
-          <Slider label="Capacite cible par zone" value={config.capacite_cible} min={40} max={400} step={5} unit=" adresses"
-            onChange={v => set('capacite_cible', v)}
-            hint={totalEstime.toLocaleString('fr-FR') + ' adresses estimees'} />
+          <Slider label="Adresses max par zone" value={config.capacite_cible} min={40} max={400} step={5} unit=" adresses"
+            onChange={v => set('capacite_cible', v)} />
 
-          <Slider label="Seuil alerte rayon" value={config.rayon_alerte_metres} min={300} max={1500} step={50} unit="m"
-            onChange={v => set('rayon_alerte_metres', v)}
-            hint="information uniquement" />
+          <Slider
+            label="Rayon maximum par zone"
+            sublabel="(limite stricte)"
+            value={config.rayon_metres} min={200} max={2000} step={50} unit="m"
+            onChange={v => set('rayon_metres', v)}
+            hint="Aucune adresse au-dela de ce rayon depuis le centre"
+          />
 
           {/* Toggles */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
@@ -144,7 +149,8 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
               { key: 'exclure_commerces' as const, label: 'Exclure les commerces', locked: false },
             ]).map(({ key, label, locked }) => (
               <label key={key} style={{
-                display: 'flex', alignItems: 'center', gap: 10, cursor: locked ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10,
+                cursor: locked ? 'not-allowed' : 'pointer',
                 padding: '10px 12px', borderRadius: 8, background: '#F8F7F4',
               }}>
                 <input type="checkbox" checked={config[key] as boolean} disabled={locked}
@@ -158,7 +164,7 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
             ))}
           </div>
 
-          {/* ─── Section : Signal DPE ─── */}
+          {/* Section DPE */}
           <div style={{ borderTop: '1px solid #E8E6DF', paddingTop: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#B4B2A9', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 }}>
@@ -172,24 +178,24 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
             </div>
 
             <p style={{ fontSize: 12, color: '#5F5E5A', marginBottom: 16, lineHeight: 1.55 }}>
-              Un DPE recent signale une intention de vente imminente. Activez ce signal pour prioriser les zones a forte activite DPE, meme si leur densite d&apos;adresses est plus faible.
+              Score de selection = 1 pt par adresse + <strong>{dpePct}%</strong> par DPE recent.
+              Un secteur avec beaucoup de DPE sera priorise dans la selection des zones.
             </p>
 
-            {/* Poids DPE */}
+            {/* Slider poids DPE — 0 a 200% */}
             <Slider
-              label="Poids du signal DPE dans la selection"
-              value={dpePoidsPct} min={0} max={100} step={10} unit="%"
+              label="Poids du signal DPE"
+              value={dpePct} min={0} max={200} step={10} unit="%"
               onChange={v => set('dpe_poids', v / 100)}
-              hint={dpePoidLabel}
+              hint={dpePoidLabel(config.dpe_poids)}
             />
 
-            {/* Options visibles si DPE actif */}
             {dpeActif && (
               <>
                 {/* Fenetre temporelle */}
                 <div style={{ marginBottom: 20 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#2C2C2A', margin: '0 0 10px' }}>
-                    Fenetre temporelle
+                    Fenetre temporelle DPE
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
                     {DPE_FENETRES.map(f => (
@@ -199,9 +205,7 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
                         background: config.dpe_fenetre_mois === f.value ? '#E8F7F2' : '#fff',
                         color: config.dpe_fenetre_mois === f.value ? '#0F6E56' : '#5F5E5A',
                         cursor: 'pointer', fontSize: 13, fontWeight: 600, textAlign: 'center',
-                      }}>
-                        {f.label}
-                      </button>
+                      }}>{f.label}</button>
                     ))}
                   </div>
                   <p style={{ fontSize: 11, color: '#5F5E5A', margin: '8px 0 0', lineHeight: 1.4 }}>
@@ -209,41 +213,28 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
                   </p>
                 </div>
 
-                {/* Seuil d'inclusion forcee */}
-                <Slider
-                  label="Inclusion forcee a partir de"
-                  value={config.dpe_seuil_inclusion} min={5} max={30} step={1} unit=" DPE"
-                  onChange={v => set('dpe_seuil_inclusion', v)}
-                  hint="Garantit l&apos;inclusion d&apos;une commune a fort signal DPE"
-                />
-
                 {/* Resume */}
                 <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px', marginBottom: 20 }}>
                   <p style={{ margin: 0, fontSize: 12, color: '#0F6E56', lineHeight: 1.6 }}>
-                    Les zones integreront les DPE des <strong>{config.dpe_fenetre_mois} derniers mois</strong> avec un poids de <strong>{dpePoidsPct}%</strong> dans la selection.
-                    Toute commune ayant au moins <strong>{config.dpe_seuil_inclusion} DPE recents</strong> sera automatiquement incluse dans les zones, meme si sa densite d&apos;adresses est faible.
+                    Chaque adresse = <strong>1 pt</strong> &bull; Chaque DPE des <strong>{config.dpe_fenetre_mois} derniers mois</strong> = <strong>{dpePct / 100} pt</strong>.
+                    Les hotspots avec le meilleur score seront selectionnes en priorite.
                   </p>
                 </div>
               </>
             )}
           </div>
 
-          {/* ─── Boutons ─── */}
+          {/* Boutons */}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
             <button onClick={onCancel} style={{
               padding: '9px 20px', borderRadius: 8, border: '1px solid #E8E6DF',
               background: '#fff', color: '#5F5E5A', cursor: 'pointer', fontSize: 14, fontWeight: 500,
-            }}>
-              Annuler
-            </button>
+            }}>Annuler</button>
             <button onClick={() => onConfirm(config)} style={{
               padding: '9px 24px', borderRadius: 8, background: '#1D9E75',
               border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600,
-            }}>
-              Generer les zones
-            </button>
+            }}>Generer les zones</button>
           </div>
-
         </div>
       </div>
     </div>
