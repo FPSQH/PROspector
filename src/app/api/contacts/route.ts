@@ -7,8 +7,8 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const filtre       = searchParams.get('filtre')      ?? 'tous'
-  const recherche    = searchParams.get('recherche')   ?? ''
+  const filtre       = searchParams.get('filtre')       ?? 'tous'
+  const recherche    = searchParams.get('recherche')    ?? ''
   const type_contact = searchParams.get('type_contact') ?? ''
 
   let query = supabase
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       nom, prenom, tel1, tel2, email1,
       type_contact, notes, date_relance,
       statut_pipeline, created_at, updated_at,
-      adresses ( numero, nom_voie, code_postal, nom_commune )
+      adresses ( id, numero, nom_voie, code_postal, commune )
     `)
     .eq('commercial_id', user.id)
     .order('updated_at', { ascending: false })
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       .lte('date_relance', new Date().toISOString().split('T')[0])
   }
   if (type_contact) query = query.eq('type_contact', type_contact)
-  if (recherche) query = query.or(
+  if (recherche)    query = query.or(
     'nom.ilike.%' + recherche + '%,prenom.ilike.%' + recherche + '%,notes.ilike.%' + recherche + '%'
   )
 
