@@ -77,9 +77,8 @@ export async function POST(req: Request) {
     const dpeWindowMs = dpe_fenetre_mois * 30 * 24 * 60 * 60 * 1000
     const extWindowMs = dpe_fenetre_mois * 2 * 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
-
-    // Requete unique pour toutes les communes (perf)
     const sinceDate = new Date(now - extWindowMs).toISOString().slice(0, 10)
+
     const { data: dpeRows } = await supabase
       .from('dpe_logement')
       .select('adresse_id, date_etablissement')
@@ -95,7 +94,6 @@ export async function POST(req: Request) {
       dpeMap.set(dpe.adresse_id, entry)
     }
   }
-
   const points = prospectables.map((a: any) => ({
     id:          a.id,
     lat:         a.lat,
