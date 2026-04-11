@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       .select('id, lat, lon, type_bien, prospectable, code_insee')
       .in('code_insee', batchInsee)
       .eq('prospectable', true)
+      .range(0, 9999)
     if (!error && data) adresses.push(...data)
   }
 
