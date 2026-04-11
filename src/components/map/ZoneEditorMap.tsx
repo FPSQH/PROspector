@@ -618,7 +618,7 @@ export default function ZoneEditorMap({
       return
     }
     setLoadingOverlay(true)
-    fetch('/api/dpe/recents?mois=12')
+    fetch('/api/dpe/secteur?mois=12')
       .then(r => r.json())
       .then(data => {
         if (!data.points) return
