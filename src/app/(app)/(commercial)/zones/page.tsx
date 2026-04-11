@@ -65,6 +65,13 @@ const PALETTE = [
 ]
 
 export default function ZonesPage() {
+  const [selectedForPrint, setSelectedForPrint] = useState<Set<string>>(new Set())
+
+  const togglePrint = (id: string) => setSelectedForPrint(prev => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
+  })
+  const selectAllForPrint = () => setSelectedForPrint(new Set(zones.map(z => z.id)))
+
   const [zones, setZones]           = useState<Zone[]>([])
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
   const [itineraire, setItineraire]  = useState<AdresseItineraire[]>([])
@@ -393,6 +400,18 @@ export default function ZonesPage() {
               {resetting ? '…' : '🗑 Reset'}
             </button>
           )}
+          {selectedForPrint.size > 0 && (
+            <button
+              onClick={() => window.open('/zones/print?ids=' + [...selectedForPrint].join(','), '_blank')}
+              style={{
+                padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                background: '#fff', border: '1.5px solid #1D9E75', color: '#1D9E75',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              🖨 Imprimer ({selectedForPrint.size})
+            </button>
+          )}
           <button
             onClick={handleGenerateClick}
             disabled={generating}
@@ -432,6 +451,18 @@ export default function ZonesPage() {
               {label}
             </span>
           ))}
+          {zones.length > 0 && (
+            <div style={{ padding: '6px 16px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={selectAllForPrint} style={{ fontSize: 11, color: '#1D9E75', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                Tout selectionner
+              </button>
+              {selectedForPrint.size > 0 && (
+                <button onClick={() => setSelectedForPrint(new Set())} style={{ fontSize: 11, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  Deselectionner ({selectedForPrint.size})
+                </button>
+              )}
+            </div>
+          )}
           <span style={{ marginLeft: 'auto', color: '#a16207' }}>
             {nbDpeRecents > 0 ? `${nbDpeRecents} adresses` : 'Aucun DPE récent trouvé'}
           </span>
@@ -546,6 +577,13 @@ export default function ZonesPage() {
                         display: 'flex', alignItems: 'center', gap: 10,
                       }}
                     >
+                      <input
+                        type="checkbox"
+                        checked={selectedForPrint.has(zone.id)}
+                        onChange={e => { e.stopPropagation(); togglePrint(zone.id) }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ accentColor: '#1D9E75', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }}
+                      />
                       <div style={{ width: 12, height: 12, borderRadius: '50%', background: zone.couleur, flexShrink: 0 }}/>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1a1a18', display: 'flex', alignItems: 'center', gap: 5 }}>
