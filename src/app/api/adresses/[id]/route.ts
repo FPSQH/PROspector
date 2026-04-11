@@ -1,36 +1,47 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-type Params = { params: { id: string } }
-
-// PATCH /api/adresses/[id]
-// Permet de mettre à jour les infos métier d'une adresse :
-// nom_boite, type_bien, nb_bal
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
+  const { type_bien, has_commerce } = body
 
-  // Seuls ces champs sont modifiables par le commercial
-  const allowed = ['nom_boite', 'type_bien', 'nb_bal']
-  const updates: any = {}
-  for (const key of allowed) {
-    if (key in body) updates[key] = body[key]
-  }
+  const update: Record<string, any> = {}
+  if (type_bien   !== undefined) update.type_bien   = type_bien
+  if (has_commerce !== undefined) update.has_commerce = has_commerce
 
-  if (Object.keys(updates).length === 0) {
-    return NextResponse.json({ error: 'Aucun champ valide' }, { status: 400 })
-  }
-
-  updates.updated_at = new Date().toISOString()
+  if (Object.keys(update).length === 0)
+    return NextResponse.json({ error: 'Aucune donnee a mettre a jour' }, { status: 400 })
 
   const { data, error } = await supabase
     .from('adresses')
-    .update(updates)
+    .update(update)
     .eq('id', params.id)
-    .select('id, nom_boite, type_bien, nb_bal')
+    .select('id, type_bien, has_commerce')
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ adresse: data })
+}
+
+export async function GET(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const { data, error } = await supabase
+    .from('adresses')
+    .select('id, lat, lon, type_bien, has_commerce, prospectable, nb_bal')
+    .eq('id', params.id)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
