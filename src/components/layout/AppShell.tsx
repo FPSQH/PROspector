@@ -82,11 +82,10 @@ const NAV_ITEMS: NavItem[] = [
     match: ['/terrain'],
   },
   {
-    href:     '/contacts',
-    label:    'Contacts',
-    icon:     <IconContacts />,
-    match:    ['/contacts'],
-    disabled: true, // Phase 4
+    href:  '/contacts',
+    label: 'Contacts',
+    icon:  <IconContacts />,
+    match: ['/contacts'],
   },
 ]
 
