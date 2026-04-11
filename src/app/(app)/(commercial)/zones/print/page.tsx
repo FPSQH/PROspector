@@ -23,10 +23,9 @@ function getMapUrl(adresses: Array<{ lat: number; lon: number }>, width = 680, h
   const lonMin = Math.min(...lons), lonMax = Math.max(...lons)
   const padLat = Math.max((latMax - latMin) * 0.25, 0.005)
   const padLon = Math.max((lonMax - lonMin) * 0.25, 0.005)
-  const bbox = [lonMin-padLon, latMin-padLat, lonMax+padLon, latMax+padLat]
-  return 'https://data.geopf.fr/wms-r?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap' +
-    '&LAYERS=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLES=&SRS=EPSG:4326' +
-    '&BBOX=' + bbox.join(',') + '&WIDTH=' + width + '&HEIGHT=' + height + '&FORMAT=image/png'
+  const bbox = [lonMin-padLon, latMin-padLat, lonMax+padLon, latMax+padLat].map(v => v.toFixed(6)).join(',')
+  // Proxy serveur pour eviter les blocages CORS/Referer sur IGN
+  return '/api/map-tile?bbox=' + bbox + '&width=' + width + '&height=' + height
 }
 
 function getSvgPoints(adresses: Array<{ lat: number; lon: number; type_bien: string }>, mapW = 680, mapH = 400): string {
