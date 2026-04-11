@@ -1,5 +1,35 @@
 'use client'
 
+        // Overlay : toutes les adresses du secteur
+        map.addLayer({
+          id: 'all-adresses-circle', type: 'circle', source: 'all-adresses',
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 4,
+            'circle-color': ['match', ['get', 'type_bien'],
+              'maison', '#4CAF50', 'appartement', '#2196F3',
+              'commerce', '#FF9800', '#9E9E9E'
+            ],
+            'circle-opacity': 0.75,
+            'circle-stroke-width': 0.5,
+            'circle-stroke-color': '#fff',
+          }
+        })
+        // Overlay : DPE recents
+        map.addLayer({
+          id: 'dpe-overlay-circle', type: 'circle', source: 'dpe-overlay',
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 6,
+            'circle-color': ['match', ['get', 'anciennete'],
+              'chaud', '#E63946', 'tiede', '#FF9800', '#FFD54F'
+            ],
+            'circle-opacity': 0.9,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#fff',
+          }
+        })
+
 import { useEffect, useRef, useState } from 'react'
 
 interface Zone {
@@ -39,6 +69,11 @@ export default function ZoneEditorMap({
   const [adresses, setAdresses]               = useState<any[]>([])
   const [loadingAdresses, setLoadingAdresses] = useState(false)
   const [satellite, setSatellite]             = useState(false)
+  const [showAllAdresses, setShowAllAdresses]  = useState(false)
+  const [showDpe, setShowDpe]                  = useState(false)
+  const [allAdresses, setAllAdresses]          = useState<any[]>([])
+  const [dpePoints, setDpePoints]              = useState<any[]>([])
+  const [loadingOverlay, setLoadingOverlay]    = useState(false)
 
   // Garder les refs à jour à chaque render pour éviter les closures stale
   useEffect(() => { zonesRef.current = zones }, [zones])
@@ -101,7 +136,9 @@ export default function ZoneEditorMap({
         map.addSource('draw-poly',    { type: 'geojson', data: emptyFC() })
         map.addSource('draw-points',  { type: 'geojson', data: emptyFC() })
         map.addSource('edit-vertices',{ type: 'geojson', data: emptyFC() })
-        map.addSource('adresses-zone', { type: 'geojson', data: emptyFC() })
+        map.addSource('adresses-zone',  { type: 'geojson', data: emptyFC() })
+        map.addSource('all-adresses',   { type: 'geojson', data: emptyFC() })
+        map.addSource('dpe-overlay',    { type: 'geojson', data: emptyFC() })
 
         // Toutes les zones — fond atténué
         map.addLayer({ id: 'zones-bg-fill', type: 'fill', source: 'zones-bg',
@@ -536,11 +573,116 @@ export default function ZoneEditorMap({
     ;(map.getSource('edit-vertices') as any)?.setData(fc([...mainVerts, ...midVerts]))
   }
 
+  // Toggle adresses secteur
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+    if (!showAllAdresses) {
+      if (map.getLayer('all-adresses-circle')) map.setLayoutProperty('all-adresses-circle', 'visibility', 'none')
+      return
+    }
+    if (allAdresses.length > 0) {
+      if (map.getLayer('all-adresses-circle')) map.setLayoutProperty('all-adresses-circle', 'visibility', 'visible')
+      return
+    }
+    setLoadingOverlay(true)
+    fetch('/api/adresses/secteur')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.adresses) return
+        setAllAdresses(data.adresses)
+        const fc = {
+          type: 'FeatureCollection' as const,
+          features: data.adresses.map((a: any) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
+            properties: { type_bien: a.type_bien }
+          }))
+        }
+        ;(map.getSource('all-adresses') as any)?.setData(fc)
+        if (map.getLayer('all-adresses-circle')) map.setLayoutProperty('all-adresses-circle', 'visibility', 'visible')
+      })
+      .finally(() => setLoadingOverlay(false))
+  }, [showAllAdresses, mapLoaded])
+
+  // Toggle DPE recents
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+    if (!showDpe) {
+      if (map.getLayer('dpe-overlay-circle')) map.setLayoutProperty('dpe-overlay-circle', 'visibility', 'none')
+      return
+    }
+    if (dpePoints.length > 0) {
+      if (map.getLayer('dpe-overlay-circle')) map.setLayoutProperty('dpe-overlay-circle', 'visibility', 'visible')
+      return
+    }
+    setLoadingOverlay(true)
+    fetch('/api/dpe/recents?mois=12')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.points) return
+        setDpePoints(data.points)
+        const fc = {
+          type: 'FeatureCollection' as const,
+          features: data.points.map((p: any) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+            properties: { anciennete: p.anciennete }
+          }))
+        }
+        ;(map.getSource('dpe-overlay') as any)?.setData(fc)
+        if (map.getLayer('dpe-overlay-circle')) map.setLayoutProperty('dpe-overlay-circle', 'visibility', 'visible')
+      })
+      .finally(() => setLoadingOverlay(false))
+  }, [showDpe, mapLoaded])
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Bouton satellite */}
+      {/* Boutons overlay adresses + DPE */}
+      <div style={{
+        position: 'absolute', top: 12, left: 12, zIndex: 10,
+        display: 'flex', gap: 6, flexDirection: 'column',
+      }}>
+        <button
+          onClick={() => setShowAllAdresses(v => !v)}
+          title="Afficher toutes les adresses du secteur"
+          style={{
+            padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', whiteSpace: 'nowrap',
+            background: showAllAdresses ? '#1D9E75' : 'rgba(255,255,255,0.95)',
+            color: showAllAdresses ? '#fff' : '#2C2C2A',
+            border: '1.5px solid ' + (showAllAdresses ? '#1D9E75' : '#E8E6DF'),
+            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+          }}
+        >
+          {loadingOverlay && showAllAdresses ? '...' : '🏠 Adresses'}
+        </button>
+        <button
+          onClick={() => setShowDpe(v => !v)}
+          title="Afficher les DPE recents (12 mois)"
+          style={{
+            padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', whiteSpace: 'nowrap',
+            background: showDpe ? '#E63946' : 'rgba(255,255,255,0.95)',
+            color: showDpe ? '#fff' : '#2C2C2A',
+            border: '1.5px solid ' + (showDpe ? '#E63946' : '#E8E6DF'),
+            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+          }}
+        >
+          {loadingOverlay && showDpe ? '...' : '📋 DPE recents'}
+        </button>
+        {(showAllAdresses || showDpe) && (
+          <div style={{ fontSize: 10, color: '#5F5E5A', background: 'rgba(255,255,255,0.8)', borderRadius: 4, padding: '2px 6px' }}>
+            {showAllAdresses && <div>🟢 maison &nbsp;🔵 appart &nbsp;🟠 commerce</div>}
+            {showDpe && <div>🔴 &lt;6 mois &nbsp;🟠 6-12 mois</div>}
+          </div>
+        )}
+      </div>
+
+            {/* Bouton satellite */}
       <button
         onClick={() => setSatellite((v) => !v)}
         style={{
