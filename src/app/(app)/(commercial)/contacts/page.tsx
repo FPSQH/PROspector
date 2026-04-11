@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 
 // ── Types ────────────────────────────────────────────────────────────────
-interface Adresse { numero?: string; nom_voie?: string; code_postal?: string; nom_commune?: string }
+interface Adresse { id?: string; numero?: string; nom_voie?: string; code_postal?: string; commune?: string }
 interface Contact {
   id: string; nom: string; prenom: string
   tel1?: string; email1?: string
@@ -33,7 +33,7 @@ const STATUT_LABELS: Record<string,{ label: string; color: string; bg: string }>
 
 function adresseLabel(a?: Adresse): string {
   if (!a) return ''
-  return [a.numero, a.nom_voie, a.code_postal, a.nom_commune].filter(Boolean).join(' ')
+  return [a.numero, a.nom_voie, a.code_postal, a.commune].filter(Boolean).join(' ')
 }
 
 function isRelance(c: Contact): boolean {
