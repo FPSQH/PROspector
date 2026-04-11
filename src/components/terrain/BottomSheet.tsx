@@ -70,7 +70,7 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
       setStep('main')
       setTypeHabitat(adresse.interaction?.type_habitat ?? '')
       setNbEtages(adresse.interaction?.nb_etages ?? '')
-      setNomBoite(adresse.interaction?.nom_boite ?? (adresse as any).nom_boite ?? '')
+      setNomBoite(adresse.interaction?.nb_bal ?? (adresse as any).nb_bal ?? '')
       setAction(adresse.interaction?.action ?? '')
       setTypeContact(adresse.interaction?.type_contact ?? '')
       setNote(adresse.interaction?.note ?? '')
@@ -83,12 +83,12 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
   // Action rapide : pas de contact + action
   const handleActionRapide = async (act: string) => {
     setSaving(true)
-    // Persister nom_boite sur l'adresse si habitat individuel
+    // Persister nb_bal sur l'adresse si habitat individuel
     if (typeHabitat === 'individuel' && nomBoite) {
       await fetch(`/api/adresses/${adresse.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nom_boite: nomBoite }),
+        body: JSON.stringify({ nb_bal: nomBoite }),
       })
     }
     await onQualification({
@@ -96,7 +96,7 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
       action:       act,
       type_habitat: typeHabitat || null,
       nb_etages:    nbEtages ? parseInt(nbEtages) : null,
-      nom_boite:    nomBoite || null,
+      nb_bal:    nomBoite || null,
     })
     setSaving(false)
   }
@@ -106,12 +106,12 @@ export default function BottomSheet({ open, adresse, sessionId, onClose, onQuali
     if (!typeContact) return
     setSaving(true)
 
-    // Persister nom_boite sur l'adresse si habitat individuel
+    // Persister nb_bal sur l'adresse si habitat individuel
     if (typeHabitat === 'individuel' && nomBoite) {
       await fetch(`/api/adresses/${adresse.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nom_boite: nomBoite }),
+        body: JSON.stringify({ nb_bal: nomBoite }),
       })
     }
 
