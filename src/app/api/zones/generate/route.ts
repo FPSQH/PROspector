@@ -45,22 +45,22 @@ export async function POST(req: Request) {
   const batches    = chunk(codesInsee, 5)
 
   const adresses: any[] = []
-  for (const batchInsee of batches) {
-    let from = 0
-    while (true) {
-      const { data, error } = await supabase
-        .from('adresses')
-        .select('id, lat, lon, type_bien')
-        .in('code_insee', batchInsee)
-        .not('lat', 'is', null)
-        .not('lon', 'is', null)
-        .range(from, from + 999)
-      if (error || !data || data.length === 0) break
-      adresses.push(...data)
-      if (data.length < 1000) break
-      from += 1000
+  // Une seule requete pour toutes les communes (plus rapide que les batches)
+    const sinceDate = new Date(now - extWindowMs).toISOString().slice(0, 10)
+    const { data: dpeRows } = await supabase
+      .from('dpe_logement')
+      .select('adresse_id, date_etablissement')
+      .in('code_insee', codesInsee)
+      .not('adresse_id', 'is', null)
+      .gte('date_etablissement', sinceDate)
+
+    for (const dpe of dpeRows ?? []) {
+      const ageMs = now - new Date(dpe.date_etablissement).getTime()
+      const entry = dpeMap.get(dpe.adresse_id) ?? { chauds: 0, tiedes: 0 }
+      if (ageMs <= dpeWindowMs)      entry.chauds++
+      else if (ageMs <= extWindowMs) entry.tiedes++
+      dpeMap.set(dpe.adresse_id, entry)
     }
-  }
 
   if (adresses.length === 0)
     return NextResponse.json({ error: 'Aucune adresse trouvée' }, { status: 400 })
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   })
 
   // Charger les DPE de la fenetre temporelle choisie
-  const dpeMap = new Map<string, { chauds: number; tièdes: number }>()
+  const dpeMap = new Map<string, { chauds: number; tiedes: number }>()
   if (dpe_poids > 0) {
     const dpeWindowMs = dpe_fenetre_mois * 30 * 24 * 60 * 60 * 1000
     const extWindowMs = dpe_fenetre_mois * 2 * 30 * 24 * 60 * 60 * 1000
@@ -88,9 +88,9 @@ export async function POST(req: Request) {
 
       for (const dpe of dpeRows ?? []) {
         const ageMs = now - new Date(dpe.date_etablissement).getTime()
-        const entry = dpeMap.get(dpe.adresse_id) ?? { chauds: 0, tièdes: 0 }
+        const entry = dpeMap.get(dpe.adresse_id) ?? { chauds: 0, tiedes: 0 }
         if (ageMs <= dpeWindowMs)      entry.chauds++
-        else if (ageMs <= extWindowMs) entry.tièdes++
+        else if (ageMs <= extWindowMs) entry.tiedes++
         dpeMap.set(dpe.adresse_id, entry)
       }
     }
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
     prospectable: true,
     code_insee:  a.code_insee,
     dpe_chauds:  dpeMap.get(a.id)?.chauds ?? 0,
-    dpe_tiedes:  dpeMap.get(a.id)?.tièdes ?? 0,
+    dpe_tiedes:  dpeMap.get(a.id)?.tiedes ?? 0,
   }))
 
   // Nouvel algorithme density-based
