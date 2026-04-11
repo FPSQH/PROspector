@@ -44,6 +44,22 @@ export default function ZoneEditorMap({
   const [allAdresses, setAllAdresses]          = useState<any[]>([])
   const [dpePoints, setDpePoints]              = useState<any[]>([])
   const [loadingOverlay, setLoadingOverlay]    = useState(false)
+  const [prequalLoading, setPrequalLoading]    = useState(false)
+  const [prequalResult, setPrequalResult]      = useState<{ nb_qualifiees: number } | null>(null)
+
+  const runPrequalifier = async () => {
+    setPrequalLoading(true)
+    setPrequalResult(null)
+    // Invalider le cache des adresses pour recharger apres qualification
+    setAllAdresses([])
+    try {
+      const res = await fetch('/api/adresses/prequalifier', { method: 'POST' })
+      const data = await res.json()
+      setPrequalResult(data)
+    } finally {
+      setPrequalLoading(false)
+    }
+  }
 
   // Garder les refs à jour à chaque render pour éviter les closures stale
   useEffect(() => { zonesRef.current = zones }, [zones])
@@ -643,6 +659,24 @@ export default function ZoneEditorMap({
           boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         }}>
           {loadingOverlay && showDpe ? '...' : '📋 DPE recents'}
+        </button>
+
+        {/* Bouton pre-qualification DPE */}
+        <button
+          onClick={runPrequalifier}
+          disabled={prequalLoading}
+          title="Qualifier automatiquement les adresses depuis les DPE (maison / appartement / immeuble mixte)"
+          style={{
+            padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            cursor: prequalLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+            background: prequalResult ? '#E8F7F2' : 'rgba(255,255,255,0.95)',
+            color: prequalResult ? '#0F6E56' : '#2C2C2A',
+            border: '1.5px solid ' + (prequalResult ? '#1D9E75' : '#E8E6DF'),
+            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+            opacity: prequalLoading ? 0.7 : 1,
+          }}
+        >
+          {prequalLoading ? '...' : prequalResult ? ('✓ ' + prequalResult.nb_qualifiees + ' qualifiees') : '🎯 Pre-qualifier (DPE)'}
         </button>
       </div>
             {/* Bouton satellite */}
