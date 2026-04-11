@@ -1,15 +1,9 @@
-// ── Algorithme glouton hotspot avec rayon adaptatif ──────────────────────────
+// ── Algorithme glouton hotspot — tous candidats + centroid convergent ────────
 //
-// Principe :
-//   1. Scorer chaque centre candidat avec le rayon configure (R initial)
-//   2. Prendre le meilleur centre
-//   3. Creer la zone avec rayon adaptatif :
-//      - Partir de R initial
-//      - Si trop peu d'adresses → etendre jusqu'a rayon_max (3x R)
-//      - Creer la zone avec le rayon effectivement utilise
-//   4. Toujours creer une zone meme en zone rurale peu dense
-//
-// Performance : hash spatial O(N), < 2s pour 10 000 adresses
+// Fix 1 : chaque adresse est testee comme centre candidat (pas de déduplication)
+//         -> meilleure detection des pics de densité réels
+// Fix 2 : centroid convergent (max 5 iterations) -> zones plus denses
+// Fix 3 : rayon adaptatif (jusqu'à 3x R) pour zones rurales peu denses
 
 export interface GeoPoint {
   id:           string
@@ -57,156 +51,133 @@ export function generateDensityZones(
   points:         GeoPoint[],
   nb_zones:       number,
   capacite_cible: number,
-  rayon_metres:   number,    // rayon cible (peut etre etendu automatiquement)
+  rayon_metres:   number,
   dpeParams:      DpeParams = { poids: 0, seuil_inclusion: 10 }
 ): { zones: DensityZone[]; horsZone: GeoPoint[] } {
 
   if (points.length === 0) return { zones: [], horsZone: [] }
 
-  // Rayon max = 3x le rayon configure (limite absolue d'extension)
-  const rayonMax = rayon_metres * 3
-
-  // Seuil min d'adresses avant d'etendre le rayon
-  const seuilExtension = Math.max(Math.floor(capacite_cible * 0.3), 5)
-
+  const rayonMax   = rayon_metres * 3
+  const seuilExt   = Math.max(Math.floor(capacite_cible * 0.3), 5)
   const avgLat     = points.reduce((s, p) => s + p.lat, 0) / points.length
   const cosLat     = Math.cos(avgLat * Math.PI / 180)
   const mPerDegLat = 111000
   const mPerDegLon = 111000 * cosLat
 
-  // Distance euclidienne au carre en metres
   function distSq(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const dlat = (lat2 - lat1) * mPerDegLat
     const dlon = (lon2 - lon1) * mPerDegLon
     return dlat * dlat + dlon * dlon
   }
 
-  // Hash spatial : bucket = R/2 pour le scoring initial
+  // Hash spatial : bucket = R/2
   const bucketDeg = rayon_metres / 2 / 111000
 
-  function bucketIJ(lat: number, lon: number): [number, number] {
-    return [Math.floor(lat / bucketDeg), Math.floor(lon / bucketDeg)]
+  function bucketKey(lat: number, lon: number): string {
+    return Math.floor(lat / bucketDeg) + ',' + Math.floor(lon / bucketDeg)
   }
 
   function buildHash(pts: GeoPoint[]): Map<string, GeoPoint[]> {
     const h = new Map<string, GeoPoint[]>()
     for (const p of pts) {
-      const [bi, bj] = bucketIJ(p.lat, p.lon)
-      const k = `${bi},${bj}`
+      const k = bucketKey(p.lat, p.lon)
       const b = h.get(k) ?? []; b.push(p); h.set(k, b)
     }
     return h
   }
 
-  // Recuperer les voisins dans un rayon donne (5x5 buckets = couvre R avec bucket R/2)
+  // Voisins dans 5x5 buckets (garantit de couvrir le cercle de rayon R avec bucket R/2)
   function getNeighbors(h: Map<string, GeoPoint[]>, lat: number, lon: number): GeoPoint[] {
-    const [bi, bj] = bucketIJ(lat, lon)
+    const bi = Math.floor(lat / bucketDeg)
+    const bj = Math.floor(lon / bucketDeg)
     const out: GeoPoint[] = []
     for (let di = -2; di <= 2; di++)
       for (let dj = -2; dj <= 2; dj++) {
-        const b = h.get(`${bi+di},${bj+dj}`)
+        const b = h.get((bi+di) + ',' + (bj+dj))
         if (b) out.push(...b)
       }
     return out
   }
 
-  // Un candidat representant par cellule (evite de scorer le meme hotspot N fois)
-  function getCandidates(pts: GeoPoint[]): GeoPoint[] {
-    const seen = new Set<string>()
-    const out:  GeoPoint[] = []
-    for (const p of pts) {
-      const [bi, bj] = bucketIJ(p.lat, p.lon)
-      const k = `${bi},${bj}`
-      if (!seen.has(k)) { seen.add(k); out.push(p) }
-    }
-    return out
-  }
+  // FIX 2 : Convergence du centroid (max 5 passes)
+  function convergeZone(
+    initCenter: { lat: number; lon: number },
+    pool: GeoPoint[],
+    r2: number
+  ): { pts: GeoPoint[]; centroid: { lat: number; lon: number } } {
+    let c = initCenter
+    let pts: GeoPoint[] = []
 
-  // Creer une zone avec rayon adaptatif depuis un centre donne
-  // Etend progressivement jusqu'a avoir assez d'adresses ou atteindre rayonMax
-  function createZoneAdaptive(
-    center: { lat: number; lon: number },
-    pool:   GeoPoint[],
-    rayonInitial: number,
-    rayonInitialConfigured: number
-  ): DensityZone | null {
-
-    // Paliers d'extension : R → 1.5R → 2R → 3R
-    const paliers = [1.0, 1.5, 2.0, 3.0].map(f => Math.min(f * rayonInitial, rayonMax))
-
-    let bestPts:     GeoPoint[] = []
-    let bestRayon:   number     = rayonInitial
-    let bestCentroid             = center
-
-    for (const r of paliers) {
-      const r2 = r * r
-
-      // Scanner toutes les adresses restantes pour ce rayon
-      const inR = pool.filter(p => distSq(center.lat, center.lon, p.lat, p.lon) <= r2)
-      if (inR.length === 0) continue
-
-      // Prendre jusqu'a capacite_cible (les plus proches du centre candidat)
-      const sorted = inR
-        .map(p => ({ p, d: distSq(center.lat, center.lon, p.lat, p.lon) }))
+    for (let iter = 0; iter < 5; iter++) {
+      // Filtrer les adresses dans le rayon depuis c
+      const inR = pool
+        .filter(p => distSq(c.lat, c.lon, p.lat, p.lon) <= r2)
+        .map(p => ({ p, d: distSq(c.lat, c.lon, p.lat, p.lon) }))
         .sort((a, b) => a.d - b.d)
         .slice(0, capacite_cible)
         .map(x => x.p)
 
-      // Recalculer le vrai centroid
-      const c = calcCentroid(sorted)
+      if (inR.length === 0) break
 
-      // Appliquer la limite dure depuis le vrai centroid
-      const finalPts = sorted.filter(p => distSq(c.lat, c.lon, p.lat, p.lon) <= r2)
-      if (finalPts.length === 0) continue
-
-      bestPts      = finalPts
-      bestRayon    = r
-      bestCentroid = c
-
-      // Si on a atteint le seuil ou le dernier palier : on s'arrete
-      if (finalPts.length >= seuilExtension || r >= rayonMax) break
+      const newC = calcCentroid(inR)
+      // Verifier si le centroid a bouge significativement (< 5m = stable)
+      const moved = Math.sqrt(distSq(c.lat, c.lon, newC.lat, newC.lon))
+      pts = inR
+      c   = newC
+      if (moved < 5) break
     }
 
-    if (bestPts.length === 0) return null
-
-    const rayonReel = Math.round(
-      Math.max(...bestPts.map(p => haversine(bestCentroid.lat, bestCentroid.lon, p.lat, p.lon)))
-    )
-
-    return {
-      centroid:        bestCentroid,
-      points:          bestPts,
-      rayon_metres:    rayonReel,
-      depasse_seuil:   bestRayon > rayonInitialConfigured,  // true si on a du etendre
-      dpe_prioritaire: false,
-      nb_dpe_chauds:   bestPts.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0),
-      nb_dpe_tiedes:   bestPts.reduce((s, p) => s + (p.dpe_tiedes ?? 0), 0),
-    }
+    // Appliquer la limite dure depuis le centroid final
+    const finalPts = pts.filter(p => distSq(c.lat, c.lon, p.lat, p.lon) <= r2)
+    return { pts: finalPts, centroid: c }
   }
 
-  // ── Boucle gloutonne principale ─────────────────────────────────────────────
+  // Creer une zone avec rayon adaptatif depuis un centre initial
+  function createZoneAdaptive(
+    initCenter: { lat: number; lon: number },
+    pool: GeoPoint[],
+  ): DensityZone | null {
+    const paliers = [1.0, 1.5, 2.0, 3.0].map(f => Math.min(f * rayon_metres, rayonMax))
+
+    for (const r of paliers) {
+      const { pts, centroid: c } = convergeZone(initCenter, pool, r * r)
+      if (pts.length === 0) continue
+      if (pts.length >= seuilExt || r >= rayonMax) {
+        const rayonReel = Math.round(Math.max(...pts.map(p => haversine(c.lat, c.lon, p.lat, p.lon))))
+        return {
+          centroid:        c,
+          points:          pts,
+          rayon_metres:    rayonReel,
+          depasse_seuil:   r > rayon_metres,
+          dpe_prioritaire: false,
+          nb_dpe_chauds:   pts.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0),
+          nb_dpe_tiedes:   pts.reduce((s, p) => s + (p.dpe_tiedes ?? 0), 0),
+        }
+      }
+    }
+    return null
+  }
+
+  // ── Boucle gloutonne ─────────────────────────────────────────────────────
   let remaining = [...points]
   const zones:  DensityZone[] = []
 
   while (zones.length < nb_zones && remaining.length > 0) {
 
-    // ── Phase 1 : Scoring avec le rayon initial ────────────────────────────
-    const hash       = buildHash(remaining)
-    const candidates = getCandidates(remaining)
-    const R2initial  = rayon_metres * rayon_metres
+    const hash   = buildHash(remaining)
+    const R2init = rayon_metres * rayon_metres
 
-    let bestScore    = -1
-    let bestCenter:  { lat: number; lon: number } | null = null
+    let bestScore  = -1
+    let bestCenter: { lat: number; lon: number } | null = null
 
-    for (const cand of candidates) {
+    // FIX 1 : tester TOUTES les adresses comme centre candidat
+    for (const cand of remaining) {
       const neighbors = getNeighbors(hash, cand.lat, cand.lon)
-      const inR = neighbors.filter(p => distSq(cand.lat, cand.lon, p.lat, p.lon) <= R2initial)
+      const inR = neighbors.filter(p => distSq(cand.lat, cand.lon, p.lat, p.lon) <= R2init)
 
-      // Si le rayon initial est vide, inclure quand meme ce candidat avec score minimal
-      // pour qu'il soit considere lors de l'extension adaptative
-      const effLength = inR.length > 0 ? inR.length : 1
-      const dpe = inR.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0)
-      const score = (inR.length > 0 ? inR.length : 0.1) + dpe * dpeParams.poids
+      const dpe   = inR.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0)
+      // Si aucune adresse dans le rayon initial, compter quand meme le candidat lui-meme
+      const score = (inR.length > 0 ? inR.length : 0.5) + dpe * dpeParams.poids
 
       if (score > bestScore) {
         bestScore  = score
@@ -216,12 +187,9 @@ export function generateDensityZones(
 
     if (!bestCenter) break
 
-    // ── Phase 2 : Creer la zone avec rayon adaptatif ───────────────────────
-    const zone = createZoneAdaptive(bestCenter, remaining, rayon_metres, rayon_metres)
-
+    const zone = createZoneAdaptive(bestCenter, remaining)
     if (!zone || zone.points.length === 0) break
 
-    // Retirer les adresses selectionnees
     const usedIds = new Set(zone.points.map(p => p.id))
     remaining = remaining.filter(p => !usedIds.has(p.id))
 
