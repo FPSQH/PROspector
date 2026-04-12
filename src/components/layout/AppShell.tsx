@@ -279,3 +279,9 @@ export default function AppShell({ children, userName, userInitials }: Props) {
     </div>
   )
 }
+  {
+    href:  '/planning',
+    label: 'Planning',
+    icon:  <IconCalendar />,
+    match: ['/planning'],
+  },
