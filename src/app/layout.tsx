@@ -6,9 +6,11 @@ export const metadata: Metadata = {
   description: 'Outil de prospection terrain – Square Habitat',
   manifest: '/manifest.json',
   appleWebApp: {
-    capable: true,
     statusBarStyle: 'default',
     title: 'PROspector',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
   },
 }
 
