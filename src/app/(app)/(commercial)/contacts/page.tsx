@@ -14,6 +14,78 @@ const STATUT: Record<string,{label:string;color:string;bg:string}> = {
   perdu:{label:'Perdu',color:'#6b7280',bg:'#f3f4f6'},
 }
 
+// ── Génération mailto fiche contact ────────────────────────────────────
+function buildMailto(c: any, addrLabel: string): string {
+  const nom = [c.prenom, c.nom].filter(Boolean).join(' ')
+  const type = TYPE_LABELS[c.type_contact] ?? c.type_contact ?? ''
+  const statut = STATUT[c.statut_pipeline]?.label ?? ''
+  const subject = encodeURIComponent('Fiche contact – ' + nom)
+  const lines = [
+    'Fiche prospect – ' + nom,
+    '',
+    'Adresse : ' + (addrLabel || 'Non renseignee'),
+    'Telephone : ' + (c.tel1 || 'Non renseigne'),
+    'Email : ' + (c.email1 || 'Non renseigne'),
+    '',
+    'Type de contact : ' + type,
+    'Statut pipeline : ' + statut,
+    c.date_relance ? 'Date de relance : ' + new Date(c.date_relance).toLocaleDateString('fr-FR') : '',
+    '',
+    'Notes : ' + (c.notes || 'Aucune note'),
+    '',
+    '---',
+    'Envoye depuis PROspector',
+  ].filter(l => l !== null)
+  return 'mailto:?subject=' + subject + '&body=' + encodeURIComponent(lines.join('\n'))
+}
+
+// ── Génération fichier ICS ──────────────────────────────────────────────
+function downloadICS(c: any, addrLabel: string) {
+  if (!c.date_relance) return
+  const nom = [c.prenom, c.nom].filter(Boolean).join(' ')
+  const type = TYPE_LABELS[c.type_contact] ?? c.type_contact ?? ''
+  const statut = STATUT[c.statut_pipeline]?.label ?? ''
+
+  // Date de relance → événement toute la journée
+  const dateStr = c.date_relance.replace(/-/g, '')  // YYYYMMDD
+  const now = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z'
+
+  const description = [
+    'Prospect : ' + nom,
+    'Adresse : ' + (addrLabel || 'Non renseignee'),
+    'Telephone : ' + (c.tel1 || 'Non renseigne'),
+    'Type : ' + type,
+    'Statut : ' + statut,
+    '',
+    'Notes : ' + (c.notes || 'Aucune note'),
+  ].join('\n')
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//PROspector//FR',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:relance-' + c.id + '@prospector',
+    'DTSTAMP:' + now,
+    'DTSTART;VALUE=DATE:' + dateStr,
+    'DTEND;VALUE=DATE:' + dateStr,
+    'SUMMARY:Relance – ' + nom,
+    'DESCRIPTION:' + description.replace(/\n/g, '\\n'),
+    'LOCATION:' + (addrLabel || ''),
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n')
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = 'relance-' + nom.toLowerCase().replace(/\s+/g, '-') + '.ics'
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
 export default function ContactsPage() {
   const [contacts,setContacts]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
@@ -141,6 +213,24 @@ export default function ContactsPage() {
               <textarea style={{...inp,minHeight:80,resize:'vertical',fontFamily:'inherit'}} value={form.notes??''} onChange={e=>setForm((f:any)=>({...f,notes:e.target.value}))}/></div>
             <div style={{fontSize:11,color:'#d4b896',padding:'6px 10px',background:'#fffbf5',borderRadius:6,border:'1px solid #f5e6d0'}}>Note limitee au projet immobilier (RGPD)</div>
           </div>
+          
+          {/* Actions rapides : mail + ICS */}
+          {(selected.email1 || selected.date_relance) && (
+            <div style={{padding:'8px 20px',borderBottom:'1px solid #F0EDE6',display:'flex',gap:8}}>
+              {selected.email1 && (
+                <a href={buildMailto(selected, addr(selected.adresses))}
+                  style={{flex:1,padding:'8px',borderRadius:8,fontSize:12,fontWeight:600,textAlign:'center',background:'#EFF6FF',color:'#1d4ed8',border:'1px solid #bfdbfe',textDecoration:'none',display:'block'}}>
+                  &#9993; Envoyer par mail
+                </a>
+              )}
+              {selected.date_relance && (
+                <button onClick={()=>downloadICS(selected, addr(selected.adresses))}
+                  style={{flex:1,padding:'8px',borderRadius:8,fontSize:12,fontWeight:600,background:'#F0FDF4',color:'#15803d',border:'1px solid #bbf7d0',cursor:'pointer'}}>
+                  &#128197; Ajouter au calendrier
+                </button>
+              )}
+            </div>
+          )}
           <div style={{padding:'12px 20px',borderTop:'1px solid #E8E6DF',display:'flex',gap:8,flexShrink:0}}>
             <button onClick={save} disabled={saving} style={{flex:1,padding:'9px',borderRadius:8,fontWeight:600,fontSize:13,background:saving?'#E8E6DF':'#1D9E75',color:'#fff',border:'none',cursor:'pointer'}}>{saving?'...':'Enregistrer'}</button>
             <button onClick={del} style={{padding:'9px 14px',borderRadius:8,fontSize:13,background:'#fff',color:'#E24B4A',border:'1.5px solid #E24B4A',cursor:'pointer'}}>Supprimer</button>
