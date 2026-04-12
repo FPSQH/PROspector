@@ -87,6 +87,12 @@ const NAV_ITEMS: NavItem[] = [
     icon:  <IconContacts />,
     match: ['/contacts'],
   },
+  {
+    href:  '/planning',
+    label: 'Planning',
+    icon:  <IconCalendar />,
+    match: ['/planning'],
+  },
 ]
 
 interface Props {
@@ -279,9 +285,3 @@ export default function AppShell({ children, userName, userInitials }: Props) {
     </div>
   )
 }
-  {
-    href:  '/planning',
-    label: 'Planning',
-    icon:  <IconCalendar />,
-    match: ['/planning'],
-  },
