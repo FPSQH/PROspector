@@ -1,57 +1,35 @@
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// GET — données pour le dashboard (DPE récents depuis dernière alerte)
-export async function GET() {
-  const supabaseUser = await createClient()
-  const { data: { user } } = await supabaseUser.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
-
-  const supabase = await createAdminClient()
-
-  // Récupérer last_dpe_alert_at du commercial
-  const { data: commercial } = await supabase
-    .from('commerciaux')
-    .select('last_dpe_alert_at')
-    .eq('id', user.id)
-    .single()
-
-  const since = commercial?.last_dpe_alert_at
-    ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
-
+async function getDpeRecents(supabase: any, commercialId: string, since: string) {
   // Communes du commercial
   const { data: communes } = await supabase
     .from('communes')
-    .select('code_insee, nom, code_postal')
-    .eq('commercial_id', user.id)
+    .select('code_insee, nom')
+    .eq('commercial_id', commercialId)
 
-  if (!communes?.length) return NextResponse.json({ dpe: {}, total: 0, since })
+  if (!communes?.length) return { byCommune: {}, total: 0 }
 
   const codeInsees = communes.map((c: any) => c.code_insee)
 
-  // DPE récents — jointure via adresses
-  const { data: adresses } = await supabase
-    .from('adresses')
-    .select('id, numero, nom_voie, code_postal, commune, code_insee')
-    .in('code_insee', codeInsees)
-
-  if (!adresses?.length) return NextResponse.json({ dpe: {}, total: 0, since })
-
-  const adresseIds = adresses.map((a: any) => a.id)
-  const adresseMap = new Map(adresses.map((a: any) => [a.id, a]))
-
+  // Requete directe : dpe_logement -> adresses filtrées par code_insee
+  // On passe par une vue SQL pour eviter la limite 1000 lignes
   const { data: dpes } = await supabase
     .from('dpe_logement')
-    .select('adresse_id, date_etablissement, etiquette_dpe')
-    .in('adresse_id', adresseIds)
+    .select(`
+      adresse_id,
+      date_etablissement,
+      etiquette_dpe,
+      adresses!inner(id, numero, nom_voie, code_postal, commune, code_insee)
+    `)
+    .in('adresses.code_insee', codeInsees)
     .gte('date_etablissement', since)
     .order('date_etablissement', { ascending: false })
-    .limit(300)
+    .limit(500)
 
-  // Grouper par commune
   const byCommune: Record<string, any[]> = {}
   for (const dpe of (dpes ?? [])) {
-    const a = adresseMap.get(dpe.adresse_id) as any
+    const a = dpe.adresses as any
     if (!a) continue
     const key = a.commune ?? 'Inconnue'
     if (!byCommune[key]) byCommune[key] = []
@@ -66,16 +44,33 @@ export async function GET() {
   }
 
   const total = Object.values(byCommune).reduce((s, a) => s + a.length, 0)
+  return { byCommune, total }
+}
+
+export async function GET() {
+  const supabaseUser = await createClient()
+  const { data: { user } } = await supabaseUser.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const supabase = await createAdminClient()
+
+  const { data: commercial } = await supabase
+    .from('commerciaux')
+    .select('last_dpe_alert_at')
+    .eq('id', user.id)
+    .single()
+
+  const since = commercial?.last_dpe_alert_at
+    ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+
+  const { byCommune, total } = await getDpeRecents(supabase, user.id, since)
   return NextResponse.json({ dpe: byCommune, total, since })
 }
 
-// POST — envoi du mail hebdomadaire (appelé par le cron)
 export async function POST(req: Request) {
   const { searchParams } = new URL(req.url)
-  const secret = searchParams.get('secret')
-  if (secret !== process.env.CRON_SECRET) {
+  if (searchParams.get('secret') !== process.env.CRON_SECRET)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   const supabase = await createAdminClient()
 
@@ -93,58 +88,20 @@ export async function POST(req: Request) {
     const since = commercial.last_dpe_alert_at
       ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
 
-    const { data: communes } = await supabase
-      .from('communes')
-      .select('code_insee, nom')
-      .eq('commercial_id', commercial.id)
-
-    if (!communes?.length) continue
-
-    const codeInsees = communes.map((c: any) => c.code_insee)
-
-    const { data: adresses } = await supabase
-      .from('adresses')
-      .select('id, numero, nom_voie, code_postal, commune, code_insee')
-      .in('code_insee', codeInsees)
-
-    if (!adresses?.length) continue
-
-    const adresseIds = adresses.map((a: any) => a.id)
-    const adresseMap = new Map(adresses.map((a: any) => [a.id, a]))
-
-    const { data: dpes } = await supabase
-      .from('dpe_logement')
-      .select('adresse_id, date_etablissement, etiquette_dpe')
-      .in('adresse_id', adresseIds)
-      .gte('date_etablissement', since)
-      .order('date_etablissement', { ascending: false })
-      .limit(500)
-
-    const relevant = (dpes ?? []).filter((d: any) => adresseMap.has(d.adresse_id))
-    if (!relevant.length) continue
-
-    // Grouper par commune
-    const byCommune: Record<string, string[]> = {}
-    for (const dpe of relevant) {
-      const a = adresseMap.get(dpe.adresse_id) as any
-      const key = a.commune ?? 'Inconnue'
-      if (!byCommune[key]) byCommune[key] = []
-      byCommune[key].push(
-        `${a.numero ?? ''} ${a.nom_voie ?? ''} (${a.code_postal ?? ''}) — DPE ${dpe.etiquette_dpe ?? '?'}`.trim()
-      )
-    }
+    const { byCommune, total } = await getDpeRecents(supabase, commercial.id, since)
+    if (!total) continue
 
     const sinceFmt = new Date(since).toLocaleDateString('fr-FR')
     const rows = Object.entries(byCommune).map(([ville, adrs]) =>
       `<tr><td colspan="2" style="padding:10px 12px 4px;font-weight:700;color:#1D9E75;border-top:2px solid #E8E6DF">${ville} (${adrs.length} DPE)</td></tr>` +
-      adrs.map(a => `<tr><td style="padding:3px 12px 3px 24px;font-size:13px;color:#374151">• ${a}</td></tr>`).join('')
+      adrs.map((a: any) => `<tr><td style="padding:3px 12px 3px 24px;font-size:13px;color:#374151">• ${a.adresse} (${a.code_postal}) — DPE ${a.classe ?? '?'} — ${new Date(a.date).toLocaleDateString('fr-FR')}</td></tr>`).join('')
     ).join('')
 
     const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#F8F7F4;padding:24px;margin:0">
 <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #E8E6DF;overflow:hidden">
   <div style="background:#1D9E75;padding:20px 24px">
     <div style="color:#fff;font-size:20px;font-weight:700">&#128203; PROspector — Nouveaux DPE</div>
-    <div style="color:#a7f3d0;font-size:13px;margin-top:4px">Depuis le ${sinceFmt} · ${relevant.length} DPE detectes sur votre secteur</div>
+    <div style="color:#a7f3d0;font-size:13px;margin-top:4px">Depuis le ${sinceFmt} · ${total} DPE detectes sur votre secteur</div>
   </div>
   <div style="padding:20px 24px">
     <p style="color:#374151;font-size:14px;margin-top:0">Bonjour ${commercial.prenom ?? 'Commercial'},</p>
@@ -162,18 +119,14 @@ export async function POST(req: Request) {
   </div>
 </div></body></html>`
 
-    // Envoi via API Resend (fetch natif, pas de nodemailer)
     try {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: 'PROspector <onboarding@resend.dev>',
           to: [commercial.email],
-          subject: `PROspector — ${relevant.length} nouveau${relevant.length > 1 ? 'x' : ''} DPE sur votre secteur`,
+          subject: `PROspector — ${total} nouveau${total > 1 ? 'x' : ''} DPE sur votre secteur`,
           html,
         }),
       })
@@ -183,7 +136,6 @@ export async function POST(req: Request) {
       console.error('Mail error for', commercial.email, e)
     }
 
-    // Mettre à jour last_dpe_alert_at
     await supabase.from('commerciaux').update({ last_dpe_alert_at: now }).eq('id', commercial.id)
   }
 
