@@ -82,3 +82,75 @@ button {
   /* AppShell — masquer sidebar sur mobile */
   .appshell-sidebar { display: none !important; }
 }
+
+
+/* ── Mobile Bottom Tab Bar ─────────────────────────────────────────── */
+.mobile-tab-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Masquer la sidebar sur mobile */
+  aside {
+    display: none !important;
+  }
+
+  /* Afficher la bottom tab bar */
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: #ffffff;
+    border-top: 1px solid #E8E6DF;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+  }
+
+  .mobile-tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px 6px;
+    text-decoration: none;
+    color: #9ca3af;
+    min-height: 56px;
+    transition: color 0.15s;
+    gap: 3px;
+  }
+
+  .mobile-tab-item.mobile-tab-active {
+    color: #1D9E75;
+  }
+
+  .mobile-tab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+  }
+
+  .mobile-tab-icon svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.8;
+  }
+
+  .mobile-tab-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  /* Ajouter du padding en bas du contenu principal pour ne pas être masqué par la tab bar */
+  main {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
