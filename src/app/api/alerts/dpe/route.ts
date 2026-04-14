@@ -42,10 +42,10 @@ export async function GET() {
 
   const { data: dpes } = await supabase
     .from('dpe_logement')
-    .select('adresse_id, date_etablissement_dpe, classe_energie')
+    .select('adresse_id, date_etablissement, etiquette_dpe')
     .in('adresse_id', adresseIds)
-    .gte('date_etablissement_dpe', since)
-    .order('date_etablissement_dpe', { ascending: false })
+    .gte('date_etablissement', since)
+    .order('date_etablissement', { ascending: false })
     .limit(300)
 
   // Grouper par commune
@@ -60,8 +60,8 @@ export async function GET() {
       adresse: [a.numero, a.nom_voie].filter(Boolean).join(' '),
       code_postal: a.code_postal,
       commune: key,
-      classe: dpe.classe_energie,
-      date: dpe.date_etablissement_dpe,
+      classe: dpe.etiquette_dpe,
+      date: dpe.date_etablissement,
     })
   }
 
@@ -114,10 +114,10 @@ export async function POST(req: Request) {
 
     const { data: dpes } = await supabase
       .from('dpe_logement')
-      .select('adresse_id, date_etablissement_dpe, classe_energie')
+      .select('adresse_id, date_etablissement, etiquette_dpe')
       .in('adresse_id', adresseIds)
-      .gte('date_etablissement_dpe', since)
-      .order('date_etablissement_dpe', { ascending: false })
+      .gte('date_etablissement', since)
+      .order('date_etablissement', { ascending: false })
       .limit(500)
 
     const relevant = (dpes ?? []).filter((d: any) => adresseMap.has(d.adresse_id))
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       const key = a.commune ?? 'Inconnue'
       if (!byCommune[key]) byCommune[key] = []
       byCommune[key].push(
-        `${a.numero ?? ''} ${a.nom_voie ?? ''} (${a.code_postal ?? ''}) — DPE ${dpe.classe_energie ?? '?'}`.trim()
+        `${a.numero ?? ''} ${a.nom_voie ?? ''} (${a.code_postal ?? ''}) — DPE ${dpe.etiquette_dpe ?? '?'}`.trim()
       )
     }
 
