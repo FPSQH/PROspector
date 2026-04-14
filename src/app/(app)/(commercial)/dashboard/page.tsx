@@ -1,3 +1,4 @@
+import DpeAlertsWidget from '@/components/dashboard/DpeAlertsWidget'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -308,6 +309,11 @@ export default async function DashboardPage() {
           </div>
         </div>
       </main>
+      {/* Widget DPE Alertes */}
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px 16px' }}>
+        <DpeAlertsWidget />
+      </div>
+
     </div>
   )
 }
