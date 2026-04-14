@@ -1,25 +1,23 @@
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import nodemailer from 'nodemailer'
 
 // GET — données pour le dashboard (DPE récents depuis dernière alerte)
-export async function GET(req: Request) {
-  const supabase = await createAdminClient()
-
-  // Récupérer l'utilisateur connecté via le cookie (client normal)
-  const { createClient } = await import('@/lib/supabase/server')
+export async function GET() {
   const supabaseUser = await createClient()
   const { data: { user } } = await supabaseUser.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const supabase = await createAdminClient()
+
   // Récupérer last_dpe_alert_at du commercial
   const { data: commercial } = await supabase
     .from('commerciaux')
-    .select('last_dpe_alert_at, email')
+    .select('last_dpe_alert_at')
     .eq('id', user.id)
     .single()
 
-  const since = commercial?.last_dpe_alert_at ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+  const since = commercial?.last_dpe_alert_at
+    ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
 
   // Communes du commercial
   const { data: communes } = await supabase
@@ -27,31 +25,41 @@ export async function GET(req: Request) {
     .select('code_insee, nom, code_postal')
     .eq('commercial_id', user.id)
 
-  if (!communes?.length) return NextResponse.json({ dpe: [], since })
+  if (!communes?.length) return NextResponse.json({ dpe: {}, total: 0, since })
 
   const codeInsees = communes.map((c: any) => c.code_insee)
 
-  // DPE récents depuis dernière alerte, joints avec adresses
+  // DPE récents — jointure via adresses
+  const { data: adresses } = await supabase
+    .from('adresses')
+    .select('id, numero, nom_voie, code_postal, commune, code_insee')
+    .in('code_insee', codeInsees)
+
+  if (!adresses?.length) return NextResponse.json({ dpe: {}, total: 0, since })
+
+  const adresseIds = adresses.map((a: any) => a.id)
+  const adresseMap = new Map(adresses.map((a: any) => [a.id, a]))
+
   const { data: dpes } = await supabase
     .from('dpe_logements')
-    .select('id, adresse_id, date_etablissement_dpe, classe_energie, adresses(id, numero, nom_voie, code_postal, commune, code_insee)')
-    .in('adresses.code_insee', codeInsees)
+    .select('adresse_id, date_etablissement_dpe, classe_energie')
+    .in('adresse_id', adresseIds)
     .gte('date_etablissement_dpe', since)
-    .not('adresse_id', 'is', null)
     .order('date_etablissement_dpe', { ascending: false })
-    .limit(200)
+    .limit(300)
 
   // Grouper par commune
   const byCommune: Record<string, any[]> = {}
   for (const dpe of (dpes ?? [])) {
-    if (!dpe.adresses) continue
-    const commune = (dpe.adresses as any).commune ?? 'Inconnue'
-    if (!byCommune[commune]) byCommune[commune] = []
-    byCommune[commune].push({
+    const a = adresseMap.get(dpe.adresse_id) as any
+    if (!a) continue
+    const key = a.commune ?? 'Inconnue'
+    if (!byCommune[key]) byCommune[key] = []
+    byCommune[key].push({
       adresse_id: dpe.adresse_id,
-      adresse: [(dpe.adresses as any).numero, (dpe.adresses as any).nom_voie].filter(Boolean).join(' '),
-      code_postal: (dpe.adresses as any).code_postal,
-      commune,
+      adresse: [a.numero, a.nom_voie].filter(Boolean).join(' '),
+      code_postal: a.code_postal,
+      commune: key,
       classe: dpe.classe_energie,
       date: dpe.date_etablissement_dpe,
     })
@@ -63,16 +71,14 @@ export async function GET(req: Request) {
 
 // POST — envoi du mail hebdomadaire (appelé par le cron)
 export async function POST(req: Request) {
-  const supabase = await createAdminClient()
-
-  // Vérifier le secret cron
   const { searchParams } = new URL(req.url)
   const secret = searchParams.get('secret')
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Récupérer tous les commerciaux actifs avec leurs communes
+  const supabase = await createAdminClient()
+
   const { data: commerciaux } = await supabase
     .from('commerciaux')
     .select('id, prenom, nom, email, last_dpe_alert_at')
@@ -80,17 +86,12 @@ export async function POST(req: Request) {
 
   if (!commerciaux?.length) return NextResponse.json({ sent: 0 })
 
-  const transport = nodemailer.createTransport({
-    host: 'smtp.resend.com',
-    port: 587,
-    auth: { user: 'resend', pass: process.env.RESEND_API_KEY },
-  })
-
   let sent = 0
   const now = new Date().toISOString()
 
   for (const commercial of commerciaux) {
-    const since = commercial.last_dpe_alert_at ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+    const since = commercial.last_dpe_alert_at
+      ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
 
     const { data: communes } = await supabase
       .from('communes_commerciaux')
@@ -101,59 +102,83 @@ export async function POST(req: Request) {
 
     const codeInsees = communes.map((c: any) => c.code_insee)
 
+    const { data: adresses } = await supabase
+      .from('adresses')
+      .select('id, numero, nom_voie, code_postal, commune, code_insee')
+      .in('code_insee', codeInsees)
+
+    if (!adresses?.length) continue
+
+    const adresseIds = adresses.map((a: any) => a.id)
+    const adresseMap = new Map(adresses.map((a: any) => [a.id, a]))
+
     const { data: dpes } = await supabase
       .from('dpe_logements')
-      .select('date_etablissement_dpe, classe_energie, adresses(numero, nom_voie, code_postal, commune, code_insee)')
-      .in('adresses.code_insee', codeInsees)
+      .select('adresse_id, date_etablissement_dpe, classe_energie')
+      .in('adresse_id', adresseIds)
       .gte('date_etablissement_dpe', since)
-      .not('adresse_id', 'is', null)
       .order('date_etablissement_dpe', { ascending: false })
       .limit(500)
 
-    const relevant = (dpes ?? []).filter((d: any) => d.adresses)
+    const relevant = (dpes ?? []).filter((d: any) => adresseMap.has(d.adresse_id))
     if (!relevant.length) continue
 
     // Grouper par commune
     const byCommune: Record<string, string[]> = {}
     for (const dpe of relevant) {
-      const a = dpe.adresses as any
+      const a = adresseMap.get(dpe.adresse_id) as any
       const key = a.commune ?? 'Inconnue'
       if (!byCommune[key]) byCommune[key] = []
-      byCommune[key].push(`${a.numero ?? ''} ${a.nom_voie ?? ''} (${a.code_postal ?? ''}) — DPE ${dpe.classe_energie ?? '?'}`.trim())
+      byCommune[key].push(
+        `${a.numero ?? ''} ${a.nom_voie ?? ''} (${a.code_postal ?? ''}) — DPE ${dpe.classe_energie ?? '?'}`.trim()
+      )
     }
 
-    // Construire l'email HTML
     const sinceFmt = new Date(since).toLocaleDateString('fr-FR')
     const rows = Object.entries(byCommune).map(([ville, adrs]) =>
-      `<tr><td colspan="2" style="padding:10px 12px 4px;font-weight:700;color:#1D9E75;border-top:1px solid #E8E6DF">${ville} (${adrs.length})</td></tr>` +
+      `<tr><td colspan="2" style="padding:10px 12px 4px;font-weight:700;color:#1D9E75;border-top:2px solid #E8E6DF">${ville} (${adrs.length} DPE)</td></tr>` +
       adrs.map(a => `<tr><td style="padding:3px 12px 3px 24px;font-size:13px;color:#374151">• ${a}</td></tr>`).join('')
     ).join('')
 
-    const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#F8F7F4;padding:24px">
+    const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#F8F7F4;padding:24px;margin:0">
 <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #E8E6DF;overflow:hidden">
   <div style="background:#1D9E75;padding:20px 24px">
-    <div style="color:#fff;font-size:20px;font-weight:700">PROspector — Nouveaux DPE</div>
-    <div style="color:#a7f3d0;font-size:13px;margin-top:4px">Depuis le ${sinceFmt} · ${relevant.length} DPE detectes</div>
+    <div style="color:#fff;font-size:20px;font-weight:700">&#128203; PROspector — Nouveaux DPE</div>
+    <div style="color:#a7f3d0;font-size:13px;margin-top:4px">Depuis le ${sinceFmt} · ${relevant.length} DPE detectes sur votre secteur</div>
   </div>
   <div style="padding:20px 24px">
-    <p style="color:#374151;font-size:14px">Bonjour ${commercial.prenom ?? 'Commercial'},</p>
-    <p style="color:#374151;font-size:14px">Voici les nouveaux DPE enregistres sur votre secteur depuis votre derniere alerte. Ces biens sont potentiellement en preparation de vente.</p>
+    <p style="color:#374151;font-size:14px;margin-top:0">Bonjour ${commercial.prenom ?? 'Commercial'},</p>
+    <p style="color:#374151;font-size:14px">Ces biens ont fait l&apos;objet d&apos;un nouveau DPE. Ils sont potentiellement en preparation de vente — contactez-les en priorite.</p>
     <table style="width:100%;border-collapse:collapse;margin-top:16px">${rows}</table>
-    <div style="margin-top:20px;text-align:center">
-      <a href="https://prospector-sooty-seven.vercel.app/zones?filter=dpe_recent" style="display:inline-block;padding:10px 20px;background:#1D9E75;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Voir sur la carte</a>
+    <div style="margin-top:24px;text-align:center">
+      <a href="https://prospector-sooty-seven.vercel.app/zones?filter=dpe_recent"
+        style="display:inline-block;padding:11px 22px;background:#1D9E75;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">
+        Voir sur la carte &#8594;
+      </a>
     </div>
   </div>
-  <div style="padding:12px 24px;background:#F8F7F4;font-size:11px;color:#9ca3af;text-align:center">PROspector · Square Habitat</div>
+  <div style="padding:12px 24px;background:#F8F7F4;font-size:11px;color:#9ca3af;text-align:center">
+    PROspector · Square Habitat — Alerte automatique hebdomadaire
+  </div>
 </div></body></html>`
 
+    // Envoi via API Resend (fetch natif, pas de nodemailer)
     try {
-      await transport.sendMail({
-        from: 'PROspector <noreply@prospector.squarehabitat.fr>',
-        to: commercial.email,
-        subject: `PROspector — ${relevant.length} nouveau${relevant.length > 1 ? 'x' : ''} DPE sur votre secteur`,
-        html,
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'PROspector <onboarding@resend.dev>',
+          to: [commercial.email],
+          subject: `PROspector — ${relevant.length} nouveau${relevant.length > 1 ? 'x' : ''} DPE sur votre secteur`,
+          html,
+        }),
       })
-      sent++
+      if (res.ok) sent++
+      else console.error('Resend error:', await res.text())
     } catch (e) {
       console.error('Mail error for', commercial.email, e)
     }
