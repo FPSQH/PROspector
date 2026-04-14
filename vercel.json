@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/alerts/dpe?secret=CRON_SECRET_PLACEHOLDER",
+      "schedule": "0 8 * * 1"
+    }
+  ]
+}
