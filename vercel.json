@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/alerts/dpe?secret=CRON_SECRET_PLACEHOLDER",
+      "path": "/api/alerts/dpe?secret=05091974",
       "schedule": "0 8 * * 1"
     }
   ]
