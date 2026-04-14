@@ -21,7 +21,7 @@ export async function GET() {
 
   // Communes du commercial
   const { data: communes } = await supabase
-    .from('communes_commerciaux')
+    .from('communes')
     .select('code_insee, nom, code_postal')
     .eq('commercial_id', user.id)
 
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
       ?? new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
 
     const { data: communes } = await supabase
-      .from('communes_commerciaux')
+      .from('communes')
       .select('code_insee, nom')
       .eq('commercial_id', commercial.id)
 
