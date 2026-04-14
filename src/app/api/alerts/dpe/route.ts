@@ -41,7 +41,7 @@ export async function GET() {
   const adresseMap = new Map(adresses.map((a: any) => [a.id, a]))
 
   const { data: dpes } = await supabase
-    .from('dpe_logements')
+    .from('dpe_logement')
     .select('adresse_id, date_etablissement_dpe, classe_energie')
     .in('adresse_id', adresseIds)
     .gte('date_etablissement_dpe', since)
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
     const adresseMap = new Map(adresses.map((a: any) => [a.id, a]))
 
     const { data: dpes } = await supabase
-      .from('dpe_logements')
+      .from('dpe_logement')
       .select('adresse_id, date_etablissement_dpe, classe_energie')
       .in('adresse_id', adresseIds)
       .gte('date_etablissement_dpe', since)
