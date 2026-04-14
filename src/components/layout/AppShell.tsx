@@ -293,6 +293,21 @@ export default function AppShell({ children, userName, userInitials }: Props) {
         {children}
       </main>
 
+      {/* ── Mobile Bottom Tab Bar ── */}
+      <nav className="mobile-tab-bar">
+        {NAV_ITEMS.filter(item => ['/dashboard','/zones','/terrain','/contacts','/planning'].includes(item.href)).map(item => {
+          const active = isActive(item)
+          return (
+            <a key={item.href} href={item.href}
+              className={'mobile-tab-item' + (active ? ' mobile-tab-active' : '')}
+            >
+              <span className="mobile-tab-icon">{item.icon}</span>
+              <span className="mobile-tab-label">{item.label}</span>
+            </a>
+          )
+        })}
+      </nav>
+
     </div>
   )
 }
