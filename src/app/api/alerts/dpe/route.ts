@@ -120,21 +120,24 @@ export async function POST(req: Request) {
 </div></body></html>`
 
     try {
-      const res = await fetch('https://api.resend.com/emails', {
+      const resendRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: 'PROspector <onboarding@resend.dev>',
-          to: ['fredopal@gmail.com'], // TEST sandbox Resend — remettre commercial.email en prod
+          from: 'onboarding@resend.dev',
+          to: ['fredopal@gmail.com'],
           subject: `PROspector — ${total} nouveau${total > 1 ? 'x' : ''} DPE sur votre secteur`,
           html,
         }),
       })
-      const resText = await res.text()
-      console.error('Resend response:', res.status, resText)
-      if (res.ok) sent++
-    } catch (e) {
-      console.error('Mail error for', commercial.email, e)
+      const resText = await resendRes.text()
+      if (resendRes.ok) {
+        sent++
+      } else {
+        return NextResponse.json({ sent, total_commerciaux: commerciaux.length, resend_error: resText, resend_status: resendRes.status, apiKey_set: !!process.env.RESEND_API_KEY })
+      }
+    } catch (e: any) {
+      return NextResponse.json({ sent, total_commerciaux: commerciaux.length, catch_error: e.message })
     }
 
     await supabase.from('commerciaux').update({ last_dpe_alert_at: now }).eq('id', commercial.id)
