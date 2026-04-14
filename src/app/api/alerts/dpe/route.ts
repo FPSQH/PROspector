@@ -125,13 +125,14 @@ export async function POST(req: Request) {
         headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: 'PROspector <onboarding@resend.dev>',
-          to: [commercial.email],
+          to: ['fredopal@gmail.com'], // TEST sandbox Resend — remettre commercial.email en prod
           subject: `PROspector — ${total} nouveau${total > 1 ? 'x' : ''} DPE sur votre secteur`,
           html,
         }),
       })
+      const resText = await res.text()
+      console.error('Resend response:', res.status, resText)
       if (res.ok) sent++
-      else console.error('Resend error:', await res.text())
     } catch (e) {
       console.error('Mail error for', commercial.email, e)
     }
