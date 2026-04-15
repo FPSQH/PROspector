@@ -13,6 +13,7 @@ export default function CreateUserForm() {
   const [email,  setEmail]  = useState('')
   const [nom,    setNom]    = useState('')
   const [prenom, setPrenom] = useState('')
+  const [role, setRole] = useState('commercial')
   const [loading, setLoading] = useState(false)
   const [result,  setResult]  = useState<CreateResult | null>(null)
   const [error,   setError]   = useState<string | null>(null)
@@ -27,7 +28,7 @@ export default function CreateUserForm() {
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, nom, prenom }),
+      body: JSON.stringify({ email, nom, prenom, role }),
     })
 
     const data = await res.json()
@@ -63,6 +64,19 @@ export default function CreateUserForm() {
             required
             className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#5F5E5A', marginBottom: 6 }}>
+            Rôle
+          </label>
+          <select
+            value={role}
+            onChange={e => setRole(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #B4B2A9', fontSize: 14, background: '#fff', outline: 'none' }}
+          >
+            <option value="commercial">Commercial</option>
+            <option value="manager">Manager</option>
+          </select>
         </div>
         <input
           type="email"
