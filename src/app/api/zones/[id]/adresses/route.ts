@@ -5,36 +5,32 @@ type Params = { params: { id: string } }
 
 // Calcule un score de priorité (0-100) pour une adresse
 function calcScore(a: any): number {
-  let score = 50 // base neutre
-
-  // Statut prospectabilité
-  if (a.statut_prospectabilite === 'non_prospectable') return 0
-  if (a.mode_prospection === 'exclure') return 0
+  if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
+  let score = 0
 
   // Signal DPE
   const dpeDate = a.latest_dpe_date ? new Date(a.latest_dpe_date) : null
   const now = new Date()
   if (dpeDate) {
-    const daysDiff = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
-    if (daysDiff <= 90)       score += 40  // DPE < 3 mois = signal fort
-    else if (daysDiff <= 365) score += 20  // DPE < 12 mois = signal modéré
-    else                      score += 5   // DPE présent mais ancien
+    const days = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
+    if (days <= 30)       score += 100
+    else if (days <= 90)  score += 40
+    else if (days <= 180) score += 20
+    else if (days <= 365) score += 5
   }
 
-  // Type d'habitat
-  if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 10
-  if (a.type_habitat === 'activite') score -= 10
+  // Type de bien
+  if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 5
+  if (a.type_habitat === 'activite' || a.type_bien === 'commerce') score -= 10
 
-  // Mode prospection
-  if (a.mode_prospection === 'porte_a_porte') score += 15
-  if (a.mode_prospection === 'boitage')       score += 5
+  // Mode de prospection
+  if (a.mode_prospection === 'porte_a_porte') score += 5
 
-  // Enrichissement terrain
-  if (a.courrier_cible_possible) score += 5
-  if (a.has_projet_actif)        score += 10
+  // Projet immobilier actif
+  if (a.has_projet_actif) score += 15
 
-  // Jamais visitée = prioritaire
-  if (!a.derniere_visite) score += 10
+  // Jamais visité dans le mois
+  if (!a.derniere_visite) score += 15
 
   return Math.min(100, Math.max(0, score))
 }
@@ -111,7 +107,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   // Dernière visite par adresse (interactions de la semaine)
   const visiteMap: Record<string, string> = {}
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
+  const oneWeekAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
   const { data: interactions } = await supabase
     .from('interactions')
     .select('adresse_id, created_at')
