@@ -20,7 +20,7 @@ function calcScore(a: any): number {
   }
 
   // Type de bien
-  if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 5
+  if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 25
   if (a.type_habitat === 'activite' || a.type_bien === 'commerce') score -= 10
 
   // Mode de prospection
@@ -30,7 +30,7 @@ function calcScore(a: any): number {
   if (a.has_projet_actif) score += 15
 
   // Jamais visité dans le mois
-  if (!a.derniere_visite) score += 15
+  if (!a.derniere_visite) score += 25
 
   return Math.min(100, Math.max(0, score))
 }
