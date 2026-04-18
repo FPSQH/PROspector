@@ -1,462 +1,379 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface Adresse {
-  id: string
-  numero?: string
-  nom_voie?: string
-  type_bien?: string
-  nb_bal?: number
-  prospectable?: boolean
-  statut_carte: string
-  interaction?: any
+  id: string; numero?: string; nom_voie?: string; code_postal?: string; commune?: string
+  type_bien?: string; nb_bal?: number; has_commerce?: boolean
+  type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
+  interaction?: { resultat?: string; action?: string; type_habitat?: string }
 }
 
-interface Contact {
-  nom:          string
-  prenom:       string
-  tel1:         string
-  tel2:         string
-  email1:       string
-  email2:       string
-}
+const btn = (active: boolean, color = '#1D9E75'): any => ({
+  flex: 1, padding: '10px 6px', borderRadius: 10, fontWeight: 600, fontSize: 13,
+  border: active ? 'none' : '1.5px solid #E8E6DF',
+  background: active ? color : '#fff',
+  color: active ? '#fff' : '#5F5E5A', cursor: 'pointer', transition: 'all 0.12s',
+})
 
-type Step = 'main' | 'pas_contact' | 'contact' | 'fiche_contact'
+const chipBtn = (active: boolean, color = '#1D9E75'): any => ({
+  padding: '7px 12px', borderRadius: 20, fontWeight: 600, fontSize: 12,
+  border: active ? 'none' : '1.5px solid #E8E6DF',
+  background: active ? color : '#fff',
+  color: active ? '#fff' : '#5F5E5A', cursor: 'pointer',
+})
 
-interface Props {
-  open:             boolean
-  adresse:          Adresse
-  sessionId:        string
-  onClose:          () => void
-  onQualification:  (data: any) => void
-}
-
-const TYPE_CONTACT_LABELS: Record<string, string> = {
-  simple_echange:    'Simple échange',
-  intention_vente:   'Intention de vendre',
-  projet_moyen_long: 'Projet moyen/long terme',
-  voisin_relais:     'Voisin relais',
-  commercant:        'Commerçant',
-}
-
-const TYPE_HABITAT_LABELS: Record<string, string> = {
-  individuel: 'Habitat individuel',
-  collectif:  'Habitat collectif',
-  commerce:   'Commerce',
-  autre:      'Autre',
-}
-
-export default function BottomSheet({ open, adresse, sessionId, onClose, onQualification }: Props) {
-  const [step, setStep]               = useState<Step>('main')
-  const [typeHabitat, setTypeHabitat] = useState<string>('')
-  const [nbEtages, setNbEtages]       = useState('')
-  const [nomBoite, setNomBoite]       = useState('')
-  const [action, setAction]           = useState<string>('')
-  const [typeContact, setTypeContact] = useState<string>('')
+export default function BottomSheet({
+  adresse, open, onClose, onQualification, sessionId
+}: {
+  adresse: Adresse; open: boolean; onClose: () => void
+  onQualification: (data: any) => void; sessionId?: string
+}) {
+  // Niveau 1 — résultat principal
+  const [step, setStep]               = useState<'main'|'pas_reponse'|'contact'|'exclure'>('main')
+  // Niveau 2a — pas de réponse
+  const [typeHabitat, setTypeHabitat] = useState(adresse.type_habitat ?? '')
+  const [action, setAction]           = useState('')
+  const [nbBal, setNbBal]             = useState<string>(adresse.nb_bal?.toString() ?? '')
+  const [courrierCible, setCourrierCible] = useState(false)
+  // Niveau 2b — contact
+  const [profil, setProfil]           = useState('')
+  const [typeProjet, setTypeProjet]   = useState<string[]>([])
+  const [horizon, setHorizon]         = useState('')
+  const [autreProjet, setAutreProjet] = useState(false)
   const [note, setNote]               = useState('')
   const [dateRelance, setDateRelance] = useState('')
-  const [showFiche, setShowFiche]     = useState(false)
-  const [contact, setContact]         = useState<Contact>({
-    nom: '', prenom: '', tel1: '', tel2: '', email1: '', email2: '',
-  })
+  const [contact, setContact]         = useState({ nom:'', prenom:'', tel1:'', email1:'' })
+  const [showContactForm, setShowContactForm] = useState(false)
+  // Niveau 2c — exclusion
+  const [motifExclusion, setMotifExclusion] = useState('')
   const [saving, setSaving]           = useState(false)
-
   const sheetRef = useRef<HTMLDivElement>(null)
 
-  // Reset à chaque ouverture
   useEffect(() => {
     if (open) {
       setStep('main')
-      setTypeHabitat(adresse.interaction?.type_habitat ?? '')
-      setNbEtages(adresse.interaction?.nb_etages ?? '')
-      setNomBoite(adresse.interaction?.nb_bal ?? (adresse as any).nb_bal ?? '')
-      setAction(adresse.interaction?.action ?? '')
-      setTypeContact(adresse.interaction?.type_contact ?? '')
-      setNote(adresse.interaction?.note ?? '')
-      setDateRelance(adresse.interaction?.date_relance ?? '')
-      setShowFiche(false)
-      setContact({ nom: '', prenom: '', tel1: '', tel2: '', email1: '', email2: '' })
+      setTypeHabitat(adresse.type_habitat ?? adresse.interaction?.type_habitat ?? '')
+      setNbBal(adresse.nb_bal?.toString() ?? '')
+      setAction(''); setCourrierCible(false)
+      setProfil(''); setTypeProjet([]); setHorizon(''); setAutreProjet(false)
+      setNote(''); setDateRelance(''); setMotifExclusion('')
+      setContact({ nom:'', prenom:'', tel1:'', email1:'' })
+      setShowContactForm(false)
     }
   }, [open, adresse])
 
-  // Action rapide : pas de contact + action
-  const handleActionRapide = async (act: string) => {
-    setSaving(true)
-    // Persister nb_bal sur l'adresse si habitat individuel
-    if (typeHabitat === 'individuel' && nomBoite) {
-      await fetch(`/api/adresses/${adresse.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nb_bal: nomBoite }),
-      })
-    }
-    await onQualification({
-      resultat:     'pas_de_reponse',
-      action:       act,
-      type_habitat: typeHabitat || null,
-      nb_etages:    nbEtages ? parseInt(nbEtages) : null,
-      nb_bal:    nomBoite || null,
-    })
-    setSaving(false)
-  }
-
-  // Sauvegarder contact établi
-  const handleSaveContact = async () => {
-    if (!typeContact) return
-    setSaving(true)
-
-    // Persister nb_bal sur l'adresse si habitat individuel
-    if (typeHabitat === 'individuel' && nomBoite) {
-      await fetch(`/api/adresses/${adresse.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nb_bal: nomBoite }),
-      })
-    }
-
-    const interactionData = {
-      resultat:     'contact_etabli',
-      type_contact: typeContact,
-      notes:        note || null,
-      statut_pipeline: 'prospect',
-      date_relance: dateRelance || null,
-    }
-
-    await onQualification(interactionData)
-
-    // Créer la fiche contact si renseignée
-    if (showFiche && (contact.nom || contact.prenom || contact.tel1)) {
-      await fetch('/api/contacts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          adresse_id:  adresse.id,
-          type_contact: typeContact,
-          notes:        note || null,
-          statut_pipeline: 'prospect',
-          date_relance: dateRelance || null,
-          ...contact,
-        }),
-      })
-    }
-    setSaving(false)
-  }
-
   if (!open) return null
 
+  const toggleProjet = (v: string) =>
+    setTypeProjet(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])
+
   const adresseLabel = [adresse.numero, adresse.nom_voie].filter(Boolean).join(' ')
-    || `Adresse ${adresse.id.slice(0, 6)}`
+  const isCollectif  = typeHabitat === 'collectif'
+  const isIndividuel = typeHabitat === 'individuel'
+
+  const submitPasReponse = async () => {
+    if (!action) return
+    setSaving(true)
+    // Mettre à jour adresse si nouveaux champs
+    const adresseUpdate: any = {}
+    if (typeHabitat && typeHabitat !== adresse.type_habitat) adresseUpdate.type_habitat = typeHabitat
+    if (nbBal && parseInt(nbBal) !== adresse.nb_bal) adresseUpdate.nb_bal = parseInt(nbBal)
+    if (courrierCible) adresseUpdate.courrier_cible_possible = true
+    if (Object.keys(adresseUpdate).length) {
+      await fetch('/api/adresses/' + adresse.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adresseUpdate)
+      })
+    }
+    // Créer interaction
+    await fetch('/api/interactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adresse_id: adresse.id, session_id: sessionId,
+        resultat: 'pas_de_reponse', action,
+        type_habitat_observe: typeHabitat || null,
+        observations_terrain: courrierCible ? { courrier_possible: true } : {},
+      })
+    })
+    setSaving(false)
+    onQualification({ resultat: 'pas_de_reponse', action, type_habitat: typeHabitat })
+    onClose()
+  }
+
+  const submitExclusion = async () => {
+    if (!motifExclusion) return
+    setSaving(true)
+    await fetch('/api/adresses/' + adresse.id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut_prospectabilite: 'non_prospectable', motif_exclusion: motifExclusion, mode_prospection: 'exclure' })
+    })
+    await fetch('/api/interactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adresse_id: adresse.id, session_id: sessionId, resultat: 'exclusion', action: 'rien', observations_terrain: { motif_exclusion: motifExclusion } })
+    })
+    setSaving(false)
+    onQualification({ resultat: 'exclusion', motif_exclusion: motifExclusion })
+    onClose()
+  }
+
+  const submitContact = async () => {
+    setSaving(true)
+    // Mettre à jour adresse
+    const adresseUpdate: any = {}
+    if (typeHabitat && typeHabitat !== adresse.type_habitat) adresseUpdate.type_habitat = typeHabitat
+    if (Object.keys(adresseUpdate).length) {
+      await fetch('/api/adresses/' + adresse.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adresseUpdate)
+      })
+    }
+    // Créer interaction
+    await fetch('/api/interactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adresse_id: adresse.id, session_id: sessionId,
+        resultat: 'contact', action: 'rien',
+        type_habitat_observe: typeHabitat || null,
+        notes: note || null,
+      })
+    })
+    // Créer contact si renseigné
+    let contactId = null
+    if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
+      const cr = await fetch('/api/contacts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adresse_id: adresse.id,
+          nom: contact.nom || null, prenom: contact.prenom || null,
+          tel1: contact.tel1 || null, email1: contact.email1 || null,
+          profil_interlocuteur: profil || null,
+          type_contact: typeProjet.includes('vente') ? 'interet_vente' : typeProjet.length ? 'autre' : null,
+          statut_pipeline: 'prospect',
+          notes: note || null,
+          date_relance: dateRelance || null,
+          autre_projet_connu: autreProjet,
+        })
+      })
+      const cd = await cr.json()
+      contactId = cd.contact?.id
+      // Créer projet si type renseigné
+      if (contactId && typeProjet.length) {
+        await fetch('/api/projets', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contact_id: contactId,
+            type_projet: typeProjet,
+            horizon_projet: horizon || 'inconnu',
+          })
+        })
+      }
+    }
+    setSaving(false)
+    onQualification({ resultat: 'contact', profil, type_projet: typeProjet, contact_id: contactId })
+    onClose()
+  }
+
+  const overlay: any = { position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:900, display:'flex', alignItems:'flex-end' }
+  const sheet: any  = { background:'#fff', borderRadius:'20px 20px 0 0', width:'100%', maxHeight:'90vh', overflowY:'auto', padding:'0 0 32px' }
+  const handle: any = { width:36, height:4, borderRadius:2, background:'#D4D2CC', margin:'10px auto 0' }
+  const section: any = { padding:'12px 20px 0' }
+  const label: any  = { fontSize:11, color:'#9ca3af', fontWeight:700, letterSpacing:'0.05em', marginBottom:8, display:'block' }
+  const row: any    = { display:'flex', gap:8, flexWrap:'wrap' }
 
   return (
-    <>
-      {/* Overlay */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.3)', zIndex: 200,
-        }}
-      />
+    <div style={overlay} onClick={e => { if(e.target === e.currentTarget) onClose() }}>
+      <div ref={sheetRef} style={sheet}>
+        <div style={handle}/>
 
-      {/* Sheet */}
-      <div
-        ref={sheetRef}
-        style={{
-          position:     'fixed', bottom: 0, left: 0, right: 0,
-          background:   '#fff',
-          borderRadius: '16px 16px 0 0',
-          zIndex:       201,
-          maxHeight:    '85dvh',
-          overflowY:    'auto',
-          padding:      '0 0 env(safe-area-inset-bottom)',
-        }}
-      >
-        {/* Handle */}
-        <div style={{
-          width: 36, height: 4, borderRadius: 2,
-          background: '#d1d0c8', margin: '12px auto 0',
-        }}/>
+        {/* Header adresse */}
+        <div style={{ padding:'12px 20px 10px', borderBottom:'1px solid #F0EDE6' }}>
+          <div style={{ fontWeight:700, fontSize:15 }}>{adresseLabel || 'Adresse'}</div>
+          <div style={{ fontSize:12, color:'#9ca3af' }}>{adresse.commune}</div>
+        </div>
 
-        {/* Adresse */}
-        <div style={{
-          padding: '12px 20px 0',
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1a1a18' }}>
-              {adresseLabel}
+        {/* ── NIVEAU 1 : Résultat principal ── */}
+        {step === 'main' && (
+          <div style={section}>
+            <span style={label}>QUE SE PASSE-T-IL ?</span>
+            <div style={{ display:'flex', gap:10 }}>
+              <button style={btn(false)} onClick={() => setStep('pas_reponse')}>
+                🚪 Pas de réponse
+              </button>
+              <button style={btn(false, '#1D9E75')} onClick={() => setStep('contact')}>
+                🤝 Contact
+              </button>
+              <button style={btn(false, '#E24B4A')} onClick={() => setStep('exclure')}>
+                ✕ Exclure
+              </button>
             </div>
-            {adresse.type_bien && (
-              <div style={{ fontSize: '0.75rem', color: '#9b9b96', marginTop: 2 }}>
-                {adresse.type_bien}
-                {adresse.nb_bal ? ` · ${adresse.nb_bal} BAL` : ''}
+          </div>
+        )}
+
+        {/* ── NIVEAU 2a : Pas de réponse ── */}
+        {step === 'pas_reponse' && (
+          <>
+            <div style={section}>
+              <span style={label}>TYPE DE BIEN</span>
+              <div style={row}>
+                {[['individuel','🏠 Maison'],['collectif','🏢 Immeuble'],['mixte','🏪 Mixte'],['activite','🏭 Activité']].map(([v,l]) => (
+                  <button key={v} style={chipBtn(typeHabitat===v)} onClick={() => setTypeHabitat(v)}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            {isCollectif && (
+              <div style={section}>
+                <span style={label}>NB BOÎTES AUX LETTRES</span>
+                <input type="number" value={nbBal} onChange={e=>setNbBal(e.target.value)} placeholder="Ex: 12"
+                  style={{ width:100, padding:'8px 12px', borderRadius:8, border:'1.5px solid #E8E6DF', fontSize:14, outline:'none' }}/>
               </div>
             )}
-          </div>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none',
-            color: '#9b9b96', fontSize: '1.2rem', cursor: 'pointer', padding: 4,
-          }}>✕</button>
-        </div>
 
-        <div style={{ padding: '16px 20px 24px' }}>
-
-          {/* ── Étape principale ── */}
-          {step === 'main' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-              {/* Qualification habitat (optionnel, toujours visible) */}
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: '0.72rem', color: '#9b9b96', marginBottom: 6, fontWeight: 500 }}>
-                  Type de bien (optionnel)
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {Object.entries(TYPE_HABITAT_LABELS).map(([k, v]) => (
-                    <button key={k} onClick={() => setTypeHabitat(typeHabitat === k ? '' : k)}
-                      style={{
-                        padding: '5px 10px', borderRadius: 20,
-                        border: `1.5px solid ${typeHabitat === k ? '#1D9E75' : '#e8e7e0'}`,
-                        background: typeHabitat === k ? '#f0fdf4' : '#fff',
-                        color: typeHabitat === k ? '#0F6E56' : '#5F5E5A',
-                        fontSize: '0.75rem', cursor: 'pointer', fontWeight: 500,
-                      }}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-
-                {typeHabitat === 'collectif' && (
-                  <input
-                    type="number" placeholder="Nb d'étages"
-                    value={nbEtages}
-                    onChange={(e) => setNbEtages(e.target.value)}
-                    style={{
-                      marginTop: 8, width: '100%', padding: '8px 12px',
-                      borderRadius: 8, border: '1px solid #e8e7e0',
-                      fontSize: '0.875rem', boxSizing: 'border-box',
-                    }}
-                  />
-                )}
-                {typeHabitat === 'individuel' && (
-                  <input
-                    type="text" placeholder="Nom sur la boîte aux lettres"
-                    value={nomBoite}
-                    onChange={(e) => setNomBoite(e.target.value)}
-                    style={{
-                      marginTop: 8, width: '100%', padding: '8px 12px',
-                      borderRadius: 8, border: '1px solid #e8e7e0',
-                      fontSize: '0.875rem', boxSizing: 'border-box',
-                    }}
-                  />
-                )}
+            <div style={section}>
+              <span style={label}>ACTION</span>
+              <div style={{ display:'flex', gap:10 }}>
+                <button style={btn(action==='flyer')} onClick={() => setAction('flyer')}>📄 Flyer déposé</button>
+                <button style={btn(action==='rien', '#9ca3af')} onClick={() => setAction('rien')}>— Rien</button>
               </div>
-
-              {/* Boutons principaux */}
-              <button
-                onClick={() => setStep('pas_contact')}
-                style={{
-                  padding: '16px', borderRadius: 12, border: 'none',
-                  background: '#f0efeb', color: '#1a1a18',
-                  fontWeight: 700, fontSize: '1rem', cursor: 'pointer',
-                }}>
-                Pas de réponse
-              </button>
-
-              <button
-                onClick={() => setStep('contact')}
-                style={{
-                  padding: '16px', borderRadius: 12, border: 'none',
-                  background: '#1D9E75', color: '#fff',
-                  fontWeight: 700, fontSize: '1rem', cursor: 'pointer',
-                }}>
-                Contact établi 🤝
-              </button>
             </div>
-          )}
 
-          {/* ── Pas de contact → action ── */}
-          {step === 'pas_contact' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button onClick={() => setStep('main')} style={{
-                background: 'none', border: 'none', color: '#9b9b96',
-                fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', padding: 0, marginBottom: 4,
-              }}>
-                ← Retour
-              </button>
-
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a1a18', marginBottom: 4 }}>
-                Qu'avez-vous laissé ?
-              </div>
-
-              {[
-                { action: 'flyer',   label: '📄 Flyer déposé',   bg: '#eff6ff', color: '#1e40af', border: '#bfdbfe' },
-                { action: 'courrier', label: '✉️ Courrier déposé', bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff' },
-                { action: 'rien',    label: '— Rien',            bg: '#f9fafb', color: '#374151', border: '#e5e7eb' },
-              ].map((item) => (
-                <button
-                  key={item.action}
-                  onClick={() => handleActionRapide(item.action)}
-                  disabled={saving}
-                  style={{
-                    padding: '16px', borderRadius: 12,
-                    border: `1.5px solid ${item.border}`,
-                    background: item.bg, color: item.color,
-                    fontWeight: 700, fontSize: '0.95rem',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                  }}>
-                  {item.label}
+            {isIndividuel && (
+              <div style={{ padding:'10px 20px 0', display:'flex', alignItems:'center', gap:10 }}>
+                <button onClick={() => setCourrierCible(!courrierCible)}
+                  style={{ width:22, height:22, borderRadius:6, border:'1.5px solid #E8E6DF', background: courrierCible ? '#1D9E75' : '#fff', cursor:'pointer', fontSize:14, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {courrierCible ? '✓' : ''}
                 </button>
-              ))}
-            </div>
-          )}
+                <span style={{ fontSize:13, color:'#5F5E5A' }}>Courrier nominatif possible</span>
+              </div>
+            )}
 
-          {/* ── Contact établi ── */}
-          {step === 'contact' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <button onClick={() => setStep('main')} style={{
-                background: 'none', border: 'none', color: '#9b9b96',
-                fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', padding: 0,
-              }}>
-                ← Retour
+            <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
+              <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
+              <button onClick={submitPasReponse} disabled={!action || saving}
+                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: !action || saving ? '#E8E6DF' : '#1D9E75', color:'#fff', border:'none', cursor: !action || saving ? 'not-allowed':'pointer' }}>
+                {saving ? 'Enregistrement...' : 'Valider'}
               </button>
+            </div>
+          </>
+        )}
 
-              {/* Type de contact */}
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#9b9b96', marginBottom: 6, fontWeight: 500 }}>
-                  Type de contact *
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {Object.entries(TYPE_CONTACT_LABELS).map(([k, v]) => (
-                    <button key={k}
-                      onClick={() => setTypeContact(typeContact === k ? '' : k)}
-                      style={{
-                        padding: '10px 14px', borderRadius: 10, textAlign: 'left',
-                        border: `1.5px solid ${typeContact === k ? '#1D9E75' : '#e8e7e0'}`,
-                        background: typeContact === k ? '#f0fdf4' : '#fff',
-                        color: typeContact === k ? '#0F6E56' : '#1a1a18',
-                        fontWeight: typeContact === k ? 600 : 400,
-                        fontSize: '0.875rem', cursor: 'pointer',
-                      }}>
-                      {v}
-                    </button>
+        {/* ── NIVEAU 2b : Contact ── */}
+        {step === 'contact' && (
+          <>
+            <div style={section}>
+              <span style={label}>PROFIL</span>
+              <div style={row}>
+                {[['proprio_occupant','Proprio'],['locataire','Locataire'],['voisin','Voisin'],['gardien','Gardien'],['commercant','Commerçant']].map(([v,l]) => (
+                  <button key={v} style={chipBtn(profil===v)} onClick={() => setProfil(v)}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={section}>
+              <span style={label}>TYPE DE PROJET (plusieurs possibles)</span>
+              <div style={row}>
+                {[['vente','🏷 Vente'],['achat','🔑 Achat'],['estimation','📊 Estimation'],['investissement','💰 Invest.'],['location','🏠 Location']].map(([v,l]) => (
+                  <button key={v} style={chipBtn(typeProjet.includes(v))} onClick={() => toggleProjet(v)}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            {typeProjet.length > 0 && (
+              <div style={section}>
+                <span style={label}>HORIZON</span>
+                <div style={row}>
+                  {[['moins_6_mois','< 6 mois'],['6_12_mois','6-12 mois'],['1_2_ans','1-2 ans'],['plus_2_ans','+ 2 ans']].map(([v,l]) => (
+                    <button key={v} style={chipBtn(horizon===v)} onClick={() => setHorizon(v)}>{l}</button>
                   ))}
                 </div>
               </div>
+            )}
 
-              {/* Note */}
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#9b9b96', marginBottom: 4, fontWeight: 500 }}>
-                  Note (projet immobilier)
-                </div>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Type de bien, timing, critères…"
-                  rows={2}
-                  maxLength={300}
-                  style={{
-                    width: '100%', padding: '10px 12px',
-                    borderRadius: 10, border: '1px solid #e8e7e0',
-                    fontSize: '0.875rem', resize: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              {/* Date de relance */}
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#9b9b96', marginBottom: 4, fontWeight: 500 }}>
-                  Date de relance
-                </div>
-                <input
-                  type="date"
-                  value={dateRelance}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => setDateRelance(e.target.value)}
-                  style={{
-                    width: '100%', padding: '10px 12px',
-                    borderRadius: 10, border: '1px solid #e8e7e0',
-                    fontSize: '0.875rem', boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              {/* Fiche contact */}
-              <button
-                onClick={() => {
-                setShowFiche((v) => {
-                  // Pré-remplir le nom si nomBoite renseigné
-                  if (!v && nomBoite) {
-                    setContact((c) => ({ ...c, nom: c.nom || nomBoite }))
-                  }
-                  return !v
-                })
-              }}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 14px', borderRadius: 10,
-                  border: `1.5px solid ${showFiche ? '#1D9E75' : '#e8e7e0'}`,
-                  background: showFiche ? '#f0fdf4' : '#f8f7f4',
-                  cursor: 'pointer',
-                }}>
-                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: showFiche ? '#0F6E56' : '#1a1a18' }}>
-                  + Créer une fiche contact
-                </span>
-                <span style={{ color: showFiche ? '#1D9E75' : '#9b9b96' }}>
-                  {showFiche ? '▲' : '▼'}
-                </span>
+            <div style={{ padding:'10px 20px 0', display:'flex', alignItems:'center', gap:10 }}>
+              <button onClick={() => setAutreProjet(!autreProjet)}
+                style={{ width:22, height:22, borderRadius:6, border:'1.5px solid #E8E6DF', background: autreProjet ? '#1D9E75' : '#fff', cursor:'pointer', fontSize:14, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {autreProjet ? '✓' : ''}
               </button>
+              <span style={{ fontSize:13, color:'#5F5E5A' }}>Autre projet connu dans l&apos;entourage</span>
+            </div>
 
-              {showFiche && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input placeholder="Prénom" value={contact.prenom}
-                      onChange={(e) => setContact((c) => ({ ...c, prenom: e.target.value }))}
-                      style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid #e8e7e0', fontSize: '0.875rem' }}
-                    />
-                    <input placeholder="Nom" value={contact.nom}
-                      onChange={(e) => setContact((c) => ({ ...c, nom: e.target.value }))}
-                      style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid #e8e7e0', fontSize: '0.875rem' }}
-                    />
-                  </div>
-                  <input placeholder="Téléphone 1" type="tel" value={contact.tel1}
-                    onChange={(e) => setContact((c) => ({ ...c, tel1: e.target.value }))}
-                    style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #e8e7e0', fontSize: '0.875rem' }}
-                  />
-                  <input placeholder="Téléphone 2 (optionnel)" type="tel" value={contact.tel2}
-                    onChange={(e) => setContact((c) => ({ ...c, tel2: e.target.value }))}
-                    style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #e8e7e0', fontSize: '0.875rem' }}
-                  />
-                  <input placeholder="Email 1" type="email" value={contact.email1}
-                    onChange={(e) => setContact((c) => ({ ...c, email1: e.target.value }))}
-                    style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #e8e7e0', fontSize: '0.875rem' }}
-                  />
-                  <input placeholder="Email 2 (optionnel)" type="email" value={contact.email2}
-                    onChange={(e) => setContact((c) => ({ ...c, email2: e.target.value }))}
-                    style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #e8e7e0', fontSize: '0.875rem' }}
-                  />
-                </div>
-              )}
+            <div style={section}>
+              <span style={label}>NOTE</span>
+              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Note courte sur le projet..." maxLength={200}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, resize:'none', minHeight:60, outline:'none', boxSizing:'border-box', fontFamily:'inherit' }}/>
+            </div>
 
-              <button
-                onClick={handleSaveContact}
-                disabled={saving || !typeContact}
-                style={{
-                  padding: '14px', borderRadius: 12, border: 'none',
-                  background: !typeContact ? '#f0efeb' : saving ? '#9b9b96' : '#1D9E75',
-                  color: !typeContact ? '#9b9b96' : '#fff',
-                  fontWeight: 700, fontSize: '1rem',
-                  cursor: saving || !typeContact ? 'not-allowed' : 'pointer',
-                  marginTop: 4,
-                }}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
+            <div style={section}>
+              <span style={label}>DATE DE RELANCE</span>
+              <input type="date" value={dateRelance} onChange={e=>setDateRelance(e.target.value)}
+                style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
+            </div>
+
+            {/* Fiche contact optionnelle */}
+            <div style={{ padding:'10px 20px 0' }}>
+              <button onClick={() => setShowContactForm(!showContactForm)}
+                style={{ fontSize:13, color:'#1D9E75', fontWeight:600, background:'none', border:'none', cursor:'pointer', padding:0 }}>
+                {showContactForm ? '▾ Masquer la fiche contact' : '＋ Créer une fiche contact'}
               </button>
             </div>
-          )}
-        </div>
+
+            {showContactForm && (
+              <div style={{ padding:'10px 20px 0', display:'flex', flexDirection:'column', gap:8 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <input placeholder="Prénom" value={contact.prenom} onChange={e=>setContact(c=>({...c,prenom:e.target.value}))}
+                    style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
+                  <input placeholder="Nom" value={contact.nom} onChange={e=>setContact(c=>({...c,nom:e.target.value}))}
+                    style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
+                </div>
+                <input placeholder="Téléphone" value={contact.tel1} onChange={e=>setContact(c=>({...c,tel1:e.target.value}))}
+                  style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
+                <input placeholder="Email (optionnel)" value={contact.email1} onChange={e=>setContact(c=>({...c,email1:e.target.value}))}
+                  style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
+              </div>
+            )}
+
+            <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
+              <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
+              <button onClick={submitContact} disabled={saving}
+                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: saving ? '#E8E6DF' : '#1D9E75', color:'#fff', border:'none', cursor: saving ? 'not-allowed':'pointer' }}>
+                {saving ? 'Enregistrement...' : 'Valider le contact'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── NIVEAU 2c : Exclusion ── */}
+        {step === 'exclure' && (
+          <>
+            <div style={section}>
+              <span style={label}>MOTIF D&apos;EXCLUSION</span>
+              <div style={row}>
+                {[
+                  ['parc_public','Parc public / HLM'],
+                  ['administration','Administration'],
+                  ['equipement_public','Équipement public'],
+                  ['bureaux_uniquement','Bureaux seuls'],
+                  ['commerce_uniquement','Commerce seul'],
+                  ['site_ferme','Site fermé'],
+                  ['doublon_ban','Doublon BAN'],
+                  ['autre','Autre'],
+                ].map(([v,l]) => (
+                  <button key={v} style={chipBtn(motifExclusion===v, '#E24B4A')} onClick={() => setMotifExclusion(v)}>{l}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
+              <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
+              <button onClick={submitExclusion} disabled={!motifExclusion || saving}
+                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: !motifExclusion || saving ? '#E8E6DF' : '#E24B4A', color:'#fff', border:'none', cursor: !motifExclusion || saving ? 'not-allowed':'pointer' }}>
+                {saving ? 'Enregistrement...' : 'Exclure cette adresse'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
-    </>
+    </div>
   )
 }
