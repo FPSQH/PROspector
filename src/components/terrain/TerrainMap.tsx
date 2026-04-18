@@ -12,6 +12,13 @@ interface Adresse {
   prospectable?: boolean
   statut_carte: 'a_faire' | 'contact' | 'boite' | 'visite'
   ordre: number
+  score?: number
+  latest_dpe_date?: string | null
+  type_habitat?: string
+  mode_prospection?: string
+  statut_prospectabilite?: string
+  nom_syndic?: string
+  nb_bal?: number
 }
 
 const STATUT_COLOR: Record<string, string> = {
@@ -127,6 +134,8 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
             'circle-radius': [
               'case',
               ['==', ['get', 'prochaine'], true], 14,
+              ['>=', ['get', 'score'], 80], 11,
+              ['>=', ['get', 'score'], 60], 9,
               ['==', ['get', 'statut'], 'a_faire'], 8,
               6,
             ],
@@ -206,6 +215,7 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
           prospectable: a.prospectable !== false,
           label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
           prochaine:    a.id === pId,
+          score:        a.score ?? 50,
         },
         geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
       }))
