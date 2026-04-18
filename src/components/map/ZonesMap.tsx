@@ -279,8 +279,9 @@ export default function ZonesMap({
       properties: {
               dpeColor: dpeColor(a.dpe_etiquette),
               dpe_signal: (() => {
-                const d = a.date_etablissement ? new Date(a.date_etablissement) : null
-                if (!d) return null
+                const dateStr = a.date || null
+                if (!dateStr) return a.anciennete === 'chaud' ? 'hot' : 'recent'
+                const d = new Date(dateStr)
                 const days = (Date.now() - d.getTime()) / 86400000
                 if (days <= 30) return 'hot'
                 if (days <= 90) return 'warm'
