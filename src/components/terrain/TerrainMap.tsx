@@ -229,9 +229,9 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
         const animatePulse = () => {
           const t = (Date.now() % 1500) / 1500; // cycle de 1.5s
           const pulse = 0.1 + 0.3 * Math.abs(Math.sin(t * Math.PI));
-          try {
+          if (map.getLayer('dpe-aura')) {
             map.setPaintProperty('dpe-aura', 'circle-opacity', pulse);
-          } catch {}
+          }
           animFrame = requestAnimationFrame(animatePulse);
         };
         animatePulse();
