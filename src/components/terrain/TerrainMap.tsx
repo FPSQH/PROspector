@@ -127,6 +127,29 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
           },
         })
 
+
+        // Layer aura DPE (cercle extérieur pour DPE récents) — DOIT être avant le layer principal
+        map.addLayer({
+          id: 'dpe-aura',
+          type: 'circle',
+          source: 'adresses',
+          filter: ['in', ['get', 'dpe_signal'], ['literal', ['hot', 'warm']]],
+          paint: {
+            'circle-radius': [
+              'case',
+              ['==', ['get', 'dpe_signal'], 'hot'], 18,
+              14,
+            ],
+            'circle-color': [
+              'case',
+              ['==', ['get', 'dpe_signal'], 'hot'], '#F97316',
+              '#ef4444',
+            ],
+            'circle-opacity': 0.25,
+            'circle-stroke-width': 0,
+          },
+        })
+
         // Layer points adresses — visuel
         map.addLayer({
           id: 'adresses-circle', type: 'circle', source: 'adresses',
@@ -134,12 +157,21 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
             'circle-radius': [
               'case',
               ['==', ['get', 'prochaine'], true], 14,
+              ['==', ['get', 'dpe_signal'], 'hot'],    12,
+              ['==', ['get', 'dpe_signal'], 'warm'],   11,
+              ['==', ['get', 'dpe_signal'], 'recent'], 10,
               ['>=', ['get', 'score'], 80], 11,
               ['>=', ['get', 'score'], 60], 9,
               ['==', ['get', 'statut'], 'a_faire'], 8,
               6,
             ],
-            'circle-color':        ['get', 'couleur'],
+            'circle-color': [
+              'case',
+              ['==', ['get', 'dpe_signal'], 'hot'],    '#F97316',
+              ['==', ['get', 'dpe_signal'], 'warm'],   ['get', 'couleur'],
+              ['==', ['get', 'dpe_signal'], 'recent'], '#F59E0B',
+              ['get', 'couleur'],
+            ],
             'circle-stroke-width': ['case', ['==', ['get', 'prochaine'], true], 3, 2],
             'circle-stroke-color': ['case', ['==', ['get', 'prochaine'], true], '#ffffff', '#fff'],
             'circle-opacity': ['case', ['==', ['get', 'prospectable'], false], 0.4, 1],
@@ -191,7 +223,21 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
     }
 
     init()
-    return () => {
+    
+        // Animation pulse pour DPE hot (< 1 mois) et warm (1-3 mois)
+        let animFrame: number;
+        const animatePulse = () => {
+          const t = (Date.now() % 1500) / 1500; // cycle de 1.5s
+          const pulse = 0.1 + 0.3 * Math.abs(Math.sin(t * Math.PI));
+          try {
+            map.setPaintProperty('dpe-aura', 'circle-opacity', pulse);
+          } catch {}
+          animFrame = requestAnimationFrame(animatePulse);
+        };
+        animatePulse();
+
+        return () => {
+          if (animFrame) cancelAnimationFrame(animFrame);
       if (map) map.remove()
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
     }
@@ -216,6 +262,14 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
           label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
           prochaine:    a.id === pId,
           score:        a.score ?? 50,
+          dpe_signal:   (() => {
+            if (!a.latest_dpe_date) return null;
+            const days = (Date.now() - new Date(a.latest_dpe_date).getTime()) / 86400000;
+            if (days <= 30) return 'hot';
+            if (days <= 90) return 'warm';
+            if (days <= 365) return 'recent';
+            return null;
+          })(),
         },
         geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
       }))
