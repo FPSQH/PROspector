@@ -147,7 +147,7 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
               ['==', ['get', 'dpe_signal'], 'hot'], '#F97316',
               '#ef4444',
             ],
-            'circle-opacity': 0.25,
+            'circle-opacity': 0.35,
             'circle-stroke-width': 0,
           },
         })
@@ -225,30 +225,9 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
 
     init()
     
-        // Animation pulse pour DPE hot (< 1 mois) et warm (1-3 mois)
-        let animFrame: number;
-        const startPulse = (mapRef: any) => {
-          const animatePulse = () => {
-            const t = (Date.now() % 1500) / 1500;
-            const pulse = 0.1 + 0.3 * Math.abs(Math.sin(t * Math.PI));
-            try {
-              if (mapRef && mapRef.getLayer && mapRef.getLayer('dpe-aura')) {
-                mapRef.setPaintProperty('dpe-aura', 'circle-opacity', pulse);
-              }
-            } catch {}
-            animFrame = requestAnimationFrame(animatePulse);
-          };
-          animatePulse();
-        };
-        // Démarrer après que la carte soit prête
-        if (map.loaded()) {
-          startPulse(map);
-        } else {
-          map.once('load', () => startPulse(map));
         }
 
         return () => {
-          if (animFrame) cancelAnimationFrame(animFrame); animFrame = 0;
       if (map) map.remove()
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
     }
