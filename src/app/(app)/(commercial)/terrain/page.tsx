@@ -21,12 +21,23 @@ interface Adresse {
   lon: number
   numero?: string
   nom_voie?: string
+  code_postal?: string
+  commune?: string
   type_bien?: string
   nb_bal?: number
   prospectable?: boolean
   statut_carte: 'a_faire' | 'contact' | 'boite' | 'visite'
   interaction?: any
   ordre: number
+  score?: number
+  latest_dpe_date?: string | null
+  type_habitat?: string
+  mode_prospection?: string
+  statut_prospectabilite?: string
+  nom_syndic?: string
+  nb_acces_observe?: number
+  courrier_cible_possible?: boolean
+  commentaire_adresse?: string
 }
 
 interface Session {
