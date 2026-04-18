@@ -136,9 +136,41 @@ export default function ZonesMap({
           paint: { 'circle-radius': 4, 'circle-color': ['get', 'couleur'], 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' } })
         map.addLayer({ id: 'hors-zone-layer', type: 'circle', source: 'hors-zone',
           paint: { 'circle-radius': 3, 'circle-color': '#9E9E9E', 'circle-opacity': 0.5 } })
+        // Aura DPE (dessous)
+        map.addLayer({ id: 'dpe-aura-zone', type: 'circle', source: 'dpe-recents',
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': ['case',
+              ['==', ['get', 'dpe_signal'], 'hot'],    22,
+              ['==', ['get', 'dpe_signal'], 'warm'],   18,
+              ['==', ['get', 'dpe_signal'], 'recent'], 14,
+              10
+            ],
+            'circle-color': ['case',
+              ['==', ['get', 'dpe_signal'], 'hot'],    '#F59E0B',
+              ['==', ['get', 'dpe_signal'], 'warm'],   '#F97316',
+              '#ef4444'
+            ],
+            'circle-opacity': 0.35,
+            'circle-stroke-width': 0,
+          }
+        })
+        // Points DPE (dessus)
         map.addLayer({ id: 'dpe-recents-layer', type: 'circle', source: 'dpe-recents',
           layout: { visibility: 'none' },
-          paint: { 'circle-radius': 6, 'circle-color': ['get', 'dpeColor'], 'circle-stroke-width': 1.5, 'circle-stroke-color': '#fff', 'circle-opacity': 0.9 } })
+          paint: {
+            'circle-radius': ['case',
+              ['==', ['get', 'dpe_signal'], 'hot'],    14,
+              ['==', ['get', 'dpe_signal'], 'warm'],   12,
+              ['==', ['get', 'dpe_signal'], 'recent'], 10,
+              8
+            ],
+            'circle-color': '#22c55e',
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#fff',
+            'circle-opacity': 0.95
+          }
+        })
 
         // Layers overlay adresses secteur
         map.addLayer({ id: 'all-addr-layer', type: 'circle', source: 'all-addr',
@@ -244,7 +276,18 @@ export default function ZonesMap({
     const features = dpeAdresses.map(a => ({
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-      properties: { dpeColor: dpeColor(a.dpe_etiquette) },
+      properties: {
+              dpeColor: dpeColor(a.dpe_etiquette),
+              dpe_signal: (() => {
+                const d = a.date_etablissement ? new Date(a.date_etablissement) : null
+                if (!d) return null
+                const days = (Date.now() - d.getTime()) / 86400000
+                if (days <= 30) return 'hot'
+                if (days <= 90) return 'warm'
+                if (days <= 365) return 'recent'
+                return null
+              })()
+            },
     }))
     ;(map.getSource('dpe-recents') as any)?.setData({ type: 'FeatureCollection', features })
     map.setLayoutProperty('dpe-recents-layer', 'visibility', showDpeRecents && dpeAdresses.length ? 'visible' : 'none')
