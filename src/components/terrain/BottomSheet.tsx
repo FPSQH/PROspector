@@ -7,6 +7,8 @@ interface Adresse {
   type_bien?: string; nb_bal?: number; has_commerce?: boolean
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   interaction?: { resultat?: string; action?: string; type_habitat?: string }
+  score?: number
+  latest_dpe_date?: string | null
 }
 
 const btn = (active: boolean, color = '#1D9E75'): any => ({
@@ -192,7 +194,23 @@ export default function BottomSheet({
         {/* Header adresse */}
         <div style={{ padding:'12px 20px 10px', borderBottom:'1px solid #F0EDE6' }}>
           <div style={{ fontWeight:700, fontSize:15 }}>{adresseLabel || 'Adresse'}</div>
-          <div style={{ fontSize:12, color:'#9ca3af' }}>{adresse.commune}</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ fontSize:12, color:'#9ca3af' }}>{adresse.commune}</div>
+            {adresse.score !== undefined && (
+              <div style={{
+                fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10,
+                background: adresse.score >= 80 ? '#dcfce7' : adresse.score >= 60 ? '#fef9c3' : '#f3f4f6',
+                color: adresse.score >= 80 ? '#15803d' : adresse.score >= 60 ? '#a16207' : '#6b7280',
+              }}>
+                {adresse.score >= 80 ? '🔥 ' : adresse.score >= 60 ? '⭐ ' : ''}{adresse.score}/100
+              </div>
+            )}
+            {adresse.latest_dpe_date && (
+              <div style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8', fontWeight:600 }}>
+                DPE {new Date(adresse.latest_dpe_date).toLocaleDateString('fr-FR', {month:'short', year:'numeric'})}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── NIVEAU 1 : Résultat principal ── */}
