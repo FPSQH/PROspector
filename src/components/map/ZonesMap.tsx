@@ -201,7 +201,7 @@ export default function ZonesMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    map.setLayoutProperty('osm-layer',       'visibility', satellite ? 'none'    : 'visible')
+    map.setLayoutProperty('osm-tiles',       'visibility', satellite ? 'none'    : 'visible')
     map.setLayoutProperty('satellite-layer', 'visibility', satellite ? 'visible' : 'none')
   }, [satellite, mapLoaded])
 
