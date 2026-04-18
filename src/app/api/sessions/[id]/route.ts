@@ -55,6 +55,57 @@ export async function GET(_req: Request, { params }: Params) {
   const interMap = new Map((interactions ?? []).map((i: any) => [i.adresse_id, i]))
   const itinMap  = new Map((itineraire ?? []).map((i: any) => [i.adresse_id, i.ordre]))
 
+
+  // DPE les plus récents par adresse
+  const adresseIds = allAdresses.map((a: any) => a.id)
+  const dpeMap: Record<string, string> = {}
+  if (adresseIds.length > 0) {
+    const { data: dpes } = await supabase
+      .from('dpe_logement')
+      .select('adresse_id, date_etablissement')
+      .in('adresse_id', adresseIds)
+      .order('date_etablissement', { ascending: false })
+    for (const d of (dpes ?? [])) {
+      if (!dpeMap[d.adresse_id]) dpeMap[d.adresse_id] = d.date_etablissement
+    }
+  }
+
+  // Projets actifs
+  const projetSet = new Set<string>()
+  if (adresseIds.length > 0) {
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('adresse_id, projets_immobiliers(statut)')
+      .in('adresse_id', adresseIds)
+      .eq('commercial_id', user.id)
+    for (const c of (contacts ?? [])) {
+      const projets = (c as any).projets_immobiliers ?? []
+      if (projets.some((p: any) => p.statut === 'actif')) projetSet.add(c.adresse_id)
+    }
+  }
+
+  // Calcul score
+  const calcScore = (a: any): number => {
+    if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
+    let score = 50
+    const dpeDate = dpeMap[a.id] ? new Date(dpeMap[a.id]) : null
+    const now = new Date()
+    if (dpeDate) {
+      const days = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
+      if (days <= 90) score += 40
+      else if (days <= 365) score += 20
+      else score += 5
+    }
+    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 10
+    if (a.type_habitat === 'activite') score -= 10
+    if (a.mode_prospection === 'porte_a_porte') score += 15
+    else if (a.mode_prospection === 'boitage') score += 5
+    if (a.courrier_cible_possible) score += 5
+    if (projetSet.has(a.id)) score += 10
+    return Math.min(100, Math.max(0, score))
+  }
+
+
   const adressesAvecStatut = allAdresses.map((a) => {
     const inter = interMap.get(a.id)
     const statut = !inter ? 'a_faire'
@@ -119,54 +170,5 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   
-  // DPE les plus récents par adresse
-  const adresseIds = allAdresses.map((a: any) => a.id)
-  const dpeMap: Record<string, string> = {}
-  if (adresseIds.length > 0) {
-    const { data: dpes } = await supabase
-      .from('dpe_logement')
-      .select('adresse_id, date_etablissement')
-      .in('adresse_id', adresseIds)
-      .order('date_etablissement', { ascending: false })
-    for (const d of (dpes ?? [])) {
-      if (!dpeMap[d.adresse_id]) dpeMap[d.adresse_id] = d.date_etablissement
-    }
-  }
-
-  // Projets actifs
-  const projetSet = new Set<string>()
-  if (adresseIds.length > 0) {
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('adresse_id, projets_immobiliers(statut)')
-      .in('adresse_id', adresseIds)
-      .eq('commercial_id', user.id)
-    for (const c of (contacts ?? [])) {
-      const projets = (c as any).projets_immobiliers ?? []
-      if (projets.some((p: any) => p.statut === 'actif')) projetSet.add(c.adresse_id)
-    }
-  }
-
-  // Calcul score
-  const calcScore = (a: any): number => {
-    if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
-    let score = 50
-    const dpeDate = dpeMap[a.id] ? new Date(dpeMap[a.id]) : null
-    const now = new Date()
-    if (dpeDate) {
-      const days = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
-      if (days <= 90) score += 40
-      else if (days <= 365) score += 20
-      else score += 5
-    }
-    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 10
-    if (a.type_habitat === 'activite') score -= 10
-    if (a.mode_prospection === 'porte_a_porte') score += 15
-    else if (a.mode_prospection === 'boitage') score += 5
-    if (a.courrier_cible_possible) score += 5
-    if (projetSet.has(a.id)) score += 10
-    return Math.min(100, Math.max(0, score))
-  }
-
 return NextResponse.json({ session: data })
 }
