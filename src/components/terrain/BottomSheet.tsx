@@ -47,6 +47,7 @@ export default function BottomSheet({
   const [showContactForm, setShowContactForm] = useState(false)
   // Niveau 2c — exclusion
   const [motifExclusion, setMotifExclusion] = useState('')
+  const [nomSyndic, setNomSyndic]     = useState('')
   const [saving, setSaving]           = useState(false)
   const sheetRef = useRef<HTMLDivElement>(null)
 
@@ -59,6 +60,7 @@ export default function BottomSheet({
       setProfil(''); setTypeProjet([]); setHorizon(''); setAutreProjet(false)
       setNote(''); setDateRelance(''); setMotifExclusion('')
       setContact({ nom:'', prenom:'', tel1:'', email1:'' })
+      setNomSyndic('')
       setShowContactForm(false)
     }
   }, [open, adresse])
@@ -79,6 +81,7 @@ export default function BottomSheet({
     const adresseUpdate: any = {}
     if (typeHabitat && typeHabitat !== adresse.type_habitat) adresseUpdate.type_habitat = typeHabitat
     if (nbBal && parseInt(nbBal) !== adresse.nb_bal) adresseUpdate.nb_bal = parseInt(nbBal)
+    if (nomSyndic.trim()) adresseUpdate.nom_syndic = nomSyndic.trim()
     if (courrierCible) adresseUpdate.courrier_cible_possible = true
     if (Object.keys(adresseUpdate).length) {
       await fetch('/api/adresses/' + adresse.id, {
@@ -222,11 +225,18 @@ export default function BottomSheet({
               </div>
             </div>
 
-            {isCollectif && (
+            {(isCollectif || typeHabitat === 'mixte') && (
               <div style={section}>
                 <span style={label}>NB BOÎTES AUX LETTRES</span>
                 <input type="number" value={nbBal} onChange={e=>setNbBal(e.target.value)} placeholder="Ex: 12"
                   style={{ width:100, padding:'8px 12px', borderRadius:8, border:'1.5px solid #E8E6DF', fontSize:14, outline:'none' }}/>
+              </div>
+            )}
+            {(isCollectif || typeHabitat === 'mixte') && (
+              <div style={section}>
+                <span style={label}>NOM DU SYNDIC (optionnel)</span>
+                <input type="text" value={nomSyndic} onChange={e=>setNomSyndic(e.target.value)} placeholder="Ex: Foncia, Nexity Lamy..."
+                  style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none', boxSizing:'border-box' }}/>
               </div>
             )}
 
@@ -264,7 +274,7 @@ export default function BottomSheet({
             <div style={section}>
               <span style={label}>PROFIL</span>
               <div style={row}>
-                {[['proprio_occupant','Proprio'],['locataire','Locataire'],['voisin','Voisin'],['gardien','Gardien'],['commercant','Commerçant']].map(([v,l]) => (
+                {[['proprio_occupant','Proprio'],['locataire','Locataire'],['voisin','Voisin'],['gardien','Gardien'],['commercant','Commerçant'],['autre','Autre']].map(([v,l]) => (
                   <button key={v} style={chipBtn(profil===v)} onClick={() => setProfil(v)}>{l}</button>
                 ))}
               </div>
@@ -273,7 +283,7 @@ export default function BottomSheet({
             <div style={section}>
               <span style={label}>TYPE DE PROJET (plusieurs possibles)</span>
               <div style={row}>
-                {[['vente','🏷 Vente'],['achat','🔑 Achat'],['estimation','📊 Estimation'],['investissement','💰 Invest.'],['location','🏠 Location']].map(([v,l]) => (
+                {[['vente','🏷 Vente'],['achat','🔑 Achat'],['estimation','📊 Estimation'],['investissement','💰 Invest.'],['location','🏠 Location'],['pas_de_projet','— Pas de projet']].map(([v,l]) => (
                   <button key={v} style={chipBtn(typeProjet.includes(v))} onClick={() => toggleProjet(v)}>{l}</button>
                 ))}
               </div>
