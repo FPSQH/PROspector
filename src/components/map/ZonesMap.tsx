@@ -78,26 +78,25 @@ export default function ZonesMap({
       const maplibre = await import('maplibre-gl')
       await import('maplibre-gl/dist/maplibre-gl.css')
 
-      const OSM_STYLE = {
-        version: 8 as const,
-        glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
-        sources: {
-          osm: {
-            type: 'raster' as const,
-            tiles: ['https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'],
-            tileSize: 256,
-          },
-          satellite: {
-            type: 'raster' as const,
-            tiles: ['https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'],
-            tileSize: 256,
-          },
-        },
-        layers: [
-          { id: 'osm-layer',       type: 'raster' as const, source: 'osm',       layout: { visibility: 'visible' } },
-          { id: 'satellite-layer', type: 'raster' as const, source: 'satellite', layout: { visibility: 'none'    } },
-        ],
-      }
+      const OSM_STYLE: maplibre.StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+      maxzoom: 19
+    }
+  },
+  layers: [{
+    id: 'osm-tiles',
+    type: 'raster',
+    source: 'osm',
+    minzoom: 0,
+    maxzoom: 22
+  }]
+}
 
       map = new maplibre.Map({
         container: mapContainer.current!,
