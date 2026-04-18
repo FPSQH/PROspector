@@ -224,10 +224,8 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
     }
 
     init()
-    
-        }
 
-        return () => {
+    return () => {
       if (map) map.remove()
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
     }
