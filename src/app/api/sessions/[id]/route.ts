@@ -29,7 +29,7 @@ export async function GET(_req: Request, { params }: Params) {
   while (true) {
     const { data, error } = await supabase
       .from('adresses')
-      .select('id, lat, lon, numero, nom_voie, type_bien, nb_bal, nom_boite, prospectable')
+      .select('id, lat, lon, numero, nom_voie, code_postal, commune, type_bien, nb_bal, prospectable, type_habitat, mode_prospection, statut_prospectabilite, motif_exclusion, courrier_cible_possible, commentaire_adresse, nom_syndic, nb_acces_observe')
       .eq('zone_id', session.zone_id)
       .not('lat', 'is', null)
       .range(from, from + 999)
@@ -64,8 +64,10 @@ export async function GET(_req: Request, { params }: Params) {
     return {
       ...a,
       statut_carte: statut,
-      interaction:  inter ?? null,
-      ordre:        itinMap.get(a.id) ?? 9999,
+      interaction:       inter ?? null,
+      ordre:              itinMap.get(a.id) ?? 9999,
+      score:              calcScore(a),
+      latest_dpe_date:    dpeMap[a.id] ?? null,
     }
   }).sort((a, b) => a.ordre - b.ordre)
 
@@ -116,5 +118,55 @@ export async function PATCH(req: Request, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ session: data })
+  
+  // DPE les plus récents par adresse
+  const adresseIds = allAdresses.map((a: any) => a.id)
+  const dpeMap: Record<string, string> = {}
+  if (adresseIds.length > 0) {
+    const { data: dpes } = await supabase
+      .from('dpe_logement')
+      .select('adresse_id, date_etablissement')
+      .in('adresse_id', adresseIds)
+      .order('date_etablissement', { ascending: false })
+    for (const d of (dpes ?? [])) {
+      if (!dpeMap[d.adresse_id]) dpeMap[d.adresse_id] = d.date_etablissement
+    }
+  }
+
+  // Projets actifs
+  const projetSet = new Set<string>()
+  if (adresseIds.length > 0) {
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('adresse_id, projets_immobiliers(statut)')
+      .in('adresse_id', adresseIds)
+      .eq('commercial_id', user.id)
+    for (const c of (contacts ?? [])) {
+      const projets = (c as any).projets_immobiliers ?? []
+      if (projets.some((p: any) => p.statut === 'actif')) projetSet.add(c.adresse_id)
+    }
+  }
+
+  // Calcul score
+  const calcScore = (a: any): number => {
+    if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
+    let score = 50
+    const dpeDate = dpeMap[a.id] ? new Date(dpeMap[a.id]) : null
+    const now = new Date()
+    if (dpeDate) {
+      const days = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
+      if (days <= 90) score += 40
+      else if (days <= 365) score += 20
+      else score += 5
+    }
+    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 10
+    if (a.type_habitat === 'activite') score -= 10
+    if (a.mode_prospection === 'porte_a_porte') score += 15
+    else if (a.mode_prospection === 'boitage') score += 5
+    if (a.courrier_cible_possible) score += 5
+    if (projetSet.has(a.id)) score += 10
+    return Math.min(100, Math.max(0, score))
+  }
+
+return NextResponse.json({ session: data })
 }
