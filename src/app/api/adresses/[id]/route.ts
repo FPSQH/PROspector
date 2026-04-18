@@ -25,6 +25,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.nb_acces_observe !== undefined) update.nb_acces_observe = body.nb_acces_observe
   if (body.courrier_cible_possible !== undefined) update.courrier_cible_possible = body.courrier_cible_possible
   if (body.commentaire_adresse !== undefined) update.commentaire_adresse = body.commentaire_adresse?.substring(0, 150) || null
+  if (body.nom_syndic !== undefined) update.nom_syndic = body.nom_syndic?.substring(0, 100) || null
 
   if (!Object.keys(update).length) return NextResponse.json({ error: 'Aucun champ valide' }, { status: 400 })
 
