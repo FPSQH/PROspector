@@ -87,21 +87,33 @@ export async function GET(_req: Request, { params }: Params) {
   // Calcul score
   const calcScore = (a: any): number => {
     if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
-    let score = 50
+    let score = 0
+
+    // Signal DPE
     const dpeDate = dpeMap[a.id] ? new Date(dpeMap[a.id]) : null
     const now = new Date()
     if (dpeDate) {
       const days = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
-      if (days <= 90) score += 40
-      else if (days <= 365) score += 20
-      else score += 5
+      if (days <= 30)       score += 100
+      else if (days <= 90)  score += 40
+      else if (days <= 180) score += 20
+      else if (days <= 365) score += 5
+      // > 1 an : 0 pts
     }
-    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 10
-    if (a.type_habitat === 'activite') score -= 10
-    if (a.mode_prospection === 'porte_a_porte') score += 15
-    else if (a.mode_prospection === 'boitage') score += 5
-    if (a.courrier_cible_possible) score += 5
-    if (projetSet.has(a.id)) score += 10
+
+    // Type de bien
+    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 5
+    if (a.type_habitat === 'activite' || a.type_bien === 'commerce') score -= 10
+
+    // Mode de prospection / contact
+    if (a.mode_prospection === 'porte_a_porte') score += 5
+
+    // Projet immobilier actif
+    if (projetSet.has(a.id)) score += 15
+
+    // Jamais visité dans le mois
+    if (!visiteMap[a.id]) score += 15
+
     return Math.min(100, Math.max(0, score))
   }
 
