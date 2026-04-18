@@ -85,6 +85,22 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   // Calcul score
+
+  // Visites dans les 30 derniers jours (pour le score "jamais visité")
+  const visiteMap: Record<string, string> = {}
+  if (adresseIds.length > 0) {
+    const oneMonthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+    const { data: recentVisites } = await supabase
+      .from('interactions')
+      .select('adresse_id, created_at')
+      .in('adresse_id', adresseIds)
+      .gte('created_at', oneMonthAgo)
+      .order('created_at', { ascending: false })
+    for (const v of (recentVisites ?? [])) {
+      if (!visiteMap[v.adresse_id]) visiteMap[v.adresse_id] = v.created_at
+    }
+  }
+
   const calcScore = (a: any): number => {
     if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
     let score = 0
@@ -102,7 +118,7 @@ export async function GET(_req: Request, { params }: Params) {
     }
 
     // Type de bien
-    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 5
+    if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 25
     if (a.type_habitat === 'activite' || a.type_bien === 'commerce') score -= 10
 
     // Mode de prospection / contact
@@ -112,7 +128,7 @@ export async function GET(_req: Request, { params }: Params) {
     if (projetSet.has(a.id)) score += 15
 
     // Jamais visité dans le mois
-    if (!visiteMap[a.id]) score += 15
+    if (!visiteMap[a.id]) score += 25
 
     return Math.min(100, Math.max(0, score))
   }
