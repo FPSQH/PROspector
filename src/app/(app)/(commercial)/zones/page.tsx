@@ -341,25 +341,7 @@ export default function ZonesPage() {
 
           {/* ── Toggle DPE récents ── */}
           {zones.length > 0 && (
-            <button
-              onClick={() => setShowDpeRecents(v => !v)}
-              disabled={loadingDpe}
-              title={showDpeRecents ? `${nbDpeRecents} DPE récents affichés — cliquer pour masquer` : 'Afficher les adresses avec un DPE < 6 mois'}
-              style={{
-                padding: '6px 12px', borderRadius: 7,
-                border: `1px solid ${showDpeRecents ? '#f59e0b' : '#e8e7e0'}`,
-                background: showDpeRecents ? '#fffbeb' : '#fff',
-                color: showDpeRecents ? '#d97706' : '#5F5E5A',
-                fontSize: '0.8rem', fontWeight: showDpeRecents ? 600 : 400,
-                cursor: loadingDpe ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: 5,
-                transition: 'all 0.15s',
-              }}>
-              {loadingDpe
-                ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span> DPE…</>
-                : <>⚡ DPE récents{showDpeRecents && nbDpeRecents > 0 ? ` (${nbDpeRecents})` : ''}</>
-              }
-            </button>
+            
           )}
 
           {zones.length > 0 && (
