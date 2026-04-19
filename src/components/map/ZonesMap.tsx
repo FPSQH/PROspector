@@ -80,10 +80,12 @@ export default function ZonesMap({
 
       const OSM_STYLE: maplibre.StyleSpecification = {
   version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     osm: {
       type: 'raster',
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      attribution: '© OpenStreetMap contributors',
       tileSize: 256,
       attribution: '© OpenStreetMap contributors',
       maxzoom: 19
@@ -234,7 +236,7 @@ export default function ZonesMap({
     const map = mapRef.current
     if (!map || !mapLoaded) return
     map.setLayoutProperty('osm-tiles',       'visibility', satellite ? 'none'    : 'visible')
-    map.setLayoutProperty('satellite-layer', 'visibility', satellite ? 'visible' : 'none')
+    map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none')
   }, [satellite, mapLoaded])
 
   // ── Données zones ───────────────────────────────────────────────────────
