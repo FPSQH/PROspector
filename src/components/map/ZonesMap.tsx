@@ -86,6 +86,7 @@ export default function ZonesMap({
       type: 'raster',
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       attribution: '© OpenStreetMap contributors',
+      attribution: '© OpenStreetMap contributors',
       tileSize: 256,
       attribution: '© OpenStreetMap contributors',
       maxzoom: 19
