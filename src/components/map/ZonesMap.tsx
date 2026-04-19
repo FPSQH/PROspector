@@ -86,7 +86,6 @@ export default function ZonesMap({
       type: 'raster',
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       attribution: '© OpenStreetMap contributors',
-      attribution: '© OpenStreetMap contributors',
       tileSize: 256,
       attribution: '© OpenStreetMap contributors',
       maxzoom: 19
@@ -194,7 +193,7 @@ export default function ZonesMap({
           paint: {
             'circle-radius': 6,
             'circle-color': ['match', ['get', 'anciennete'],
-              'chaud', '#E63946', 'tiede', '#FF9800', '#FFD54F'],
+              'chaud', '#22c55e', 'tiede', '#86efac', '#fb923c'],
             'circle-opacity': 0.9,
             'circle-stroke-width': 1.5,
             'circle-stroke-color': '#fff',
