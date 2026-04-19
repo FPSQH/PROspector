@@ -339,10 +339,6 @@ export default function ZonesPage() {
             {sidebarOpen ? '◀' : '▶ Zones'}
           </button>
 
-          {/* ── Toggle DPE récents ── */}
-          {zones.length > 0 && (
-            
-          )}
 
           {zones.length > 0 && (
             <Link
