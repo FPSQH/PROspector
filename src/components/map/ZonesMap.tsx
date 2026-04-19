@@ -1,132 +1,3 @@
-express-utils.js:18 Loading the font 'https://r2cdn.perplexity.ai/fonts/FKGroteskNeue.woff2' violates the following Content Security Policy directive: "font-src github.githubassets.com". The action has been blocked.
-addFontToDocument @ express-utils.js:18
-/github-copilot/chat/entitlement:1  Failed to load resource: the server responded with a status of 404 ()
-Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type ‘allow pasting’ below and press Enter to allow pasting.
-allow pasting
-(async () => {
-  const REPO = 'FPSQH/PROspector';
-  const PATH = 'src/components/map/ZonesMap.tsx';
-
-  const getRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${PATH}`);
-  const fileData = await getRes.json();
-  let content = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
-
-  // 4 corrections
-  content = content.replace("color:'#E63946'", "color:'#22c55e'");
-  content = content.replace("&lt;6 mois",      "&lt;1 mois");
-  content = content.replace("color:'#FF9800'", "color:'#86efac'");
-  content = content.replace("6-12 mois",       "1\u201312 mois");
-
-  const encoded = btoa(unescape(encodeURIComponent(content)));
-  const putRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${PATH}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: 'fix: légende DPE zones — couleurs et seuils corrects (chaud/tiède)',
-      content: encoded,
-      sha: fileData.sha
-    })
-  });
-  console.log('Status:', putRes.status, putRes.ok ? '✅' : '❌');
-})();
-Promise {<pending>}[[Prototype]]: Promise[[PromiseState]]: "rejected"[[PromiseResult]]: TypeError: Cannot read properties of undefined (reading 'replace')
-    at <anonymous>:7:65
-fetch-patch.ts:11  GET https://api.github.com/repos/FPSQH/PROspector/contents/src/components/map/ZonesMap.tsx 404 (Not Found)
-n.cg.n.cg.fetch @ fetch-patch.ts:11
-window.fetch @ fetch-patch.ts:86
-(anonymous) @ VM225:5
-(anonymous) @ VM225:26
-VM225:7 Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'replace')
-    at <anonymous>:7:65
-(anonymous) @ VM225:7
-await in (anonymous)
-(anonymous) @ VM225:26
-express-utils.js:18 Loading the font 'https://r2cdn.perplexity.ai/fonts/FKGroteskNeue.woff2' violates the following Content Security Policy directive: "font-src github.githubassets.com". The action has been blocked.
-addFontToDocument @ express-utils.js:18
-/github-copilot/chat/entitlement:1  Failed to load resource: the server responded with a status of 404 ()
-Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type ‘allow pasting’ below and press Enter to allow pasting.
-allow pasting
-(async () => {
-  const REPO = 'FPSQH/PROspector';
-  const PATH = 'src/components/map/ZonesMap.tsx';
-
-  const getRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${PATH}`);
-  const fileData = await getRes.json();
-  let content = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
-
-  // 4 corrections
-  content = content.replace("color:'#E63946'", "color:'#22c55e'");
-  content = content.replace("&lt;6 mois",      "&lt;1 mois");
-  content = content.replace("color:'#FF9800'", "color:'#86efac'");
-  content = content.replace("6-12 mois",       "1\u201312 mois");
-
-  const encoded = btoa(unescape(encodeURIComponent(content)));
-  const putRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${PATH}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: 'fix: légende DPE zones — couleurs et seuils corrects (chaud/tiède)',
-      content: encoded,
-      sha: fileData.sha
-    })
-  });
-  console.log('Status:', putRes.status, putRes.ok ? '✅' : '❌');
-})();
-Promise {<pending>}[[Prototype]]: Promise[[PromiseState]]: "rejected"[[PromiseResult]]: TypeError: Cannot read properties of undefined (reading 'replace')
-    at <anonymous>:7:65
-fetch-patch.ts:11  GET https://api.github.com/repos/FPSQH/PROspector/contents/src/components/map/ZonesMap.tsx 404 (Not Found)
-n.cg.n.cg.fetch @ fetch-patch.ts:11
-window.fetch @ fetch-patch.ts:86
-(anonymous) @ VM225:5
-(anonymous) @ VM225:26
-VM225:7 Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'replace')
-    at <anonymous>:7:65
-(anonymous) @ VM225:7
-await in (anonymous)
-(anonymous) @ VM225:26
-express-utils.js:18 Loading the font 'https://r2cdn.perplexity.ai/fonts/FKGroteskNeue.woff2' violates the following Content Security Policy directive: "font-src github.githubassets.com". The action has been blocked.
-addFontToDocument @ express-utils.js:18
-/github-copilot/chat/entitlement:1  Failed to load resource: the server responded with a status of 404 ()
-Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type ‘allow pasting’ below and press Enter to allow pasting.
-allow pasting
-(async () => {
-  const REPO = 'FPSQH/PROspector';
-  const PATH = 'src/components/map/ZonesMap.tsx';
-
-  const getRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${PATH}`);
-  const fileData = await getRes.json();
-  let content = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
-
-  // 4 corrections
-  content = content.replace("color:'#E63946'", "color:'#22c55e'");
-  content = content.replace("&lt;6 mois",      "&lt;1 mois");
-  content = content.replace("color:'#FF9800'", "color:'#86efac'");
-  content = content.replace("6-12 mois",       "1\u201312 mois");
-
-  const encoded = btoa(unescape(encodeURIComponent(content)));
-  const putRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${PATH}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: 'fix: légende DPE zones — couleurs et seuils corrects (chaud/tiède)',
-      content: encoded,
-      sha: fileData.sha
-    })
-  });
-  console.log('Status:', putRes.status, putRes.ok ? '✅' : '❌');
-})();
-Promise {<pending>}[[Prototype]]: Promise[[PromiseState]]: "rejected"[[PromiseResult]]: TypeError: Cannot read properties of undefined (reading 'replace')
-    at <anonymous>:7:65
-fetch-patch.ts:11  GET https://api.github.com/repos/FPSQH/PROspector/contents/src/components/map/ZonesMap.tsx 404 (Not Found)
-n.cg.n.cg.fetch @ fetch-patch.ts:11
-window.fetch @ fetch-patch.ts:86
-(anonymous) @ VM225:5
-(anonymous) @ VM225:26
-VM225:7 Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'replace')
-    at <anonymous>:7:65
-(anonymous) @ VM225:7
-await in (anonymous)
-(anonymous) @ VM225:26
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -525,13 +396,13 @@ export default function ZonesMap({
           <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
             <div><span style={{color:'#4CAF50'}}>●</span> Maison</div>
             <div><span style={{color:'#2196F3'}}>●</span> Appartement</div>
-            <div><span style={{color:'#FF9800'}}>●</span> Commerce</div>
+            <div><span style={{color:'#86efac'}}>●</span> Commerce</div>
             <div><span style={{color:'#9E9E9E'}}>●</span> Autre</div>
           </div>
         )}
         {showDpe && (
           <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
-            <div><span style={{color:'#E63946'}}>●</span> &lt;6 mois</div>
+            <div><span style={{color:'#22c55e'}}>●</span> &lt;1 mois</div>
             <div><span style={{color:'#86efac'}}>●</span> 1–12 mois</div>
           </div>
         )}
