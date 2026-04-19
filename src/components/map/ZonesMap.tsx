@@ -396,7 +396,7 @@ export default function ZonesMap({
           <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
             <div><span style={{color:'#4CAF50'}}>●</span> Maison</div>
             <div><span style={{color:'#2196F3'}}>●</span> Appartement</div>
-            <div><span style={{color:'#86efac'}}>●</span> Commerce</div>
+            <div><span style={{color:'#FF9800'}}>●</span> Commerce</div>
             <div><span style={{color:'#9E9E9E'}}>●</span> Autre</div>
           </div>
         )}
