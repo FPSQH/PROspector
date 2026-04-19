@@ -87,17 +87,19 @@ export default function ZonesMap({
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       attribution: '© OpenStreetMap contributors',
       tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
       maxzoom: 19
+    },
+    satellite: {
+      type: 'raster',
+      tiles: ['https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'],
+      tileSize: 256,
+      maxzoom: 20
     }
   },
-  layers: [{
-    id: 'osm-tiles',
-    type: 'raster',
-    source: 'osm',
-    minzoom: 0,
-    maxzoom: 22
-  }]
+  layers: [
+    { id: 'osm-tiles', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 22 },
+    { id: 'satellite', type: 'raster', source: 'satellite', minzoom: 0, maxzoom: 22, layout: { visibility: 'none' } }
+  ]
 }
 
       map = new maplibre.Map({
