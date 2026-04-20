@@ -105,7 +105,7 @@ export async function POST(request: Request) {
           lat,
           lon,
           type_bien: 'inconnu' as const,
-          prospectable: true,
+          prospectable: false,
           source: 'BAN',
         }
       }).filter(Boolean)
