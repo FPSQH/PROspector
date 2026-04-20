@@ -40,7 +40,7 @@ export function SearchCommune({ onAdd, communesExistantes }: Props) {
   }, [])
 
   const search = useCallback(async (q: string) => {
-    if (q.length < 2) { setResults([]); setOpen(false); return }
+    if (q.length < 3) { setResults([]); setOpen(false); return }
     setLoading(true)
     try {
       const res  = await fetch(`/api/communes/search?q=${encodeURIComponent(q)}`)
