@@ -91,6 +91,7 @@ export default function ZonesPage() {
   const [historique, setHistorique] = useState<VersionHistorique[]>([])
   const [loadingHistorique, setLoadingHistorique] = useState(false)
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
+  const [showSnapshots, setShowSnapshots] = useState(false)
   const [nbAdressesTotal, setNbAdressesTotal] = useState(0)
 
   // ── DPE récents ──────────────────────────────────────────────────────────
