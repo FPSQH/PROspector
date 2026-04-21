@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateDensityZones } from '@/lib/geo/densityZones'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
+import { pointsToPolygonWKT } from '@/lib/geo/convexHull'
 
 const ZONE_COLORS = [
   '#E63946','#2196F3','#FF9800','#4CAF50','#9C27B0',
@@ -18,9 +19,7 @@ function chunk<T>(arr: T[], n: number): T[][] {
 // Generer le WKT d'un convex hull depuis un tableau de points
 function pointsToConvexHullWKT(pts: Array<{ lat: number; lon: number }>): string | null {
   if (pts.length < 3) return null
-  // Format WKT POLYGON pour ST_ConvexHull via PostGIS
-  const coords = pts.map(p => p.lon + ' ' + p.lat).join(', ')
-  return 'POLYGON((' + coords + ', ' + pts[0].lon + ' ' + pts[0].lat + '))'
+  return pointsToPolygonWKT(pts.map(p => [p.lon, p.lat] as [number, number]))
 }
 
 export async function POST(req: Request) {
