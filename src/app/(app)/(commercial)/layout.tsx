@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
+import BottomTabBar from '@/components/layout/BottomTabBar'
 
 export default async function CommercialLayout({
   children,
@@ -17,8 +18,6 @@ export default async function CommercialLayout({
     .eq('id', user.id)
     .single()
 
-  // Première connexion : forcer le changement de mot de passe
-  // /change-password est dans (app)/ et non (commercial)/ → pas de boucle infinie
   if (commercial?.must_change_password) {
     redirect('/change-password')
   }
@@ -31,6 +30,7 @@ export default async function CommercialLayout({
   return (
     <AppShell userName={userName} userInitials={initials}>
       {children}
+      <BottomTabBar />
     </AppShell>
   )
 }
