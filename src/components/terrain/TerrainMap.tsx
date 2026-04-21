@@ -35,7 +35,7 @@ interface Props {
   onAdresseClick:     (adresse: Adresse) => void
 }
 
-export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, onAdresseClick }: Props) {
+export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, onAdresseClick, dpeFlags = [] }: Props) {
   const containerRef  = useRef<HTMLDivElement>(null)
   const mapRef        = useRef<any>(null)
   const adressesRef   = useRef<Adresse[]>([])
@@ -293,7 +293,7 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
         { padding: 60, duration: 600, maxZoom: 17 }
       )
     }
-  }, [mapLoaded, adresses])
+  }, [mapLoaded, adresses, dpeFlags])
 
   // ── Satellite toggle ───────────────────────────────────────────
   useEffect(() => {
