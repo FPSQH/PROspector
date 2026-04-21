@@ -48,7 +48,7 @@ interface Session {
   zones_prospection: { nom: string; couleur: string; numero: number }
 }
 
-type AppState = 'choix_zone' | 'en_cours' | 'terminee'
+type AppState = 'choix_zone' | 'pre_session' | 'en_cours' | 'terminee'
 
 export default function TerrainPage() {
   const router = useRouter()
@@ -98,8 +98,42 @@ export default function TerrainPage() {
       .then((d) => setZones(d.zones ?? []))
   }, [])
 
+  // Aperçu de zone avant démarrage
+  const handleZonePreview = async (zone: Zone) => {
+    setPreZone(zone)
+    setDpeFlags([])
+    setPreAdresses([])
+    setAppState('pre_session')
+    setPreLoading(true)
+    const now = new Date()
+    setDpeTo(now.toISOString().split('T')[0])
+    setDpeFrom(new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0])
+    try {
+      const res = await fetch(`/api/zones/${zone.id}/adresses`)
+      const data = await res.json()
+      setPreAdresses(data.adresses ?? [])
+    } finally {
+      setPreLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!dpeFrom && !dpeTo) { setDpeFlags([]); return }
+    const from = dpeFrom ? new Date(dpeFrom) : new Date(0)
+    const to = dpeTo ? new Date(dpeTo + 'T23:59:59') : new Date()
+    const flags = preAdresses
+      .filter((a: any) => {
+        if (!a.latest_dpe_date) return false
+        const d = new Date(a.latest_dpe_date)
+        return d >= from && d <= to
+      })
+      .map((a: any) => a.id)
+    setDpeFlags(flags)
+  }, [preAdresses, dpeFrom, dpeTo])
+
   // Démarrer une session
   const handleStartSession = async (zone: Zone) => {
+    setActiveDpeFlags(dpeFlags)
     setLoading(true)
     try {
       const res  = await fetch('/api/sessions', {
@@ -272,7 +306,7 @@ export default function TerrainPage() {
               {zones.map((zone) => (
                 <button
                   key={zone.id}
-                  onClick={() => handleStartSession(zone)}
+                  onClick={() => handleZonePreview(zone)}
                   disabled={loading}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 14,
