@@ -599,6 +599,7 @@ if (appState === 'choix_zone') {
           zonePolygon={null}
           prochaineAdresseId={prochaineAdresseId}
           onAdresseClick={handleAdresseClick}
+          dpeFlags={activeDpeFlags}
         />
 
         {/* Légende couleurs */}
