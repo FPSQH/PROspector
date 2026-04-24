@@ -33,6 +33,7 @@ interface Props {
   zonePolygon:        any
   prochaineAdresseId: string | null
   onAdresseClick:     (adresse: Adresse) => void
+  dpeFlags?:           string[]
 }
 
 export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, onAdresseClick, dpeFlags = [] }: Props) {
@@ -152,6 +153,19 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
           },
         })
 
+        // Layer drapeaux DPE filtrés (halo ambré sur les adresses flagées)
+        map.addLayer({
+          id: 'dpe-flag-ring', type: 'circle', source: 'adresses',
+          filter: ['==', ['get', 'flagged'], true],
+          paint: {
+            'circle-radius': 20,
+            'circle-color': '#f59e0b',
+            'circle-opacity': 0.5,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#d97706',
+          },
+        })
+
         // Layer points adresses — visuel
         map.addLayer({
           id: 'adresses-circle', type: 'circle', source: 'adresses',
@@ -250,6 +264,7 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
           label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
           prochaine:    a.id === pId,
           score:        a.score ?? 50,
+          flagged:      dpeFlags.includes(a.id),
           dpe_signal:   (() => {
             if (!a.latest_dpe_date) return null;
             const days = (Date.now() - new Date(a.latest_dpe_date).getTime()) / 86400000;
