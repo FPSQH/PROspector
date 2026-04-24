@@ -114,7 +114,7 @@ export default function OnboardingPage() {
 
   const handleAdd = async (results: CommuneResult[]) => {
     for (const commune of results) {
-      await fetch('/api/communes', {
+      const res = await fetch('/api/communes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -124,6 +124,16 @@ export default function OnboardingPage() {
           departement: commune.departement,
         }),
       })
+      const d = await res.json()
+      // Déclencher l'ingestion BAN immédiatement depuis le navigateur
+      const communeId = d.commune?.id
+      if (communeId) {
+        fetch('/api/ingestion/ban', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code_insee: commune.code_insee, commune_id: communeId }),
+        }).catch(e => console.error('[BAN] ingest error:', e))
+      }
     }
     await loadCommunes()
   }
