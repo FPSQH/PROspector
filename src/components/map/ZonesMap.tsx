@@ -246,16 +246,17 @@ export default function ZonesMap({
     const map = mapRef.current
     if (!map || !mapLoaded || !zones.length) return
 
+    const parseGeo = (v: any) => { if (!v) return null; if (typeof v === 'string') { try { return JSON.parse(v) } catch { return null } } return v }
     const fillFeatures   = zones.filter(z => z.polygone_geojson).map(z => ({
       type: 'Feature' as const,
-      geometry: z.polygone_geojson,
+      geometry: parseGeo(z.polygone_geojson),
       properties: { id: z.id, couleur: z.couleur, selected: z.id === selectedZoneId, conflict: conflictIds.has(z.id) },
-    }))
+    })).filter(f => f.geometry)
     const labelFeatures  = zones.filter(z => z.centroide_geojson).map(z => ({
       type: 'Feature' as const,
-      geometry: z.centroide_geojson,
+      geometry: parseGeo(z.centroide_geojson),
       properties: { id: z.id, label: z.numero + ' · ' + z.nb_adresses + ' adr.' },
-    }))
+    })).filter(f => f.geometry)
 
     ;(map.getSource('zones-fill')    as any)?.setData({ type: 'FeatureCollection', features: fillFeatures })
     ;(map.getSource('zones-outline') as any)?.setData({ type: 'FeatureCollection', features: fillFeatures })
