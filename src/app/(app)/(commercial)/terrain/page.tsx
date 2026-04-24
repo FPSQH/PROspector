@@ -58,6 +58,7 @@ export default function TerrainPage() {
   const [preZone, setPreZone]         = useState<Zone | null>(null)
   const [preAdresses, setPreAdresses] = useState<any[]>([])
   const [preLoading, setPreLoading]   = useState(false)
+  const [showDpeFilter, setShowDpeFilter] = useState(false)
   const [dpeFrom, setDpeFrom]         = useState('')
   const [dpeTo, setDpeTo]             = useState('')
   const [dpeFlags, setDpeFlags]       = useState<string[]>([])
@@ -301,16 +302,17 @@ export default function TerrainPage() {
         {/* Filtre DPE */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '12px 16px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A' }}>⚡ DPE récents sur cette zone</span>
+            <button onClick={() => setShowDpeFilter(v => !v)} style={{ fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>⚡ DPE récents {showDpeFilter ? '▲' : '▼'}</button>
             {dpeFlags.length > 0 && (
               <span style={{ background: '#fef3c7', color: '#d97706', border: '1px solid #fde68a', borderRadius: 10, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
                 🚩 {dpeFlags.length} adresse{dpeFlags.length > 1 ? 's' : ''}
               </span>
             )}
-            {dpeFlags.length === 0 && (dpeFrom || dpeTo) && !preLoading && (
+            {showDpeFilter && dpeFlags.length === 0 && (dpeFrom || dpeTo) && !preLoading && (
               <span style={{ color: '#9b9b96', fontSize: '0.7rem' }}>Aucun DPE sur cette période</span>
             )}
           </div>
+          {showDpeFilter && <>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
             <button onClick={() => quickSet(14)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, border: '1.5px solid #1D9E75', background: '#f0fdf4', color: '#1D9E75', cursor: 'pointer' }}>
               2 semaines
@@ -322,11 +324,12 @@ export default function TerrainPage() {
               Effacer
             </button>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
             <input type="date" value={dpeFrom} onChange={e => setDpeFrom(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
             <span style={{ color: '#9b9b96', fontSize: '0.8rem', flexShrink: 0 }}>→</span>
             <input type="date" value={dpeTo} onChange={e => setDpeTo(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
           </div>
+          </>}
         </div>
         {/* Carte */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
