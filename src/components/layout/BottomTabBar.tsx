@@ -71,6 +71,8 @@ const tabs: Tab[] = [
 
 export default function BottomTabBar() {
   const pathname = usePathname()
+  // Masquer sur terrain (navigation propre) et zones/edit (plein ecran)
+  if (pathname.startsWith('/terrain') || pathname.startsWith('/zones/edit')) return null
 
   return (
     <>
