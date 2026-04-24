@@ -1,10 +1,14 @@
+import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClientDirect } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/database'
 
 export async function POST(request: Request) {
+  // Auth : session cookie utilisateur OU x-internal-key (rétrocompatibilité)
   const key = request.headers.get('x-internal-key')
-  if (key !== process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const supabaseAuth = await createClient()
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user && key !== process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
