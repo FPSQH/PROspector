@@ -55,6 +55,13 @@ export default function TerrainPage() {
 
   const [appState, setAppState]     = useState<AppState>('choix_zone')
   const [zones, setZones]           = useState<Zone[]>([])
+  const [preZone, setPreZone]         = useState<Zone | null>(null)
+  const [preAdresses, setPreAdresses] = useState<any[]>([])
+  const [preLoading, setPreLoading]   = useState(false)
+  const [dpeFrom, setDpeFrom]         = useState('')
+  const [dpeTo, setDpeTo]             = useState('')
+  const [dpeFlags, setDpeFlags]       = useState<string[]>([])
+  const [activeDpeFlags, setActiveDpeFlags] = useState<string[]>([])
   const [session, setSession]       = useState<Session | null>(null)
   const [adresses, setAdresses]     = useState<Adresse[]>([])
   const [nbTotal, setNbTotal]       = useState(0)
