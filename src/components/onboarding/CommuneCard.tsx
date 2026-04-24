@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Commune } from '@/types/database'
 
 interface Props {
@@ -18,22 +18,39 @@ export function CommuneCard({ commune, onRemove }: Props) {
   const [statut, setStatut] = useState<Statut | null>(null)
   const [removing, setRemoving] = useState(false)
 
+  const ingestStartedRef = useRef(false)
+
   useEffect(() => {
     let interval: NodeJS.Timeout
+
+    async function triggerIngest() {
+      if (ingestStartedRef.current) return
+      ingestStartedRef.current = true
+      try {
+        await fetch('/api/ingestion/ban', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code_insee: commune.code_insee, commune_id: commune.id }),
+        })
+      } catch(e) {
+        console.error('[BAN] ingestion error:', e)
+      }
+    }
 
     async function fetchStatut() {
       const res = await fetch(`/api/communes/statut?code_insee=${commune.code_insee}`)
       const data = await res.json()
       setStatut(data)
-      // Continuer à poller si pas encore chargée
       if (!data.chargee) {
+        // Déclencher l'ingestion depuis le client (1 seule fois) si pas déjà faite
+        triggerIngest()
         interval = setTimeout(fetchStatut, 3000)
       }
     }
 
     fetchStatut()
     return () => clearTimeout(interval)
-  }, [commune.code_insee])
+  }, [commune.code_insee, commune.id])
 
   async function handleRemove() {
     setRemoving(true)
