@@ -355,7 +355,7 @@ export default function ZonesPage() {
             </Link>
           )}
           {snapshots.length > 0 && (
-            <span style={{
+            <button onClick={() => setShowSnapshots(v => !v)} style={{ cursor: 'pointer',
               padding: '7px 12px', borderRadius: 8,
               background: '#f0efeb', color: '#5F5E5A',
               border: '1px solid #e8e7e0',
@@ -363,7 +363,9 @@ export default function ZonesPage() {
               display: 'inline-flex', alignItems: 'center', gap: 5,
             }}>
               🗂 {snapshots.length} sauvegarde{snapshots.length > 1 ? 's' : ''}
-            </span>
+            
+                  {showSnapshots ? ' ▲' : ' ▼'}
+                </button>
           )}
           {zones.length > 0 && (
             <button
