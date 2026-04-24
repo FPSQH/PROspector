@@ -15,41 +15,70 @@ interface Statut {
 }
 
 export function CommuneCard({ commune, onRemove }: Props) {
-  const [statut, setStatut] = useState<Statut | null>(null)
+  const [statut, setStatut]     = useState<Statut | null>(null)
   const [removing, setRemoving] = useState(false)
+  const [ingesting, setIngesting] = useState(false)
+  const ingestAttempts = useRef(0)
 
-  const ingestStartedRef = useRef(false)
+  async function triggerIngest() {
+    if (ingesting) return
+    setIngesting(true)
+    ingestAttempts.current += 1
+    try {
+      const r = await fetch('/api/ingestion/ban', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code_insee: commune.code_insee, commune_id: commune.id }),
+      })
+      if (!r.ok) {
+        console.error('[BAN] erreur HTTP', r.status, 'pour', commune.nom)
+      }
+    } catch(e) {
+      console.error('[BAN] ingestion error:', e)
+    } finally {
+      setIngesting(false)
+    }
+  }
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let pollTimer: NodeJS.Timeout
+    let retryTimer: NodeJS.Timeout
 
-    async function triggerIngest() {
-      if (ingestStartedRef.current) return
-      ingestStartedRef.current = true
+    async function fetchStatut() {
       try {
-        await fetch('/api/ingestion/ban', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code_insee: commune.code_insee, commune_id: commune.id }),
-        })
+        const res = await fetch(`/api/communes/statut?code_insee=${commune.code_insee}`)
+        const data = await res.json()
+        setStatut(data)
+        if (!data.chargee) {
+          // Lancer l'ingestion au premier poll, puis toutes les 30s
+          if (ingestAttempts.current === 0) {
+            triggerIngest()
+          }
+          pollTimer = setTimeout(fetchStatut, 3000)
+        }
       } catch(e) {
-        console.error('[BAN] ingestion error:', e)
+        pollTimer = setTimeout(fetchStatut, 5000)
       }
     }
 
-    async function fetchStatut() {
-      const res = await fetch(`/api/communes/statut?code_insee=${commune.code_insee}`)
-      const data = await res.json()
-      setStatut(data)
-      if (!data.chargee) {
-        // Déclencher l'ingestion depuis le client (1 seule fois) si pas déjà faite
-        triggerIngest()
-        interval = setTimeout(fetchStatut, 3000)
-      }
+    // Relancer l'ingestion toutes les 30s si toujours pas chargée
+    function scheduleRetry() {
+      retryTimer = setTimeout(() => {
+        if (statut && !statut.chargee) {
+          triggerIngest()
+        }
+        scheduleRetry()
+      }, 30000)
     }
 
     fetchStatut()
-    return () => clearTimeout(interval)
+    scheduleRetry()
+
+    return () => {
+      clearTimeout(pollTimer)
+      clearTimeout(retryTimer)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commune.code_insee, commune.id])
 
   async function handleRemove() {
@@ -62,23 +91,16 @@ export function CommuneCard({ commune, onRemove }: Props) {
 
   return (
     <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-      padding: '12px 14px',
-      background: '#fff',
-      border: '1.5px solid #e8e7e0',
-      borderRadius: 10,
-      transition: 'border-color 0.2s',
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 14px', background: '#fff',
+      border: '1.5px solid #e8e7e0', borderRadius: 10, transition: 'border-color 0.2s',
     }}>
-      {/* Indicateur statut */}
       <div style={{
         width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
         background: chargee ? '#1D9E75' : '#EF9F27',
         boxShadow: chargee ? '0 0 0 3px rgba(29,158,117,0.15)' : '0 0 0 3px rgba(239,159,39,0.15)',
       }}/>
 
-      {/* Infos commune */}
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 500, fontSize: '0.9375rem', color: '#1a1a18' }}>
           {commune.nom}
@@ -93,12 +115,8 @@ export function CommuneCard({ commune, onRemove }: Props) {
         </div>
       </div>
 
-      {/* Badge chargement */}
       {!chargee && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          fontSize: '0.75rem', color: '#BA7517', fontWeight: 500,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#BA7517', fontWeight: 500 }}>
           <div style={{
             width: 12, height: 12, borderRadius: '50%',
             border: '2px solid #EF9F27', borderTopColor: 'transparent',
@@ -108,7 +126,6 @@ export function CommuneCard({ commune, onRemove }: Props) {
         </div>
       )}
 
-      {/* Bouton supprimer */}
       <button
         onClick={handleRemove}
         disabled={removing}
@@ -120,12 +137,12 @@ export function CommuneCard({ commune, onRemove }: Props) {
           flexShrink: 0, color: '#9b9b96', transition: 'all 0.15s',
         }}
         onMouseEnter={e => {
-          (e.currentTarget as HTMLButtonElement).style.background = '#fef2f2'
+          ;(e.currentTarget as HTMLButtonElement).style.background = '#fef2f2'
           ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#fecaca'
           ;(e.currentTarget as HTMLButtonElement).style.color = '#E24B4A'
         }}
         onMouseLeave={e => {
-          (e.currentTarget as HTMLButtonElement).style.background = 'transparent'
+          ;(e.currentTarget as HTMLButtonElement).style.background = 'transparent'
           ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#e8e7e0'
           ;(e.currentTarget as HTMLButtonElement).style.color = '#9b9b96'
         }}
