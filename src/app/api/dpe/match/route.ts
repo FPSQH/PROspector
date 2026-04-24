@@ -258,17 +258,37 @@ export async function POST(req: Request) {
         if (nbDpeAppart >= 2) nbAppartEstime = nbDpeAppart
       }
 
-      const { error } = await supabase.rpc('qualify_adresse_from_dpe', {
-        p_adresse_id:    adresseId,
-        p_type_batiment: latest.type_batiment || null,
-        p_surface:       latest.surface_habitable || null,
-        p_annee:         latest.annee_construction || null,
-        p_nb_appart:     nbAppartEstime,
-        p_etiquette_dpe: latest.etiquette_dpe || null,
-        p_etiquette_ges: latest.etiquette_ges || null,
-        p_dpe_date:      latest.date_etablissement || null,
-        p_dpe_numero:    latest.numero_dpe || null,
-      })
+      // UPDATE direct — plus fiable que le RPC (pas de problème de permissions)
+      const typeBien = (() => {
+        const tb = (latest.type_batiment || '').toLowerCase()
+        if (tb === 'maison')      return 'maison'
+        if (tb === 'appartement') return 'appartement'
+        if (tb === 'immeuble')    return 'appartement'
+        return null
+      })()
+      const nbBal = (latest.type_batiment || '').toLowerCase() === 'immeuble' && nbAppartEstime ? nbAppartEstime : null
+      const dpeDate = (() => {
+        const s = String(latest.date_etablissement || '').trim()
+        if (!s) return null
+        if (/^d{4}-d{2}-d{2}/.test(s)) return s.slice(0, 10)
+        const m = s.match(/^(d{2})[/-](d{2})[/-](d{4})/)
+        if (m) return `${m[3]}-${m[2]}-${m[1]}`
+        return null
+      })()
+      const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      if (typeBien)                        updatePayload.type_bien          = typeBien
+      if (nbBal)                           updatePayload.nb_bal             = nbBal
+      if (latest.surface_habitable != null) updatePayload.surface_habitable  = latest.surface_habitable
+      if (latest.annee_construction != null) updatePayload.annee_construction = latest.annee_construction
+      if (latest.etiquette_dpe)            updatePayload.dpe_etiquette      = latest.etiquette_dpe
+      if (latest.etiquette_ges)            updatePayload.dpe_ges            = latest.etiquette_ges
+      if (dpeDate)                         updatePayload.latest_dpe_date    = dpeDate
+      if (latest.numero_dpe)               updatePayload.dpe_numero         = latest.numero_dpe
+
+      const { error } = await supabase
+        .from('adresses')
+        .update(updatePayload)
+        .eq('id', adresseId)
 
       if (!error) nbQualified++
       else console.error(`[DPE] Erreur qualification ${adresseId}:`, error.message)
