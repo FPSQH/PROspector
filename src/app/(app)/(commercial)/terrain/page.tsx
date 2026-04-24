@@ -272,7 +272,92 @@ export default function TerrainPage() {
   }
 
   // ── Écran choix de zone ───────────────────────────────────────────
-  if (appState === 'choix_zone') {
+    // Écran pré-session : aperçu zone + filtre DPE
+  if (appState === 'pre_session' && preZone) {
+    const quickSet = (days: number) => {
+      const now = new Date()
+      setDpeTo(now.toISOString().split('T')[0])
+      setDpeFrom(new Date(now.getTime() - days * 86400000).toISOString().split('T')[0])
+    }
+    const preAdressesForMap = preAdresses.map((a: any, i: number) => ({
+      ...a,
+      statut_carte: 'a_faire' as const,
+      ordre: i,
+      prospectable: a.prospectable !== false,
+    }))
+    return (
+      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#f8f7f4' }}>
+        {/* Header */}
+        <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '0 16px', height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => setAppState('choix_zone')} style={{ background: 'none', border: 'none', color: '#9b9b96', cursor: 'pointer', fontSize: '1rem', padding: '4px' }}>
+            ←
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: preZone.couleur, flexShrink: 0 }}/>
+            <span style={{ fontWeight: 600, color: '#1a1a18', fontSize: '0.9375rem' }}>{preZone.nom}</span>
+            <span style={{ fontSize: '0.75rem', color: '#9b9b96' }}>{preZone.nb_prospectables} adresses</span>
+          </div>
+        </div>
+        {/* Filtre DPE */}
+        <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '12px 16px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A' }}>⚡ DPE récents sur cette zone</span>
+            {dpeFlags.length > 0 && (
+              <span style={{ background: '#fef3c7', color: '#d97706', border: '1px solid #fde68a', borderRadius: 10, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
+                🚩 {dpeFlags.length} adresse{dpeFlags.length > 1 ? 's' : ''}
+              </span>
+            )}
+            {dpeFlags.length === 0 && (dpeFrom || dpeTo) && !preLoading && (
+              <span style={{ color: '#9b9b96', fontSize: '0.7rem' }}>Aucun DPE sur cette période</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button onClick={() => quickSet(14)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, border: '1.5px solid #1D9E75', background: '#f0fdf4', color: '#1D9E75', cursor: 'pointer' }}>
+              2 semaines
+            </button>
+            <button onClick={() => quickSet(30)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, border: '1.5px solid #1D9E75', background: '#f0fdf4', color: '#1D9E75', cursor: 'pointer' }}>
+              1 mois
+            </button>
+            <button onClick={() => { setDpeFrom(''); setDpeTo('') }} style={{ padding: '6px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 500, border: '1px solid #e8e7e0', background: 'transparent', color: '#9b9b96', cursor: 'pointer' }}>
+              Effacer
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="date" value={dpeFrom} onChange={e => setDpeFrom(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
+            <span style={{ color: '#9b9b96', fontSize: '0.8rem', flexShrink: 0 }}>→</span>
+            <input type="date" value={dpeTo} onChange={e => setDpeTo(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
+          </div>
+        </div>
+        {/* Carte */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {preLoading ? (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f7f4', fontSize: '0.875rem', color: '#9b9b96' }}>
+              Chargement…
+            </div>
+          ) : (
+            <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} dpeFlags={dpeFlags} />
+          )}
+          {dpeFlags.length > 0 && (
+            <div style={{ position: 'absolute', bottom: 16, left: 12, background: 'rgba(245,158,11,0.92)', borderRadius: 8, padding: '5px 12px', fontSize: '0.72rem', color: '#fff', fontWeight: 600, pointerEvents: 'none' }}>
+              🚩 {dpeFlags.length} DPE récent{dpeFlags.length > 1 ? 's' : ''} affiché{dpeFlags.length > 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+        {/* Bouton démarrer */}
+        <div style={{ padding: '12px 16px', background: '#fff', borderTop: '1px solid #e8e7e0', flexShrink: 0 }}>
+          <button
+            onClick={() => handleStartSession(preZone)}
+            disabled={loading}
+            style={{ width: '100%', padding: '14px', borderRadius: 12, background: loading ? '#9b9b96' : '#1D9E75', color: '#fff', fontWeight: 700, fontSize: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}
+          >
+            {loading ? 'Démarrage…' : 'Démarrer la tournée →'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+if (appState === 'choix_zone') {
     return (
       <div style={{
         minHeight: '100dvh', background: '#f8f7f4',
