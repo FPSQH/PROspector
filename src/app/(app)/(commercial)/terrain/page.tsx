@@ -59,8 +59,10 @@ export default function TerrainPage() {
   const [preAdresses, setPreAdresses] = useState<any[]>([])
   const [preLoading, setPreLoading]   = useState(false)
   const [showDpeFilter, setShowDpeFilter] = useState(false)
-  const [dpeFrom, setDpeFrom]         = useState('')
+  const [dpeFrom, setDpeFrom]         = useState('')  // valeurs appliquées
   const [dpeTo, setDpeTo]             = useState('')
+  const [pendingFrom, setPendingFrom]   = useState('')  // valeurs saisies non encore appliquées
+  const [pendingTo, setPendingTo]       = useState('')
   const [dpeFlags, setDpeFlags]       = useState<string[]>([])
   const [activeDpeFlags, setActiveDpeFlags] = useState<string[]>([])
   const [session, setSession]       = useState<Session | null>(null)
@@ -114,8 +116,12 @@ export default function TerrainPage() {
     setAppState('pre_session')
     setPreLoading(true)
     const now = new Date()
-    setDpeTo(now.toISOString().split('T')[0])
-    setDpeFrom(new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0])
+    const toDate = now.toISOString().split('T')[0]
+    const fromDate = new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0]
+    setDpeTo(toDate)
+    setDpeFrom(fromDate)
+    setPendingTo(toDate)
+    setPendingFrom(fromDate)
     try {
       const res = await fetch(`/api/zones/${zone.id}/adresses`)
       const data = await res.json()
@@ -275,10 +281,17 @@ export default function TerrainPage() {
   // ── Écran choix de zone ───────────────────────────────────────────
     // Écran pré-session : aperçu zone + filtre DPE
   if (appState === 'pre_session' && preZone) {
+    const applyFilter = (from: string, to: string) => {
+      setDpeFrom(from)
+      setDpeTo(to)
+      setPendingFrom(from)
+      setPendingTo(to)
+    }
     const quickSet = (days: number) => {
       const now = new Date()
-      setDpeTo(now.toISOString().split('T')[0])
-      setDpeFrom(new Date(now.getTime() - days * 86400000).toISOString().split('T')[0])
+      const to = now.toISOString().split('T')[0]
+      const from = new Date(now.getTime() - days * 86400000).toISOString().split('T')[0]
+      applyFilter(from, to)
     }
     const preAdressesForMap = preAdresses.map((a: any, i: number) => ({
       ...a,
@@ -320,15 +333,22 @@ export default function TerrainPage() {
             <button onClick={() => quickSet(30)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, border: '1.5px solid #1D9E75', background: '#f0fdf4', color: '#1D9E75', cursor: 'pointer' }}>
               1 mois
             </button>
-            <button onClick={() => { setDpeFrom(''); setDpeTo('') }} style={{ padding: '6px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 500, border: '1px solid #e8e7e0', background: 'transparent', color: '#9b9b96', cursor: 'pointer' }}>
+            <button onClick={() => { setDpeFrom(''); setDpeTo(''); setPendingFrom(''); setPendingTo('') }} style={{ padding: '6px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 500, border: '1px solid #e8e7e0', background: 'transparent', color: '#9b9b96', cursor: 'pointer' }}>
               Effacer
             </button>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <input type="date" value={dpeFrom} onChange={e => setDpeFrom(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
+            <input type="date" value={pendingFrom} onChange={e => setPendingFrom(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
             <span style={{ color: '#9b9b96', fontSize: '0.8rem', flexShrink: 0 }}>→</span>
-            <input type="date" value={dpeTo} onChange={e => setDpeTo(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
+            <input type="date" value={pendingTo} onChange={e => setPendingTo(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.8rem' }}/>
           </div>
+          <button
+            onClick={() => applyFilter(pendingFrom, pendingTo)}
+            disabled={!pendingFrom && !pendingTo}
+            style={{ marginTop: 10, width: '100%', padding: '8px', borderRadius: 8, background: (pendingFrom || pendingTo) ? '#1D9E75' : '#e8e7e0', color: '#fff', border: 'none', fontWeight: 600, fontSize: '0.8rem', cursor: (pendingFrom || pendingTo) ? 'pointer' : 'not-allowed' }}
+          >
+            Appliquer
+          </button>
           </>}
         </div>
         {/* Carte */}
