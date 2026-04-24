@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   const { data: zone } = await supabase
     .from('zones_prospection')
-    .select('*')
+    .select('id, nom, numero, couleur, commercial_id, nb_adresses, nb_prospectables, capacite_theorique, polygone_geojson, created_at, updated_at')
     .eq('id', params.id)
     .single()
 
