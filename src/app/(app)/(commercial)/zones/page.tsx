@@ -451,7 +451,7 @@ export default function ZonesPage() {
       )}
 
       {/* Panneau historique snapshots */}
-      {snapshots.length > 0 && (
+      {showSnapshots && snapshots.length > 0 && (
         <div style={{
           background: '#fff', borderBottom: '1px solid #e8e7e0',
           padding: '12px 20px',
