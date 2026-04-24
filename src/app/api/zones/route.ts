@@ -12,19 +12,16 @@ export async function GET() {
 
   if (!commercial) return NextResponse.json({ zones: [], nb_adresses_total: 0 })
 
-  // Zones via la vue GeoJSON
-  const { data: zones, error } = await supabase
-    .from('vue_zones_geojson')
-    .select('*')
-    .eq('commercial_id', commercial.id)
-    .order('numero')
+  // Zones via RPC (contourne le cache PostgREST pour polygone_geojson)
+  const { data: rpcZones, error: rpcError } = await supabase
+    .rpc('get_zones_geojson', { p_commercial_id: commercial.id })
 
-  const zonesData = error
+  const zonesData = rpcError
     ? ((await supabase.from('zones_prospection')
         .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux')
         .eq('commercial_id', commercial.id)
         .order('numero')).data ?? [])
-    : (zones ?? [])
+    : (rpcZones ?? [])
 
   // Nombre total d'adresses du secteur (toutes communes)
   const { data: communes } = await supabase
