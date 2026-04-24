@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateDensityZones } from '@/lib/geo/densityZones'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
-import { pointsToPolygonWKT } from '@/lib/geo/convexHull'
+import { pointsToPolygonWKT , hullToGeoJSON } from '@/lib/geo/convexHull'
 
 const ZONE_COLORS = [
   '#E63946','#2196F3','#FF9800','#4CAF50','#9C27B0',
@@ -167,6 +167,8 @@ export async function POST(req: Request) {
     // Convex hull des adresses de la zone (ordonnees par TSP pour le trace)
     const orderedPts = nearestNeighborTSP(dz.points)
     const rawWKT     = pointsToConvexHullWKT(orderedPts)
+    const rawHull    = orderedPts.map(p => [p.lon, p.lat] as [number, number])
+    const polygonGeoJSON = rawHull.length >= 3 ? JSON.stringify({ type: 'Polygon', coordinates: [hullToGeoJSON(rawHull)[0]] }) : null
 
     // FIX 3 : Clipper le polygone contre les zones deja inserees (ST_Difference)
     // On calcule le polygone final via une requete SQL PostGIS
@@ -201,6 +203,7 @@ export async function POST(req: Request) {
         nb_logements_sociaux: 0,
         statut:               'active',
         polygone:             polygonWKT ?? null,
+        polygone_geojson:     polygonGeoJSON ?? null,
       })
       .select('id')
       .single()
