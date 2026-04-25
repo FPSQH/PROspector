@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
@@ -12,11 +12,13 @@ export async function GET() {
 
   if (!commercial) return NextResponse.json({ zones: [], nb_adresses_total: 0 })
 
-  // Zones via select direct avec polygone_geojson et centroide_geojson
-  const { data: zonesRaw } = await supabase
+  // Zones via admin client (service role) — contourne le cache PostgREST
+  const adminSupabase = createAdminClient()
+  const { data: zonesRaw } = await adminSupabase
     .from('zones_prospection')
     .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux, polygone_geojson, centroide_geojson')
     .eq('commercial_id', commercial.id)
+    .eq('statut', 'active')
     .order('numero')
 
   const zonesData = zonesRaw ?? []
