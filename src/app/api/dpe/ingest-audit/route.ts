@@ -80,10 +80,17 @@ export async function POST(request: Request) {
         etape_travaux:      r.etape_travaux               != null ? Number(r.etape_travaux)               : null,
       }))
 
+      // Dédupliquer par n_audit (évite ON CONFLICT sur batch avec doublons)
+      const seen = new Set()
+      const dedupedBatch = auditBatch.filter((row) => {
+        if (seen.has(row.n_audit)) return false
+        seen.add(row.n_audit)
+        return true
+      })
       const adminDb = createAdminClient()
       const { error } = await adminDb
         .from('audit_logement')
-        .upsert(auditBatch, { onConflict: 'n_audit', ignoreDuplicates: false })
+        .upsert(dedupedBatch, { onConflict: 'n_audit', ignoreDuplicates: true })
 
       if (error) console.error('[AUDIT] upsert:', error.message)
       else nbInserted += auditBatch.length
