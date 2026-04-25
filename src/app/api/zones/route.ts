@@ -14,13 +14,13 @@ export async function GET() {
 
   // Zones via admin client (service role) — contourne le cache PostgREST
   const adminSupabase = createAdminClient()
+  const adminSupabase = createAdminClient()
   const { data: zonesRaw } = await adminSupabase
     .from('zones_prospection')
     .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux, polygone_geojson, centroide_geojson')
     .eq('commercial_id', commercial.id)
     .eq('statut', 'active')
     .order('numero')
-
   const zonesData = zonesRaw ?? []
 
   // Nombre total d'adresses du secteur (toutes communes)
