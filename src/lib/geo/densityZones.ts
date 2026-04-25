@@ -28,6 +28,7 @@ export interface DensityZone {
 export interface DpeParams {
   poids:           number   // 0..2 (0% a 200%)
   seuil_inclusion: number
+  poids_collectif: number   // 0..1 (0% a 100%) — ponderation habitat collectif vs individuel
 }
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -176,8 +177,14 @@ export function generateDensityZones(
       const inR = neighbors.filter(p => distSq(cand.lat, cand.lon, p.lat, p.lon) <= R2init)
 
       const dpe   = inR.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0)
+      // Pondération habitat collectif : les appartements valent poids_collectif (0..1) au lieu de 1
+      const poidsCollectif = dpeParams.poids_collectif ?? 0.5
+      const densite = inR.reduce((s, p) => {
+        const w = (p.type_bien === 'appartement') ? poidsCollectif : 1
+        return s + w
+      }, 0)
       // Si aucune adresse dans le rayon initial, compter quand meme le candidat lui-meme
-      const score = (inR.length > 0 ? inR.length : 0.5) + dpe * dpeParams.poids
+      const score = (inR.length > 0 ? densite : 0.5) + dpe * dpeParams.poids
 
       if (score > bestScore) {
         bestScore  = score
