@@ -35,6 +35,7 @@ export async function POST(req: Request) {
   const dpe_fenetre_mois:    number  = body.dpe_fenetre_mois    ?? 6
   const dpe_poids:           number  = body.dpe_poids           ?? 0
   const dpe_seuil_inclusion: number  = body.dpe_seuil_inclusion ?? 10
+  const poids_collectif:     number  = body.poids_collectif      ?? 0.5
 
   const { data: commercial } = await supabase
     .from('commerciaux').select('id').eq('id', user.id).single()
@@ -113,7 +114,7 @@ export async function POST(req: Request) {
 
   const { zones: densityZones, horsZone } = generateDensityZones(
     points, nb_zones, capacite_cible, rayon_metres,
-    { poids: dpe_poids, seuil_inclusion: dpe_seuil_inclusion }
+    { poids: dpe_poids, seuil_inclusion: dpe_seuil_inclusion, poids_collectif }
   )
 
   console.log('[ZONES]', densityZones.length, 'zones generees,', horsZone.length, 'hors-zone')
