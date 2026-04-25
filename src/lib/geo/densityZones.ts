@@ -13,6 +13,7 @@ export interface GeoPoint {
   code_insee?:  string
   dpe_chauds?:  number
   dpe_tiedes?:  number
+  type_bien?:   string
 }
 
 export interface DensityZone {
@@ -104,19 +105,27 @@ export function generateDensityZones(
   function convergeZone(
     initCenter: { lat: number; lon: number },
     pool: GeoPoint[],
-    r2: number
+    r2: number,
+    poidsCollectif: number
   ): { pts: GeoPoint[]; centroid: { lat: number; lon: number } } {
     let c = initCenter
     let pts: GeoPoint[] = []
 
     for (let iter = 0; iter < 5; iter++) {
       // Filtrer les adresses dans le rayon depuis c
-      const inR = pool
+      // Remplissage pondéré : les appartements consomment moins de capacité
+      const sorted = pool
         .filter(p => distSq(c.lat, c.lon, p.lat, p.lon) <= r2)
         .map(p => ({ p, d: distSq(c.lat, c.lon, p.lat, p.lon) }))
         .sort((a, b) => a.d - b.d)
-        .slice(0, capacite_cible)
-        .map(x => x.p)
+      const inR: GeoPoint[] = []
+      let capaciteConsommee = 0
+      for (const { p } of sorted) {
+        const w = (p.type_bien === 'appartement') ? poidsCollectif : 1
+        if (capaciteConsommee + w > capacite_cible + 0.5) break  // +0.5 pour éviter de couper net
+        inR.push(p)
+        capaciteConsommee += w
+      }
 
       if (inR.length === 0) break
 
@@ -141,7 +150,7 @@ export function generateDensityZones(
     const paliers = [1.0, 1.5, 2.0, 3.0].map(f => Math.min(f * rayon_metres, rayonMax))
 
     for (const r of paliers) {
-      const { pts, centroid: c } = convergeZone(initCenter, pool, r * r)
+      const { pts, centroid: c } = convergeZone(initCenter, pool, r * r, dpeParams.poids_collectif ?? 0.5)
       if (pts.length === 0) continue
       if (pts.length >= seuilExt || r >= rayonMax) {
         const rayonReel = Math.round(Math.max(...pts.map(p => haversine(c.lat, c.lon, p.lat, p.lon))))
