@@ -105,6 +105,7 @@ export async function POST(req: Request) {
     lon:          a.lon,
     prospectable: true,
     code_insee:   a.code_insee,
+    type_bien:    a.type_bien ?? 'inconnu',
     dpe_chauds:   dpeMap.get(a.id)?.chauds ?? 0,
     dpe_tiedes:   dpeMap.get(a.id)?.tiedes ?? 0,
   }))
