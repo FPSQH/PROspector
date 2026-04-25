@@ -11,11 +11,12 @@ interface ZoneConfig {
   dpe_fenetre_mois:          number   // 3 | 6 | 12 | 24
   dpe_poids:                 number   // 0..2 (0% a 200%)
   dpe_seuil_inclusion:       number
+  poids_collectif:           number   // 0..1 (0% a 100%), defaut 0.5
 }
 
 export type { ZoneConfig }
 
-const DEFAULT_CONFIG: ZoneConfig = {
+export const DEFAULT_CONFIG: ZoneConfig = {
   nb_zones:                  12,
   capacite_cible:            100,
   rayon_metres:              800,
@@ -24,6 +25,7 @@ const DEFAULT_CONFIG: ZoneConfig = {
   dpe_fenetre_mois:          6,
   dpe_poids:                 1.0,
   dpe_seuil_inclusion:       10,
+  poids_collectif:           0.5,
 }
 
 interface Props {
@@ -177,6 +179,31 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
                 </span>
               </label>
             ))}
+          </div>
+
+          {/* Section Habitat collectif */}
+          <div style={{ borderTop: '1px solid #E8E6DF', paddingTop: 20, marginBottom: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#B4B2A9', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 12px' }}>
+              Ponderation Habitat
+            </p>
+            <p style={{ fontSize: 12, color: '#5F5E5A', marginBottom: 16, lineHeight: 1.55 }}>
+              En prospection porte-a-porte, une maison individuelle est plus accessible qu&apos;un immeuble collectif.
+              Ce curseur pondère le poids des appartements dans le calcul des zones.
+            </p>
+            <Slider
+              label="Poids de l&apos;habitat collectif"
+              sublabel="(appartements)"
+              value={Math.round(config.poids_collectif * 100)}
+              min={0} max={100} step={10} unit="%"
+              onChange={v => set('poids_collectif', v / 100)}
+              hint={
+                config.poids_collectif === 0 ? 'Zones orientees maisons uniquement' :
+                config.poids_collectif <= 0.3 ? 'Faible — maisons tres prioritaires' :
+                config.poids_collectif <= 0.6 ? 'Modere — equilibre maisons / collectif' :
+                config.poids_collectif <= 0.9 ? 'Fort — collectif presque egal aux maisons' :
+                'Egalite — maisons et collectif ont le meme poids'
+              }
+            />
           </div>
 
           {/* Section DPE */}
