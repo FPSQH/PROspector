@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse }  from 'next/server'
 
 // Ingestion des audits énergétiques ADEME pour les DPE E/F/G d'une commune
@@ -23,7 +23,8 @@ export async function POST(request: Request) {
   if (!code_insee) return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
 
   // 1. DPE E/F/G matchés de la commune
-  const { data: dpeList } = await supabase
+  const adminDb0 = createAdminClient()
+  const { data: dpeList } = await adminDb0
     .from('dpe_logement')
     .select('numero_dpe, etiquette_dpe, adresse_id')
     .eq('code_insee', code_insee)
@@ -79,7 +80,8 @@ export async function POST(request: Request) {
         etape_travaux:      r.etape_travaux               != null ? Number(r.etape_travaux)               : null,
       }))
 
-      const { error } = await supabase
+      const adminDb = createAdminClient()
+      const { error } = await adminDb
         .from('audit_logement')
         .upsert(auditBatch, { onConflict: 'n_audit', ignoreDuplicates: false })
 
