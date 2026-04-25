@@ -203,6 +203,7 @@ export async function POST(req: Request) {
         nb_logements_sociaux: 0,
         statut:               'active',
         polygone:             polygonWKT ?? null,
+        polygone_geojson:     polygonGeoJSON ?? null,
       })
       .select('id')
       .single()
