@@ -34,6 +34,10 @@ const DPE_FIELDS = [
   'nom_commune_ban',
   'coordonnee_cartographique_x_ban',
   'coordonnee_cartographique_y_ban',
+  'conso_5_usages_par_m2_ep',
+  'cout_total_5_usages',
+  'type_energie_principale_chauffage',
+  'emission_ges_5_usages_par_m2',
 ].join(',')
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -113,6 +117,10 @@ export async function POST(req: Request) {
           nombre_appartement: r.nombre_appartement ?? null,
           etiquette_dpe:      etDpe || null,
           etiquette_ges:      etGes || null,
+          conso_ep_m2:        r.conso_5_usages_par_m2_ep      != null ? Number(r.conso_5_usages_par_m2_ep)      : null,
+          cout_annuel:        r.cout_total_5_usages            != null ? Number(r.cout_total_5_usages)            : null,
+          energie_principale: r.type_energie_principale_chauffage ?? null,
+          ges_m2:             r.emission_ges_5_usages_par_m2  != null ? Number(r.emission_ges_5_usages_par_m2)  : null,
           date_etablissement: dateEtab,
           geom:               wgs
             ? `SRID=4326;POINT(${wgs.lon} ${wgs.lat})`
