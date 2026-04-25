@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateDensityZones } from '@/lib/geo/densityZones'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
@@ -203,7 +203,6 @@ export async function POST(req: Request) {
         nb_logements_sociaux: 0,
         statut:               'active',
         polygone:             polygonWKT ?? null,
-        polygone_geojson:     polygonGeoJSON ?? null,
       })
       .select('id')
       .single()
