@@ -12,16 +12,14 @@ export async function GET() {
 
   if (!commercial) return NextResponse.json({ zones: [], nb_adresses_total: 0 })
 
-  // Zones via RPC (contourne le cache PostgREST pour polygone_geojson)
-  const { data: rpcZones, error: rpcError } = await supabase
-    .rpc('get_zones_geojson', { p_commercial_id: commercial.id })
+  // Zones via select direct avec polygone_geojson et centroide_geojson
+  const { data: zonesRaw } = await supabase
+    .from('zones_prospection')
+    .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux, polygone_geojson, centroide_geojson')
+    .eq('commercial_id', commercial.id)
+    .order('numero')
 
-  const zonesData = rpcError
-    ? ((await supabase.from('zones_prospection')
-        .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux')
-        .eq('commercial_id', commercial.id)
-        .order('numero')).data ?? [])
-    : (rpcZones ?? [])
+  const zonesData = zonesRaw ?? []
 
   // Nombre total d'adresses du secteur (toutes communes)
   const { data: communes } = await supabase
