@@ -12,31 +12,19 @@ export async function GET() {
 
   if (!commercial) return NextResponse.json({ zones: [], nb_adresses_total: 0 })
 
-  // Étape 1 : Zones via admin client — colonnes standard SANS polygone_geojson/centroide_geojson
-  // (ces colonnes ajoutées récemment peuvent causer des erreurs de cache PostgREST)
+  // SELECT complet avec polygone_geojson (TEXT stocké lors de la génération)
+  // Utilise le service role pour contourner RLS
   const adminSupabase = createAdminClient()
-  const { data: zonesBase, error: zonesError } = await adminSupabase
+  const { data: zonesRaw, error: zonesError } = await adminSupabase
     .from('zones_prospection')
-    .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux')
+    .select('id, nom, numero, couleur, statut, capacite_theorique, nb_adresses, nb_prospectables, nb_logements_sociaux, polygone_geojson, centroide_geojson')
     .eq('commercial_id', commercial.id)
     .eq('statut', 'active')
     .order('numero')
 
   if (zonesError) console.error('[ZONES GET] select error:', zonesError.message)
 
-  // Étape 2 : Polygones via RPC SQL (ST_AsGeoJSON depuis PostGIS — indépendant du cache)
-  const { data: zonesGeo, error: geoError } = await adminSupabase
-    .rpc('get_zones_geojson', { p_commercial_id: commercial.id })
-
-  if (geoError) console.error('[ZONES GET] rpc geo error:', geoError.message)
-
-  // Merger les deux résultats
-  const geoMap = new Map((zonesGeo ?? []).map((z: any) => [z.id, z]))
-  const zonesData = (zonesBase ?? []).map((z: any) => ({
-    ...z,
-    polygone_geojson:  geoMap.get(z.id)?.polygone_geojson  ?? null,
-    centroide_geojson: geoMap.get(z.id)?.centroide_geojson ?? null,
-  }))
+  const zonesData = zonesRaw ?? []
 
   // Nombre total d'adresses du secteur (toutes communes)
   const { data: communes } = await supabase
