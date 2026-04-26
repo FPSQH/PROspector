@@ -13,7 +13,7 @@ export async function GET() {
   const { data } = await adminDb
     .from('commerciaux')
     .select(FIELDS)
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .maybeSingle()
 
   return NextResponse.json({ profil: data ?? {}, is_commercial: !!data })
@@ -34,7 +34,7 @@ export async function PUT(request: Request) {
   const { data: commercial } = await adminDb
     .from('commerciaux')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .maybeSingle()
 
   if (!commercial) {
@@ -46,7 +46,7 @@ export async function PUT(request: Request) {
   const { error } = await adminDb
     .from('commerciaux')
     .update(update)
-    .eq('user_id', user.id)
+    .eq('id', user.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
