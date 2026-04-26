@@ -17,12 +17,31 @@ export async function GET(request: Request) {
 
   const adminDb = createAdminClient()
 
-  // Récupérer le commercial (ou via manager)
-  const { data: commercial } = await adminDb
+  // Récupérer le commercial — cherche d'abord par user_id direct, sinon par manager
+  let { data: commercial } = await adminDb
     .from('commerciaux')
     .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
     .eq('user_id', user.id)
-    .single()
+    .maybeSingle()
+
+  // Si pas trouvé en tant que commercial, chercher si c'est un manager
+  // et prendre le premier commercial de son équipe
+  if (!commercial) {
+    const { data: managers } = await adminDb
+      .from('managers')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1)
+    if (managers?.length) {
+      const { data: firstCommercial } = await adminDb
+        .from('commerciaux')
+        .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
+        .eq('manager_id', managers[0].id)
+        .limit(1)
+        .maybeSingle()
+      commercial = firstCommercial
+    }
+  }
 
   if (!commercial) return NextResponse.json({ error: 'Commercial non trouve' }, { status: 403 })
 
