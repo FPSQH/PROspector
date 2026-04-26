@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   let { data: commercial } = await adminDb
     .from('commerciaux')
     .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
-    .eq('user_id', user.id)
+    .eq('id', user.id)
     .maybeSingle()
 
   // Fallback : l'utilisateur est peut-être un manager_id référencé dans commerciaux
