@@ -31,10 +31,9 @@ const tabs: Tab[] = [
         <line x1="15" y1="6" x2="15" y2="21"/>
       </svg>
     ),
-  },
-  {
+  },  {
     href: '/courriers',
-    label: 'Courriers',
+    label: 'Courrier',
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="4" width="20" height="16" rx="2"/>
