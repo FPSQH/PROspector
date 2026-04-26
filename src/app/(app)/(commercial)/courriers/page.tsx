@@ -60,7 +60,18 @@ export default function CourriersPage() {
     if (!mapRef.current || mapInst.current) return
     const map = new maplibregl.Map({
       container: mapRef.current,
-      style: 'https://data.geopf.fr/tms/1.0.0/PLAN.IGN/{z}/{x}/{y}.png',
+      style: {
+        version: 8 as const,
+        sources: {
+          osm: {
+            type: 'raster' as const,
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors',
+          }
+        },
+        layers: [{ id: 'osm-tiles', type: 'raster' as const, source: 'osm' }],
+      },
       center: [-3.0, 48.5],
       zoom: 10,
     })
