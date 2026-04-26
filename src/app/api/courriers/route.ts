@@ -57,7 +57,7 @@ export async function GET(request: Request) {
   // Adresses avec DPE dans la plage de dates
   let query = adminDb
     .from('adresses')
-    .select('id, adresse_brute, code_postal, code_insee, type_bien, surface_habitable, dpe_etiquette, dpe_ges, latest_dpe_date, dpe_numero, lat, lon, zone_id')
+    .select('id, numero_voie, nom_voie, code_postal, code_insee, type_bien, surface_habitable, dpe_etiquette, latest_dpe_date, dpe_numero, lat, lon, zone_id')
     .in('code_insee', codes)
     .not('dpe_etiquette', 'is', null)
     .order('latest_dpe_date', { ascending: false })
@@ -130,8 +130,10 @@ export async function GET(request: Request) {
       }
     }
 
+    const adresse_brute = [a.numero_voie, a.nom_voie].filter(Boolean).join(' ')
     return {
       ...a,
+      adresse_brute,
       nom_commune:        communeNomMap.get(a.code_insee) ?? '',
       conso_ep_m2:        dpe.conso_ep_m2        ?? null,
       cout_annuel:        dpe.cout_annuel         ?? null,
