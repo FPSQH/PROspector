@@ -17,33 +17,27 @@ export async function GET(request: Request) {
 
   const adminDb = createAdminClient()
 
-  // Récupérer le commercial — cherche d'abord par user_id direct, sinon par manager
+  // Récupérer le commercial — par user_id direct
+  // ou par manager_id si c'est un manager (manager_id stocké dans commerciaux)
   let { data: commercial } = await adminDb
     .from('commerciaux')
     .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
     .eq('user_id', user.id)
     .maybeSingle()
 
-  // Si pas trouvé en tant que commercial, chercher si c'est un manager
-  // et prendre le premier commercial de son équipe
+  // Fallback : l'utilisateur est peut-être un manager_id référencé dans commerciaux
+  // Dans ce cas, prendre le premier commercial rattaché à ce manager
   if (!commercial) {
-    const { data: managers } = await adminDb
-      .from('managers')
-      .select('id')
-      .eq('user_id', user.id)
+    const { data: asManager } = await adminDb
+      .from('commerciaux')
+      .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
+      .eq('manager_id', user.id)
       .limit(1)
-    if (managers?.length) {
-      const { data: firstCommercial } = await adminDb
-        .from('commerciaux')
-        .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
-        .eq('manager_id', managers[0].id)
-        .limit(1)
-        .maybeSingle()
-      commercial = firstCommercial
-    }
+      .maybeSingle()
+    commercial = asManager ?? null
   }
 
-  if (!commercial) return NextResponse.json({ error: 'Commercial non trouve' }, { status: 403 })
+  if (!commercial) return NextResponse.json({ error: 'Commercial non trouve — vérifiez votre profil dans Paramètres' }, { status: 403 })
 
   // Communes du commercial
   const { data: communes } = await adminDb
