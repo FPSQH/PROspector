@@ -45,7 +45,8 @@ function headerLine(agenceNom: string, agenceAdr: string, agenceTel: string, age
 function secTitle(text: string) {
   return new Paragraph({
     children: [T(text, { bold: true, size: 20, color: GREEN, allCaps: true })],
-    spacing: { before: 280, after: 100 }
+    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: GREEN, space: 4 } },
+    spacing: { before: 280, after: 140 }
   })
 }
 
@@ -59,17 +60,22 @@ function body(text: string) {
 
 function infoBox(items: string[], bgColor: string, bdColor: string) {
   if (!items.length) return null
+  // Ligne 1 : conso + coût / Ligne 2 : énergie + GES
+  const line1 = items.slice(0, 2).join('   ·   ')
+  const line2 = items.slice(2).join('   ·   ')
+  const runs: any[] = [T(line1, { size: 20, color: DARK, bold: true })]
+  if (line2) { runs.push(new TextRun({ break: 1 })); runs.push(T(line2, { size: 20, color: DARK, bold: true })) }
   return new Paragraph({
-    children: [T(items.join('   ·   '), { size: 20, color: DARK, bold: true })],
+    children: runs,
     alignment: AlignmentType.CENTER,
     border: {
-      top:    { style: BorderStyle.SINGLE, size: 4, color: bdColor },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: bdColor },
-      left:   { style: BorderStyle.SINGLE, size: 4, color: bdColor },
-      right:  { style: BorderStyle.SINGLE, size: 4, color: bdColor },
+      top:    { style: BorderStyle.SINGLE, size: 6, color: bdColor },
+      bottom: { style: BorderStyle.SINGLE, size: 6, color: bdColor },
+      left:   { style: BorderStyle.SINGLE, size: 6, color: bdColor },
+      right:  { style: BorderStyle.SINGLE, size: 6, color: bdColor },
     },
     shading: { fill: bgColor, type: ShadingType.CLEAR },
-    spacing: { before: 120, after: 180 }
+    spacing: { before: 160, after: 200 }
   })
 }
 
@@ -202,8 +208,11 @@ function buildLetter(letter: any, commercial: any): Paragraph[] {
   paras.push(body(`Dans l'attente de votre retour, je vous adresse, Madame, Monsieur, mes cordiales salutations.`))
 
   // Signature
-  paras.push(new Paragraph({ children: [], spacing: { before: 400 } }))
-  paras.push(new Paragraph({ children: [T(agentSig, { bold: true, size: 24 })] }))
+  paras.push(new Paragraph({
+    children: [T(agentSig, { bold: true, size: 24 })],
+    border: { top: { style: BorderStyle.SINGLE, size: 6, color: GREEN, space: 8 } },
+    spacing: { before: 480, after: 80 }
+  }))
   paras.push(new Paragraph({ children: [T('Conseiller Immobilier — ' + (commercial?.agence_nom || 'Square Habitat'), { size: 20, color: GREY })] }))
   if (commercial?.agence_telephone) paras.push(new Paragraph({ children: [T('Tél. : ' + commercial.agence_telephone, { size: 20, color: GREY })] }))
   if (commercial?.agence_email)     paras.push(new Paragraph({ children: [T(commercial.agence_email, { size: 20, color: GREY })] }))
