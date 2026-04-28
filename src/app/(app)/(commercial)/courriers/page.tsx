@@ -144,7 +144,7 @@ export default function CourriersPage() {
     if (!toGen.length) return
     setGenerating(true)
     try {
-      const letters = toGen.map(a => ({ adresse: a.adresse_brute, html: generateLetterHTML(a) }))
+      const letters = toGen.map(a => ({ ...a })) // Objet complet pour buildLetter
       const r = await fetch('/api/courriers/docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
