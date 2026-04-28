@@ -204,8 +204,8 @@ function buildLetter(letter: any, commercial: any): Paragraph[] {
 
   // 9. FORMULE DE POLITESSE (spec §4 §9)
   paras.push(new Paragraph({ children: [], spacing: { after: 120 } }))
-  paras.push(body('Je reste à votre entière disposition pour répondre à vos questions ou convenir d'un rendez-vous à votre convenance, sans aucun engagement de votre part.'))
-  paras.push(body('Dans l'attente de votre retour, je vous adresse, Madame, Monsieur, mes cordiales salutations.'))
+  paras.push(body("Je reste à votre entière disposition pour répondre à vos questions ou convenir d'un rendez-vous à votre convenance, sans aucun engagement de votre part."))
+  paras.push(body("Dans l'attente de votre retour, je vous adresse, Madame, Monsieur, mes cordiales salutations."))
 
   // 10. SIGNATURE (spec §4 §10 + §7)
   paras.push(new Paragraph({ children: [], spacing: { before: 400 } }))
