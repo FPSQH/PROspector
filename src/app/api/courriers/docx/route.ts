@@ -184,11 +184,6 @@ function buildLetter(letter: any, commercial: any): Paragraph[] {
         }))
       }
     }
-  } else if (['E','F','G'].includes(dpe)) {
-    paras.push(new Paragraph({
-      children: [T(`Ce bien est classé ${dpe} mais aucun audit énergétique n'a été enregistré. L'audit est pourtant obligatoire pour les biens classés E, F ou G depuis 2023.`, { size: 20, color: 'B91C1C', italics: true })],
-      spacing: { before: 120, after: 160 }
-    }))
   }
 
   // Estimation
