@@ -45,6 +45,14 @@ button {
   cursor: pointer;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Utilitaire tap target minimum 44px sur mobile */
 .tap-target {
   min-height: 44px;

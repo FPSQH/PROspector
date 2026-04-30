@@ -192,8 +192,32 @@ export default function BottomSheet({
       <div ref={sheetRef} style={sheet}>
         <div style={handle}/>
 
+        {/* Quick Type Selection */}
+        <div style={{ padding: '16px 20px 0', display: 'flex', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} className="no-scrollbar">
+          {[
+            ['individuel', '🏠 Maison'],
+            ['collectif', '🏢 Immeuble'],
+            ['mixte', '🏪 Mixte'],
+            ['activite', '🏭 Activité']
+          ].map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setTypeHabitat(v)}
+              style={{
+                ...chipBtn(typeHabitat === v),
+                flexShrink: 0,
+                padding: '6px 10px',
+                fontSize: '11px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
         {/* Quick Actions - Ergonomie optimisée */}
-        <div style={{ padding: '16px 20px 8px', display: 'flex', gap: 10 }}>
+        <div style={{ padding: '12px 20px 8px', display: 'flex', gap: 10 }}>
           <button
             onClick={() => submitPasReponse('flyer')}
             disabled={saving}
