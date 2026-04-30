@@ -1,7 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { generateDensityZones, GeoPoint, DpeParams } from '@/lib/geo/densityZones'
+import { generateDensityZones, GeoPoint, DpeParams, DensityZone } from '@/lib/geo/densityZones'
 import { nearestNeighborTSP } from '@/lib/geo/tsp'
-import { hullToGeoJSON } from '@/lib/geo/convexHull'
+import { pointsToPolygonWKT, hullToGeoJSON } from '@/lib/geo/convexHull'
 
 const ZONE_COLORS = [
   '#E63946', '#2196F3', '#FF9800', '#4CAF50', '#9C27B0',
@@ -20,13 +20,20 @@ export interface ZoneGenerationOptions {
   dpe_seuil_inclusion: number
 }
 
+export interface GenerationResult {
+  nb_zones: number
+  nb_hors_zone: number
+  nb_prospectables: number
+  warnings: string[]
+}
+
 export class ZoneService {
   constructor(private supabase: SupabaseClient) {}
 
   /**
    * Génère et sauvegarde les zones de prospection pour un commercial
    */
-  async generateAndSaveZones(userId: string, options: ZoneGenerationOptions) {
+  async generateAndSaveZones(userId: string, options: ZoneGenerationOptions): Promise<GenerationResult> {
     const { data: commercial } = await this.supabase
       .from('commerciaux').select('id').eq('id', userId).single()
 
@@ -65,15 +72,19 @@ export class ZoneService {
       points, options.nb_zones, options.capacite_cible, options.rayon_metres, dpeParams
     )
 
+    const warnings: string[] = []
+
     if (densityZones.length > 0) {
       await this.saveSnapshotAndClearZones(userId, codesInsee)
-      await this.insertGeneratedZones(userId, densityZones, options)
+      const insertWarnings = await this.insertGeneratedZones(userId, densityZones, options)
+      warnings.push(...insertWarnings)
     }
 
     return {
       nb_zones: densityZones.length,
       nb_hors_zone: horsZone.length,
-      nb_prospectables: adresses.length
+      nb_prospectables: adresses.length,
+      warnings
     }
   }
 
@@ -179,14 +190,32 @@ export class ZoneService {
     }
   }
 
-  private async insertGeneratedZones(userId: string, densityZones: any[], options: ZoneGenerationOptions) {
+  private async insertGeneratedZones(userId: string, densityZones: DensityZone[], options: ZoneGenerationOptions): Promise<string[]> {
+    const insertedZoneIds: string[] = []
+    const warnings: string[] = []
+
     for (let i = 0; i < densityZones.length; i++) {
       const dz = densityZones[i]
       const couleur = ZONE_COLORS[i % ZONE_COLORS.length]
 
       const orderedPts = nearestNeighborTSP(dz.points)
+      const rawWKT = orderedPts.length >= 3 ? pointsToPolygonWKT(orderedPts.map(p => [p.lon, p.lat] as [number, number])) : null
       const rawHull = orderedPts.map(p => [p.lon, p.lat] as [number, number])
       const polygonGeoJSON = rawHull.length >= 3 ? JSON.stringify({ type: 'Polygon', coordinates: [hullToGeoJSON(rawHull)[0]] }) : null
+
+      // Clipper le polygone contre les zones déjà insérées (ST_Difference via RPC)
+      let polygonWKT: string | null = rawWKT
+      if (rawWKT && insertedZoneIds.length > 0) {
+        try {
+          const { data: clipResult } = await this.supabase.rpc('clip_polygon_against_zones', {
+            raw_wkt: rawWKT,
+            zone_ids: insertedZoneIds,
+          })
+          if (clipResult) polygonWKT = clipResult
+        } catch (e) {
+          console.log('[ZONES] clip RPC non disponible')
+        }
+      }
 
       const { data: zone, error: zError } = await this.supabase
         .from('zones_prospection')
@@ -202,18 +231,29 @@ export class ZoneService {
           nb_dpe_tiedes: dz.nb_dpe_tiedes ?? 0,
           dpe_prioritaire: dz.dpe_prioritaire ?? false,
           statut: 'active',
+          polygone: polygonWKT ?? null,
           polygone_geojson: polygonGeoJSON ?? null,
         })
         .select('id')
         .single()
 
-      if (zError || !zone) continue
+      if (zError || !zone) {
+        warnings.push(`Zone ${i + 1} : erreur insertion - ${zError?.message ?? 'inconnu'}`)
+        continue
+      }
+
+      if (dz.rayon_metres > options.rayon_metres) {
+        warnings.push(`Zone ${i + 1} : rayon étendu à ${dz.rayon_metres}m (${dz.points.length} adresses)`)
+      }
+
+      insertedZoneIds.push(zone.id)
 
       const adresseBatches = this.chunk(dz.points.map((p: any) => p.id), 100)
       for (const batch of adresseBatches) {
         await this.supabase.from('adresses').update({ zone_id: zone.id }).in('id', batch)
       }
     }
+    return warnings
   }
 
   private chunk<T>(arr: T[], n: number): T[][] {
