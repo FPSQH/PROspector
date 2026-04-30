@@ -86,10 +86,13 @@ export async function fetchAdressesByCommune(codeInsee: string): Promise<Adresse
   return allAdresses
 }
 
-export async function geocodeAdresse(adresse: string): Promise<{ lat: number; lon: number } | null> {
-  const res = await fetch(
-    `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(adresse)}&limit=1`
-  )
+export async function geocodeAdresse(adresse: string, postcode?: string): Promise<{ lat: number; lon: number } | null> {
+  const url = new URL('https://api-adresse.data.gouv.fr/search/')
+  url.searchParams.set('q', adresse)
+  url.searchParams.set('limit', '1')
+  if (postcode) url.searchParams.set('postcode', postcode)
+
+  const res = await fetch(url.toString())
   if (!res.ok) return null
   const data = await res.json()
   const feature = data.features?.[0]
