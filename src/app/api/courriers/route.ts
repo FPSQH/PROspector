@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     .from('adresses')
     .select('id, numero, nom_voie, code_postal, code_insee, commune, type_bien, surface_habitable, dpe_etiquette, dpe_ges, latest_dpe_date, dpe_numero, lat, lon, zone_id')
     .in('code_insee', codes)
-    .not('dpe_etiquette', 'is', null)
+    .not('latest_dpe_date', 'is', null) // Filtre sur la date pour l'exhaustivité
     .order('latest_dpe_date', { ascending: false })
     .limit(limit)
 

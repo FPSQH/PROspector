@@ -65,7 +65,7 @@ export async function POST(req: Request) {
       start:  start.toString(),
       select: DPE_FIELDS,
       // Spec V2 : code_insee_commune_actualise + fallback code_insee_ban
-      qs:     `(code_insee_commune_actualise:\"${code_insee}\" OR code_insee_ban:\"${code_insee}\") AND date_etablissement_dpe:[${sinceDate} TO *]`,
+      qs:     `(code_insee_commune_actualise:"${code_insee}" OR code_insee_ban:"${code_insee}") AND date_etablissement_dpe:[${sinceDate} TO *]`,
       sort:   'date_etablissement_dpe:desc',
     })
 
@@ -92,6 +92,7 @@ export async function POST(req: Request) {
       if ((isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) && addrStr && geocodingCount < GEOCODING_LIMIT) {
         geocodingCount++
         const cp = normCP(r.code_postal_brut) || cpTarget
+        // Appel BAN avec paramètre postcode séparé pour la précision (Spec V2)
         const banCoords = await geocodeAdresse(addrStr, cp).catch(() => null)
         if (banCoords) { lat = banCoords.lat; lon = banCoords.lon }
       }
