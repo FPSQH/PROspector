@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const dateDebut = searchParams.get('date_debut')
   const dateFin   = searchParams.get('date_fin')
   const zone_id   = searchParams.get('zone_id') ?? null
-  const limit     = Math.min(parseInt(searchParams.get('limit') ?? '200'), 500)
+  const limit     = Math.min(parseInt(searchParams.get('limit') ?? '500'), 1000)
 
   const adminDb = createAdminClient()
 
