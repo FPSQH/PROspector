@@ -2,18 +2,14 @@
 //
 // POST /api/dpe/match
 //
-// Pour une commune donnée :
-//  1.  Matching textuel exact  : numero + voie normalisés        → textuel_exact
-//  1b. Matching voie seule     : voie sans numéro (lieu-dit…)   → textuel_voie
-//  2.  Matching spatial        : haversine en mémoire, rayon 100m → spatial_proche
-//  3.  Qualification automatique des adresses matchées (via RPC qualify_adresse_from_dpe)
-//
-// Body : { code_insee, commune_id? }
-// Retourne : { nb_matched_textuel, nb_matched_voie, nb_matched_spatial, nb_qualified, nb_unmatched }
+// Effectue le matching entre DPE importés et adresses BAN.
+// V2 : Traite les nouveaux DPE ET rattrape les adresses matchées dont la date est manquante.
+// Inclut 3 passes : Textuelle Exacte, Voie seule, et Spatiale (100m).
+// Supporte les grandes communes via pagination (limit 1000).
 
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse }  from 'next/server'
-import { normalizeVoie, normalizeNumero } from '@/lib/dpe/normalize'
+import { normalizeVoie, normalizeNumero, toIsoDate } from '@/lib/dpe/normalize'
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const result: T[][] = []
@@ -21,47 +17,12 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return result
 }
 
-/** Distance haversine en mètres */
-function haversineMetres(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number
-): number {
+function haversineMetres(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000
   const dLat = (lat2 - lat1) * Math.PI / 180
   const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) ** 2
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-/** Met à jour dpe_chargee_at sur la commune, par id ou par code_insee */
-async function marquerCommuneDpeChargee(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  code_insee: string,
-  commune_id?: string
-) {
-  const q = supabase
-    .from('communes')
-    .update({ dpe_chargee_at: new Date().toISOString() })
-  commune_id ? await q.eq('id', commune_id) : await q.eq('code_insee', code_insee)
-}
-
-/** Extraire numéro + voie depuis une adresse brute ADEME */
-function parseAdresseBrute(adresseBrute: string): { numero: string; voie: string } {
-  const raw = adresseBrute.trim()
-
-  // Cas 1 : commence par un numéro → "11 Rue de Marsaneix 22220 Trédarzec"
-  const matchNumero = raw.match(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)\s+(.+)/i)
-  if (matchNumero) {
-    const numero = matchNumero[1].trim()
-    const voie   = matchNumero[2].replace(/\s+\d{5}(?:\s+.+)?$/, '').trim()
-    return { numero, voie }
-  }
-
-  // Cas 2 : pas de numéro → "Rue de Marsaneix 22220 Trédarzec" ou "Kérivoalan 22220 Trédarzec"
-  const voie = raw.replace(/\s+\d{5}(?:\s+.+)?$/, '').trim()
-  return { numero: '', voie }
 }
 
 export async function POST(req: Request) {
@@ -70,277 +31,163 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
-  if (!body?.code_insee) {
-    return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
-  }
+  if (!body?.code_insee) return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
 
-  const { code_insee, commune_id } = body
+  const { code_insee } = body
 
   try {
-    // ── 1. Charger les adresses BAN de la commune ─────────────────────────
-    const adresses: { id: string; numero: string; nom_voie: string; lat: number; lon: number }[] = []
-    let from = 0
+    // ── 1. Charger TOUTES les adresses BAN de la commune (Pagination) ──
+    const adresses: any[] = []
+    let fromAddr = 0
     while (true) {
       const { data, error } = await supabase
         .from('adresses')
-        .select('id, numero, nom_voie, lat, lon')
+        .select('id, numero, nom_voie, lat, lon, latest_dpe_date')
         .eq('code_insee', code_insee)
-        .range(from, from + 999)
-      if (error || !data || data.length === 0) break
+        .range(fromAddr, fromAddr + 999)
+      if (error || !data?.length) break
       adresses.push(...data)
       if (data.length < 1000) break
-      from += 1000
+      fromAddr += 1000
     }
 
-    if (adresses.length === 0) {
-      return NextResponse.json({
-        nb_matched_textuel: 0, nb_matched_voie: 0, nb_matched_spatial: 0,
-        nb_qualified: 0, nb_unmatched: 0,
-        message: 'Aucune adresse BAN trouvée pour cette commune',
-      })
-    }
+    if (!adresses.length) return NextResponse.json({ nb_qualified: 0, message: 'Aucune adresse BAN' })
 
-    // Index exact : "numero|voie_norm" → adresse
-    const textIndex = new Map<string, { id: string; lat: number; lon: number }>()
-    // Index voie seule : "voie_norm" → liste d'adresses (pour matching sans numéro)
-    const voieIndex = new Map<string, { id: string; lat: number; lon: number }[]>()
-
+    const textIndex = new Map<string, any>()
+    const voieIndex = new Map<string, any[]>()
     for (const a of adresses) {
-      const voieNorm = normalizeVoie(a.nom_voie || '')
-      const numNorm  = normalizeNumero(a.numero)
-
-      // Index exact
-      const key = `${numNorm}|${voieNorm}`
-      if (!textIndex.has(key)) textIndex.set(key, { id: a.id, lat: a.lat, lon: a.lon })
-
-      // Index voie seule
-      if (!voieIndex.has(voieNorm)) voieIndex.set(voieNorm, [])
-      voieIndex.get(voieNorm)!.push({ id: a.id, lat: a.lat, lon: a.lon })
+      const vNorm = normalizeVoie(a.nom_voie || ''), nNorm = normalizeNumero(a.numero)
+      textIndex.set(`${nNorm}|${vNorm}`, a)
+      if (!voieIndex.has(vNorm)) voieIndex.set(vNorm, [])
+      voieIndex.get(vNorm)!.push(a)
     }
 
-    // ── 2. Charger les DPE non matchés de cette commune ───────────────────
+    // ── 2. Charger TOUS les DPE concernés (Pagination) ──
     const dpes: any[] = []
-    from = 0
+    let fromDpe = 0
     while (true) {
       const { data, error } = await supabase
         .from('dpe_logement')
-        .select('id, numero_dpe, adresse_brute, type_batiment, surface_habitable, annee_construction, nombre_appartement, etiquette_dpe, etiquette_ges, date_etablissement, geom')
+        .select(`
+          id, numero_dpe, adresse_brute, type_batiment, etiquette_dpe, etiquette_ges,
+          date_etablissement, surface_habitable, annee_construction, nombre_appartement, geom,
+          match_confiance, adresse_id
+        `)
         .eq('code_insee', code_insee)
-        .eq('match_confiance', 'non_matche')
-        .range(from, from + 999)
-      if (error || !data || data.length === 0) break
+        .or('match_confiance.eq.non_matche,adresse_id.not.is.null')
+        .range(fromDpe, fromDpe + 999)
+      if (error || !data?.length) break
       dpes.push(...data)
       if (data.length < 1000) break
-      from += 1000
+      fromDpe += 1000
     }
 
-    if (dpes.length === 0) {
-      await marquerCommuneDpeChargee(supabase, code_insee, commune_id)
-      return NextResponse.json({
-        nb_matched_textuel: 0, nb_matched_voie: 0, nb_matched_spatial: 0,
-        nb_qualified: 0, nb_unmatched: 0,
-        message: 'Aucun DPE non matché trouvé',
-      })
-    }
+    if (!dpes.length) return NextResponse.json({ nb_qualified: 0, message: 'Aucun DPE à traiter' })
 
-    // ── 3. Passe 1 : Matching textuel exact (numero + voie) ───────────────
-    let nbTextuel = 0
-    let nbVoie    = 0
-    const afterPasse1: any[] = []
+    const toUpdateDPE = []
+    const adresseToQualify = new Map<string, any[]>()
 
+    // ── 3. Logique de Matching ──
     for (const dpe of dpes) {
-      const { numero, voie } = parseAdresseBrute(dpe.adresse_brute || '')
+      let matchedAddrId = dpe.adresse_id
+      let matchConfiance = dpe.match_confiance
 
-      // Passe 1a — exact (numéro + voie)
-      if (numero && voie) {
-        const key   = `${normalizeNumero(numero)}|${normalizeVoie(voie)}`
+      if (!matchedAddrId || matchConfiance === 'non_matche') {
+        const { numero, voie } = parseAdresseBrute(dpe.adresse_brute || '')
+        const vNorm = normalizeVoie(voie)
+        const key = `${normalizeNumero(numero)}|${vNorm}`
         const found = textIndex.get(key)
-        if (found) {
-          dpe._matched_adresse_id = found.id
-          dpe._match_confiance    = 'textuel_exact'
-          nbTextuel++
-          continue
-        }
-      }
 
-      // Passe 1b — voie seule (pas de numéro, ou numéro non trouvé)
-      const voieNorm   = normalizeVoie(voie)
-      const candidates = voieIndex.get(voieNorm)
-      if (voieNorm && candidates && candidates.length > 0) {
-        // Si geom disponible, prendre le plus proche parmi les candidats de la voie
-        let best = candidates[0]
-        if (dpe.geom) {
-          const coords = extractCoords(dpe.geom)
-          if (coords) {
-            let bestDist = Infinity
-            for (const c of candidates) {
-              const d = haversineMetres(coords.lat, coords.lon, c.lat, c.lon)
-              if (d < bestDist) { bestDist = d; best = c }
-            }
+        if (found) {
+          matchedAddrId = found.id
+          matchConfiance = 'textuel_exact'
+        } else {
+          const candidates = voieIndex.get(vNorm)
+          if (vNorm && candidates?.length) {
+            matchedAddrId = candidates[0].id
+            matchConfiance = 'textuel_voie'
           }
         }
-        dpe._matched_adresse_id = best.id
-        dpe._match_confiance    = 'textuel_voie'
-        nbVoie++
-        continue
       }
 
-      afterPasse1.push(dpe)
-    }
-
-    // ── 4. Passe 2 : Matching spatial en mémoire (rayon 100m) ────────────
-    let nbSpatial = 0
-    const unmatched: any[] = []
-
-    for (const dpe of afterPasse1) {
-      const coords = extractCoords(dpe.geom)
-      if (!coords) { unmatched.push(dpe); continue }
-
-      let bestId:   string | null = null
-      let bestDist: number = Infinity
-
-      for (const a of adresses) {
-        const dist = haversineMetres(coords.lat, coords.lon, a.lat, a.lon)
-        if (dist < 100 && dist < bestDist) {   // rayon élargi à 100m
-          bestDist = dist
-          bestId   = a.id
+      if (!matchedAddrId || matchConfiance === 'non_matche') {
+        const coords = extractCoords(dpe.geom)
+        if (coords) {
+          let bestDist = 100
+          for (const a of adresses) {
+            const d = haversineMetres(coords.lat, coords.lon, a.lat, a.lon)
+            if (d < bestDist) { bestDist = d; matchedAddrId = a.id; matchConfiance = 'spatial_proche' }
+          }
         }
       }
 
-      if (bestId) {
-        dpe._matched_adresse_id = bestId
-        dpe._match_confiance    = 'spatial_proche'
-        nbSpatial++
-      } else {
-        unmatched.push(dpe)
+      if (matchedAddrId) {
+        if (dpe.adresse_id !== matchedAddrId || dpe.match_confiance !== matchConfiance) {
+          toUpdateDPE.push({ id: dpe.id, adresse_id: matchedAddrId, match_confiance: matchConfiance })
+        }
+        if (!adresseToQualify.has(matchedAddrId)) adresseToQualify.set(matchedAddrId, [])
+        adresseToQualify.get(matchedAddrId)!.push(dpe)
       }
     }
 
-    // ── 5. Sauvegarder les matchs en base ─────────────────────────────────
-    const matchedDpes = dpes.filter((d: any) => d._matched_adresse_id)
-
-    for (const batch of chunk(matchedDpes, 100)) {
-      for (const dpe of batch) {
-        await supabase
-          .from('dpe_logement')
-          .update({
-            adresse_id:      dpe._matched_adresse_id,
-            match_confiance: dpe._match_confiance,
-          })
-          .eq('id', dpe.id)
-      }
+    // ── 4. Mise à jour DPE ──
+    for (const batch of chunk(toUpdateDPE, 100)) {
+      await Promise.all(batch.map(item =>
+        supabase.from('dpe_logement').update({ adresse_id: item.adresse_id, match_confiance: item.match_confiance }).eq('id', item.id)
+      ))
     }
 
-    // ── 6. Qualification des adresses ─────────────────────────────────────
-    const dpeParAdresse = new Map<string, any[]>()
-    for (const dpe of matchedDpes) {
-      const aId = dpe._matched_adresse_id
-      if (!dpeParAdresse.has(aId)) dpeParAdresse.set(aId, [])
-      dpeParAdresse.get(aId)!.push(dpe)
-    }
-
+    // ── 5. Qualification massive avec enrichissement complet ──
     let nbQualified = 0
+    for (const [addrId, dpesOfAddr] of adresseToQualify) {
+      dpesOfAddr.sort((a, b) => (b.date_etablissement || '').localeCompare(a.date_etablissement || ''))
+      const latest = dpesOfAddr[0]
+      const isoDate = toIsoDate(latest.date_etablissement)
 
-    for (const [adresseId, dpesAdresse] of dpeParAdresse) {
-      dpesAdresse.sort((a: any, b: any) => {
-        const da = a.date_etablissement || '0000'
-        const db = b.date_etablissement || '0000'
-        return db.localeCompare(da)
-      })
-
-      const latest = dpesAdresse[0]
-
-      let nbAppartEstime: number | null = null
-      if (latest.type_batiment === 'immeuble' && latest.nombre_appartement) {
-        nbAppartEstime = latest.nombre_appartement
-      } else {
-        const nbDpeAppart = dpesAdresse.filter((d: any) => d.type_batiment === 'appartement').length
-        if (nbDpeAppart >= 2) nbAppartEstime = nbDpeAppart
-      }
-
-      // UPDATE direct — plus fiable que le RPC (pas de problème de permissions)
       const typeBien = (() => {
         const tb = (latest.type_batiment || '').toLowerCase()
-        if (tb === 'maison')      return 'maison'
-        if (tb === 'appartement') return 'appartement'
-        if (tb === 'immeuble')    return 'appartement'
+        if (tb === 'maison') return 'maison'
+        if (tb === 'appartement' || tb === 'immeuble') return 'appartement'
         return null
       })()
-      const nbBal = (latest.type_batiment || '').toLowerCase() === 'immeuble' && nbAppartEstime ? nbAppartEstime : null
-      const dpeDate = (() => {
-        const s = String(latest.date_etablissement || '').trim()
-        if (!s) return null
-        // ISO Format YYYY-MM-DD
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
-        // Format DD/MM/YYYY or DD-MM-YYYY
-        const m = s.match(/^(\d{2})[/-](\d{2})[/-](\d{4})/)
-        if (m) return `${m[3]}-${m[2]}-${m[1]}`
-        return null
-      })()
-      const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() }
-      if (typeBien)                        updatePayload.type_bien          = typeBien
-      if (nbBal)                           updatePayload.nb_bal             = nbBal
-      if (latest.surface_habitable != null) updatePayload.surface_habitable  = latest.surface_habitable
-      if (latest.annee_construction != null) updatePayload.annee_construction = latest.annee_construction
-      if (latest.etiquette_dpe)            updatePayload.dpe_etiquette      = latest.etiquette_dpe
-      if (latest.etiquette_ges)            updatePayload.dpe_ges            = latest.etiquette_ges
-      if (dpeDate)                         updatePayload.latest_dpe_date    = dpeDate
-      if (latest.numero_dpe)               updatePayload.dpe_numero         = latest.numero_dpe
 
-      const { error } = await supabase
-        .from('adresses')
-        .update(updatePayload)
-        .eq('id', adresseId)
+      const updatePayload: any = {
+        latest_dpe_date: isoDate,
+        dpe_etiquette:   (latest.etiquette_dpe || '').charAt(0).toUpperCase() || null,
+        dpe_numero:      latest.numero_dpe,
+        updated_at:      new Date().toISOString()
+      }
 
+      if (typeBien) updatePayload.type_bien = typeBien
+      if (latest.surface_habitable) updatePayload.surface_habitable = latest.surface_habitable
+      if (latest.annee_construction) updatePayload.annee_construction = latest.annee_construction
+      if (latest.etiquette_ges) updatePayload.dpe_ges = (latest.etiquette_ges || '').charAt(0).toUpperCase()
+      if (latest.type_batiment === 'immeuble' && latest.nombre_appartement) updatePayload.nb_bal = latest.nombre_appartement
+
+      const { error } = await supabase.from('adresses').update(updatePayload).eq('id', addrId)
       if (!error) nbQualified++
-      else console.error(`[DPE] Erreur qualification ${adresseId}:`, error.message)
     }
 
-    // ── 7. Marquer la commune comme DPE chargé ────────────────────────────
-    await marquerCommuneDpeChargee(supabase, code_insee, commune_id)
+    await supabase.from('communes').update({ dpe_chargee_at: new Date().toISOString() }).eq('code_insee', code_insee)
 
-    const nbUnmatched = unmatched.length
-
-    console.log(
-      `[DPE] Match ${code_insee}: ${nbTextuel} exact, ${nbVoie} voie, ` +
-      `${nbSpatial} spatial, ${nbQualified} qualifiés, ${nbUnmatched} non matchés ` +
-      `sur ${dpes.length} DPE`
-    )
-
-    return NextResponse.json({
-      nb_matched_textuel: nbTextuel,
-      nb_matched_voie:    nbVoie,
-      nb_matched_spatial: nbSpatial,
-      nb_qualified:       nbQualified,
-      nb_unmatched:       nbUnmatched,
-    })
+    return NextResponse.json({ nb_qualified: nbQualified, total_processed: dpes.length, matches_updated: toUpdateDPE.length })
 
   } catch (err: any) {
-    console.error('[DPE] Erreur matching:', err)
-    return NextResponse.json({ error: err.message ?? 'Erreur inconnue' }, { status: 500 })
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-/** Extraire lat/lon depuis un champ geom EWKT ou GeoJSON */
+function parseAdresseBrute(raw: string): { numero: string; voie: string } {
+  const match = raw.trim().match(/^(\d+\s*(?:bis|ter|b|t|q)?)\s+(.+)/i)
+  if (match) return { numero: match[1].trim(), voie: match[2].replace(/\s+\d{5}.*$/, '').trim() }
+  return { numero: '', voie: raw.replace(/\s+\d{5}.*$/, '').trim() }
+}
+
 function extractCoords(geom: any): { lat: number; lon: number } | null {
   if (!geom) return null
-
   const geomStr = typeof geom === 'string' ? geom : JSON.stringify(geom)
-
-  // EWKT : SRID=4326;POINT(lon lat)
   const ewkt = geomStr.match(/POINT\(([-\d.]+)\s+([-\d.]+)\)/)
-  if (ewkt) {
-    const lon = parseFloat(ewkt[1])
-    const lat = parseFloat(ewkt[2])
-    if (!isNaN(lon) && !isNaN(lat)) return { lat, lon }
-  }
-
-  // GeoJSON : {"type":"Point","coordinates":[lon,lat]}
-  if (typeof geom === 'object' && geom.coordinates) {
-    const lon = geom.coordinates[0]
-    const lat = geom.coordinates[1]
-    if (!isNaN(lon) && !isNaN(lat)) return { lat, lon }
-  }
-
+  if (ewkt) return { lon: parseFloat(ewkt[1]), lat: parseFloat(ewkt[2]) }
+  if (typeof geom === 'object' && geom.coordinates) return { lon: geom.coordinates[0], lat: geom.coordinates[1] }
   return null
 }

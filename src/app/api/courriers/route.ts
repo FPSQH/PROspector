@@ -64,7 +64,7 @@ export async function GET(request: Request) {
     .limit(limit)
 
   if (dateDebut) query = query.gte('latest_dpe_date', dateDebut)
-  if (dateFin)   query = query.lte('latest_dpe_date', dateFin + 'T23:59:59')
+  if (dateFin)   query = query.lte('latest_dpe_date', dateFin)
   if (zone_id)   query = query.eq('zone_id', zone_id)
 
   const { data: adresses, error } = await query
