@@ -270,8 +270,10 @@ export async function POST(req: Request) {
       const dpeDate = (() => {
         const s = String(latest.date_etablissement || '').trim()
         if (!s) return null
-        if (/^d{4}-d{2}-d{2}/.test(s)) return s.slice(0, 10)
-        const m = s.match(/^(d{2})[/-](d{2})[/-](d{4})/)
+        // ISO Format YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+        // Format DD/MM/YYYY or DD-MM-YYYY
+        const m = s.match(/^(\d{2})[/-](\d{2})[/-](\d{4})/)
         if (m) return `${m[3]}-${m[2]}-${m[1]}`
         return null
       })()
