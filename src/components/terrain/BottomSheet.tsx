@@ -76,8 +76,9 @@ export default function BottomSheet({
   const isCollectif  = typeHabitat === 'collectif'
   const isIndividuel = typeHabitat === 'individuel'
 
-  const submitPasReponse = async () => {
-    if (!action) return
+  const submitPasReponse = async (overrideAction?: string) => {
+    const finalAction = overrideAction || action
+    if (!finalAction) return
     setSaving(true)
     // Mettre à jour adresse si nouveaux champs
     const adresseUpdate: any = {}
@@ -96,13 +97,13 @@ export default function BottomSheet({
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         adresse_id: adresse.id, session_id: sessionId,
-        resultat: 'pas_de_reponse', action,
+        resultat: 'pas_de_reponse', action: finalAction,
         type_habitat_observe: typeHabitat || null,
         observations_terrain: courrierCible ? { courrier_possible: true } : {},
       })
     })
     setSaving(false)
-    onQualification({ resultat: 'pas_de_reponse', action, type_habitat: typeHabitat })
+    onQualification({ resultat: 'pas_de_reponse', action: finalAction, type_habitat: typeHabitat })
     onClose()
   }
 
@@ -190,6 +191,34 @@ export default function BottomSheet({
     <div style={overlay} onClick={e => { if(e.target === e.currentTarget) onClose() }}>
       <div ref={sheetRef} style={sheet}>
         <div style={handle}/>
+
+        {/* Quick Actions - Ergonomie optimisée */}
+        <div style={{ padding: '16px 20px 8px', display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => submitPasReponse('flyer')}
+            disabled={saving}
+            style={{
+              flex: 1, height: 48, borderRadius: 12, background: '#f0fdf4', border: '1.5px solid #bbf7d0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              fontSize: 14, fontWeight: 700, color: '#166534', cursor: 'pointer'
+            }}
+          >
+            📄 Flyer
+          </button>
+          <button
+            onClick={() => submitPasReponse('rien')}
+            disabled={saving}
+            style={{
+              flex: 1, height: 48, borderRadius: 12, background: '#f8f9fa', border: '1.5px solid #e9ecef',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              fontSize: 14, fontWeight: 700, color: '#495057', cursor: 'pointer'
+            }}
+          >
+            ⚪ Rien
+          </button>
+        </div>
+
+        <div style={{ margin: '0 20px', height: 1, background: '#F0EDE6' }} />
 
         {/* Header adresse */}
         <div style={{ padding:'12px 20px 10px', borderBottom:'1px solid #F0EDE6' }}>
