@@ -3,9 +3,8 @@
 // POST /api/dpe/match
 //
 // Effectue le matching entre DPE importés et adresses BAN.
-// V2 : Traite les nouveaux DPE ET rattrape les adresses matchées dont la date est manquante.
-// Inclut 3 passes : Textuelle Exacte, Voie seule, et Spatiale (100m).
-// Supporte les grandes communes via pagination (limit 1000).
+// V2 : Inclus les 3 passes (Exact, Voie, Spatial 100m) et synchronisation complète des champs.
+// Optimisé pour éviter les timeouts Vercel (10s) via Promise.all par batches.
 
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse }  from 'next/server'
@@ -36,13 +35,13 @@ export async function POST(req: Request) {
   const { code_insee } = body
 
   try {
-    // ── 1. Charger TOUTES les adresses BAN de la commune (Pagination) ──
+    // ── 1. Charger TOUTES les adresses BAN de la commune (Pagination offset) ──
     const adresses: any[] = []
     let fromAddr = 0
     while (true) {
       const { data, error } = await supabase
         .from('adresses')
-        .select('id, numero, nom_voie, lat, lon, latest_dpe_date')
+        .select('id, numero, nom_voie, lat, lon, latest_dpe_date, dpe_etiquette')
         .eq('code_insee', code_insee)
         .range(fromAddr, fromAddr + 999)
       if (error || !data?.length) break
@@ -55,14 +54,16 @@ export async function POST(req: Request) {
 
     const textIndex = new Map<string, any>()
     const voieIndex = new Map<string, any[]>()
+    const addrMap   = new Map<string, any>()
     for (const a of adresses) {
       const vNorm = normalizeVoie(a.nom_voie || ''), nNorm = normalizeNumero(a.numero)
       textIndex.set(`${nNorm}|${vNorm}`, a)
       if (!voieIndex.has(vNorm)) voieIndex.set(vNorm, [])
       voieIndex.get(vNorm)!.push(a)
+      addrMap.set(a.id, a)
     }
 
-    // ── 2. Charger TOUS les DPE concernés (Pagination) ──
+    // ── 2. Charger TOUS les DPE (Nouveaux OU avec adresse_id présent pour rattrapage) ──
     const dpes: any[] = []
     let fromDpe = 0
     while (true) {
@@ -82,12 +83,10 @@ export async function POST(req: Request) {
       fromDpe += 1000
     }
 
-    if (!dpes.length) return NextResponse.json({ nb_qualified: 0, message: 'Aucun DPE à traiter' })
-
     const toUpdateDPE = []
     const adresseToQualify = new Map<string, any[]>()
 
-    // ── 3. Logique de Matching ──
+    // ── 3. Logique de Matching en 3 passes ──
     for (const dpe of dpes) {
       let matchedAddrId = dpe.adresse_id
       let matchConfiance = dpe.match_confiance
@@ -137,35 +136,48 @@ export async function POST(req: Request) {
       ))
     }
 
-    // ── 5. Qualification massive avec enrichissement complet ──
+    // ── 5. Qualification massive avec synchronisation complète des champs ──
     let nbQualified = 0
+    const addrUpdates = []
+
     for (const [addrId, dpesOfAddr] of adresseToQualify) {
       dpesOfAddr.sort((a, b) => (b.date_etablissement || '').localeCompare(a.date_etablissement || ''))
       const latest = dpesOfAddr[0]
       const isoDate = toIsoDate(latest.date_etablissement)
+      const etiquette = (latest.etiquette_dpe || '').charAt(0).toUpperCase() || null
 
-      const typeBien = (() => {
-        const tb = (latest.type_batiment || '').toLowerCase()
-        if (tb === 'maison') return 'maison'
-        if (tb === 'appartement' || tb === 'immeuble') return 'appartement'
-        return null
-      })()
+      const currentAddr = addrMap.get(addrId)
+      // Ne mettre à jour que si changement réel ou date manquante (rattrapage)
+      if (currentAddr.latest_dpe_date !== isoDate || currentAddr.dpe_etiquette !== etiquette) {
+        const typeBien = (() => {
+          const tb = (latest.type_batiment || '').toLowerCase()
+          if (tb === 'maison') return 'maison'
+          if (tb === 'appartement' || tb === 'immeuble') return 'appartement'
+          return currentAddr.type_bien || 'inconnu'
+        })()
 
-      const updatePayload: any = {
-        latest_dpe_date: isoDate,
-        dpe_etiquette:   (latest.etiquette_dpe || '').charAt(0).toUpperCase() || null,
-        dpe_numero:      latest.numero_dpe,
-        updated_at:      new Date().toISOString()
+        const payload: any = {
+          latest_dpe_date: isoDate,
+          dpe_etiquette:   etiquette,
+          dpe_numero:      latest.numero_dpe,
+          type_bien:       typeBien,
+          updated_at:      new Date().toISOString()
+        }
+        if (latest.surface_habitable) payload.surface_habitable = latest.surface_habitable
+        if (latest.annee_construction) payload.annee_construction = latest.annee_construction
+        if (latest.etiquette_ges) payload.dpe_ges = (latest.etiquette_ges || '').charAt(0).toUpperCase()
+        if (latest.type_batiment === 'immeuble' && latest.nombre_appartement) payload.nb_bal = latest.nombre_appartement
+
+        addrUpdates.push({ id: addrId, ...payload })
       }
+    }
 
-      if (typeBien) updatePayload.type_bien = typeBien
-      if (latest.surface_habitable) updatePayload.surface_habitable = latest.surface_habitable
-      if (latest.annee_construction) updatePayload.annee_construction = latest.annee_construction
-      if (latest.etiquette_ges) updatePayload.dpe_ges = (latest.etiquette_ges || '').charAt(0).toUpperCase()
-      if (latest.type_batiment === 'immeuble' && latest.nombre_appartement) updatePayload.nb_bal = latest.nombre_appartement
-
-      const { error } = await supabase.from('adresses').update(updatePayload).eq('id', addrId)
-      if (!error) nbQualified++
+    // Exécution groupée des updates adresses (Batches de 50 pour la stabilité)
+    for (const batch of chunk(addrUpdates, 50)) {
+      await Promise.all(batch.map(upd =>
+        supabase.from('adresses').update(upd).eq('id', upd.id)
+      ))
+      nbQualified += batch.length
     }
 
     await supabase.from('communes').update({ dpe_chargee_at: new Date().toISOString() }).eq('code_insee', code_insee)

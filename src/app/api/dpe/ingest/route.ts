@@ -3,11 +3,10 @@
 // POST /api/dpe/ingest
 //
 // Ingère une page de DPE ADEME selon les spécifications DataFair V2.
-// Utilise identifiant_dpe comme pivot, code_insee_commune_actualise pour le filtrage,
-// et une pagination par start/offset pour l'exhaustivité.
+// Utilise identifiant_dpe comme pivot, filtrage INSEE double, et pagination offset.
 //
-// Body : { code_postal, code_insee, start? }
-// Retourne : { nb_inserted, nb_raw, total, next_start, has_more }
+// Body : { code_postal, code_insee, after? }
+// Retourne : { nb_inserted, nb_raw, total, after, has_more }
 
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse }  from 'next/server'
@@ -52,10 +51,12 @@ export async function POST(req: Request) {
   }
 
   const { code_postal, code_insee } = body
-  const start = parseInt(body.start ?? '0')
-  const size  = 3000
+  // after est utilisé comme l'index start pour Lucene (DataFair)
+  const start = parseInt(body.after ?? '0')
+  const size  = 3000 // Compromis pour le timeout Vercel 10s
   const cpTarget = normCP(code_postal)
 
+  // Filtrage temporel : depuis les 2 dernières années pour garantir l'exhaustivité
   const sinceDate = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   try {
@@ -63,13 +64,13 @@ export async function POST(req: Request) {
       size:   size.toString(),
       start:  start.toString(),
       select: DPE_FIELDS,
-      qs:     `code_insee_commune_actualise:"${code_insee}" AND date_etablissement_dpe:[${sinceDate} TO *]`,
+      // Spec V2 : code_insee_commune_actualise + fallback code_insee_ban
+      qs:     `(code_insee_commune_actualise:\"${code_insee}\" OR code_insee_ban:\"${code_insee}\") AND date_etablissement_dpe:[${sinceDate} TO *]`,
       sort:   'date_etablissement_dpe:desc',
     })
 
     const url = DPE_BASE + '?' + params
     const resp = await fetch(url)
-
     if (!resp.ok) return NextResponse.json({ error: `API ADEME: HTTP ${resp.status}` }, { status: 502 })
 
     const data = await resp.json()
@@ -78,10 +79,10 @@ export async function POST(req: Request) {
 
     const rows = []
     let geocodingCount = 0
-    const GEOCODING_LIMIT = 50 // Limite pour éviter les timeouts Vercel 10s
+    const GEOCODING_LIMIT = 30 // Sécurité contre le timeout
 
     for (const r of rawRows) {
-      const idDpe = (r.identifiant_dpe || '').trim()
+      const idDpe = (r.identifiant_dpe || r.numero_dpe || '').trim()
       if (!idDpe) continue
 
       let lat = parseFloat(r.latitude)
@@ -91,12 +92,8 @@ export async function POST(req: Request) {
       if ((isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) && addrStr && geocodingCount < GEOCODING_LIMIT) {
         geocodingCount++
         const cp = normCP(r.code_postal_brut) || cpTarget
-        // Appel BAN avec contexte (Spec V2)
-        const banCoords = await geocodeAdresse(`${addrStr} ${cp}`).catch(() => null)
-        if (banCoords) {
-          lat = banCoords.lat
-          lon = banCoords.lon
-        }
+        const banCoords = await geocodeAdresse(addrStr, cp).catch(() => null)
+        if (banCoords) { lat = banCoords.lat; lon = banCoords.lon }
       }
 
       rows.push({
@@ -127,17 +124,18 @@ export async function POST(req: Request) {
     }
 
     const nextStart = start + size
-    const hasMore = nextStart < total
+    const hasMore = nextStart < total && rawRows.length >= size
 
     return NextResponse.json({
       nb_inserted: nbInserted,
       nb_raw:      rawRows.length,
       total:       total,
-      next_start:  hasMore ? nextStart : null,
+      after:       hasMore ? nextStart.toString() : null, // Supporte le hook React client
       has_more:    hasMore,
     })
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error('[DPE] Erreur ingestion:', err)
+    return NextResponse.json({ error: err.message ?? 'Erreur inconnue' }, { status: 500 })
   }
 }
