@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     while (true) {
       const { data, error } = await supabase
         .from('adresses')
-        .select('id, numero, nom_voie, lat, lon, latest_dpe_date, dpe_etiquette')
+        .select('id, numero, nom_voie, lat, lon, latest_dpe_date, dpe_etiquette, type_bien')
         .eq('code_insee', code_insee)
         .range(fromAddr, fromAddr + 999)
       if (error || !data?.length) break
