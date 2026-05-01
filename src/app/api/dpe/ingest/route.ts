@@ -76,6 +76,7 @@ export async function POST(req: Request) {
     const data = await resp.json()
     const rawRows: any[] = data.results || []
     const total = data.total || 0
+    const nextAfterCursor: string | null = data.after ?? null
 
     const rows = []
     let geocodingCount = 0
@@ -124,14 +125,13 @@ export async function POST(req: Request) {
       if (!error) nbInserted += batch.length
     }
 
-    const nextStart = start + size
-    const hasMore = nextStart < total && rawRows.length >= size
+    const hasMore = nextAfterCursor !== null && rawRows.length >= size
 
     return NextResponse.json({
       nb_inserted: nbInserted,
       nb_raw:      rawRows.length,
       total:       total,
-      after:       hasMore ? nextStart.toString() : null, // Supporte le hook React client
+      after:       hasMore ? nextAfterCursor : null, // Curseur ADEME (base64)ent
       has_more:    hasMore,
     })
 
