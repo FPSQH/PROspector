@@ -27,7 +27,7 @@ export default function CourriersPage() {
   const mapInst   = useRef<maplibregl.Map | null>(null)
   const markers   = useRef<maplibregl.Marker[]>([])
 
-  const [dateDebut, setDateDebut] = useState(daysAgo(30))
+  const [dateDebut, setDateDebut] = useState(daysAgo(90))
   const [dateFin,   setDateFin]   = useState(today())
   const [adresses,  setAdresses]  = useState<DpeAdresseData[]>([])
   const [stats,     setStats]     = useState<any>(null)
@@ -197,7 +197,7 @@ export default function CourriersPage() {
 
           {/* Boutons rapides */}
           <div style={{ display:'flex', gap:4, marginBottom:10 }}>
-            {[['2 sem', 14], ['1 mois', 30], ['2 mois', 60]].map(([label, days]) => (
+            {[['1 mois', 30], ['3 mois', 90], ['6 mois', 180]].map(([label, days]) => (
               <button key={label as string} onClick={() => { setDateDebut(daysAgo(days as number)); setDateFin(today()) }}
                 style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:'1px solid #E8E6DF', borderRadius:6, background:'#F8F7F4', cursor:'pointer', color:'#5F5E5A' }}>
                 {label}
@@ -265,7 +265,8 @@ export default function CourriersPage() {
           {loading && <div style={{ padding:20, textAlign:'center', color:'#9b9b96', fontSize:'0.85rem' }}>Chargement...</div>}
           {!loading && filtered.length === 0 && adresses.length === 0 && (
             <div style={{ padding:20, textAlign:'center', color:'#9b9b96', fontSize:'0.85rem' }}>
-              Choisissez une période et cliquez sur Chercher
+              <div>Aucun DPE sur cette période.</div>
+              <div style={{ marginTop:8, fontSize:'0.75rem' }}>Essayez d&apos;élargir la période ou cliquez sur <strong>6 mois</strong>.</div>
             </div>
           )}
           {!loading && filtered.length === 0 && adresses.length > 0 && (
