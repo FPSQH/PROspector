@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   const { code_postal, code_insee } = body
   // after est utilisé comme l'index start pour Lucene (DataFair)
-  const start = parseInt(body.after ?? '0')
+  const afterCursor: string | null = body.after ?? null
   const size  = 3000 // Compromis pour le timeout Vercel 10s
   const cpTarget = normCP(code_postal)
 
@@ -62,13 +62,13 @@ export async function POST(req: Request) {
   try {
     const params = new URLSearchParams({
       size:   size.toString(),
-      start:  start.toString(),
       select: DPE_FIELDS,
       // Spec V2 : code_insee_commune_actualise + fallback code_insee_ban
       qs:     `(code_insee_commune_actualise:"${code_insee}" OR code_insee_ban:"${code_insee}") AND date_etablissement_dpe:[${sinceDate} TO *]`,
-      sort:   'date_etablissement_dpe:desc',
+      sort:   '-date_etablissement_dpe',
     })
 
+    if (afterCursor) params.set('after', afterCursor)
     const url = DPE_BASE + '?' + params
     const resp = await fetch(url)
     if (!resp.ok) return NextResponse.json({ error: `API ADEME: HTTP ${resp.status}` }, { status: 502 })
