@@ -111,12 +111,14 @@ export async function POST(req: Request) {
   try {
     const params = new URLSearchParams({ size: size.toString(), select: DPE_FIELDS })
 
+    // Le filtre qs est TOUJOURS appliqué, y compris avec afterCursor (pagination)
     if (mode === 'incremental' && filterDate) {
-      // Incrémental : filtrer par date_derniere_modification_dpe
       params.set('qs', `(code_insee_ban:"${code_insee}") AND date_derniere_modification_dpe:[${filterDate} TO *]`)
-    } else if (filterDate) {
-      // Complet : filtrer par date_etablissement_dpe sur 2 ans
-      params.set('qs', `(code_insee_ban:"${code_insee}" OR code_postal_ban:"${cpTarget}" OR code_postal_brut:"${cpTarget}") AND date_etablissement_dpe:[${filterDate} TO *]`)
+    } else {
+      // Complet ou pagination : filtre par code_insee + date_etablissement
+      const qsParts = [`code_insee_ban:"${code_insee}"`]
+      if (filterDate) qsParts.push(`date_etablissement_dpe:[${filterDate} TO *]`)
+      params.set('qs', qsParts.join(' AND '))
     }
 
     params.set('sort', '-date_etablissement_dpe')
