@@ -214,12 +214,14 @@ export async function GET(request: Request) {
       || (r.numero_voie_ban && r.nom_rue_ban ? (r.numero_voie_ban+' '+r.nom_rue_ban).trim() : null)
       || ''
 
-    // Coordonnées Lambert93 → WGS84
+    // Coordonnées Lambert93 → WGS84 (formule IGN NTG_71)
     let lat: number|null = null, lon: number|null = null
-    const x = parseFloat(r.coordonnee_cartographique_x_ban)
-    const y = parseFloat(r.coordonnee_cartographique_y_ban)
-    if (!isNaN(x) && !isNaN(y) && x !== 0 && y !== 0) {
-      const wgs = lambert93ToWgs84(x, y)
+    const xRaw = r.coordonnee_cartographique_x_ban
+    const yRaw = r.coordonnee_cartographique_y_ban
+    const xCoord = typeof xRaw === 'number' ? xRaw : parseFloat(xRaw)
+    const yCoord = typeof yRaw === 'number' ? yRaw : parseFloat(yRaw)
+    if (!isNaN(xCoord) && !isNaN(yCoord) && xCoord !== 0 && yCoord !== 0) {
+      const wgs = lambert93ToWgs84(xCoord, yCoord)
       if (wgs) { lat = wgs.lat; lon = wgs.lon }
     }
 
