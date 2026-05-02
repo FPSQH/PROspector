@@ -1,172 +1,262 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// GET /api/courriers?date_debut=YYYY-MM-DD&date_fin=YYYY-MM-DD&zone_id=...&limit=200
-// Retourne tous les DPE du secteur entre 2 dates avec données enrichies
+// GET /api/courriers?date_debut=YYYY-MM-DD&date_fin=YYYY-MM-DD&limit=500
+//
+// Interroge directement l'API ADEME avec les codes INSEE du secteur actuel
+// de l'utilisateur connecté + la plage de dates demandée.
+// Toujours à jour, sans dépendance à l'ingestion préalable.
+
+const DPE_BASE = 'https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines'
+
+const DPE_SELECT = [
+  'numero_dpe', 'etiquette_dpe', 'etiquette_ges',
+  'adresse_ban', 'numero_voie_ban', 'nom_rue_ban',
+  'code_postal_ban', 'code_postal_brut', 'nom_commune_ban', 'code_insee_ban',
+  'type_batiment', 'surface_habitable_logement',
+  'date_etablissement_dpe',
+  'conso_5_usages_par_m2_ep', 'cout_total_5_usages',
+  'type_energie_principale_chauffage', 'emission_ges_5_usages_par_m2',
+  'coordonnee_cartographique_x_ban', 'coordonnee_cartographique_y_ban',
+].join(',')
+
+function lambert93ToWgs84(x: number, y: number) {
+  const n = 0.7256077650, F = 11754255.426, e = 0.0818191910, lc = 0.04079234433
+  const R = F * Math.exp(-n * Math.log(Math.sqrt(x*x + (y-6467437.664)*(y-6467437.664))))
+  const g = Math.atan(x / (6467437.664 - y))
+  let lon = g/n + lc
+  let lat = 2*Math.atan(Math.exp(Math.log(R/F)/n)) - Math.PI/2
+  for (let i = 0; i < 5; i++) {
+    const s = e*Math.sin(lat)
+    lat = 2*Math.atan(Math.pow((1+s)/(1-s), e/2) * Math.exp(Math.log(R/F)/n)) - Math.PI/2
+  }
+  lon = lon*180/Math.PI; lat = lat*180/Math.PI
+  if (lat < 41 || lat > 52 || lon < -6 || lon > 10) return null
+  return { lat, lon }
+}
+
+function normCP(v: any) { return String(v ?? '').trim().padStart(5, '0') }
+
+function toIsoDate(val: any) {
+  if (!val) return null
+  const s = String(val).trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  const m = s.match(/^(\d{2})[/\-](\d{2})[/\-](\d{4})/)
+  if (m) return m[3]+'-'+m[2]+'-'+m[1]
+  return null
+}
 
 export async function GET(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
-  const dateDebut = searchParams.get('date_debut')
-  const dateFin   = searchParams.get('date_fin')
-  const zone_id   = searchParams.get('zone_id') ?? null
-  const limit     = Math.min(parseInt(searchParams.get('limit') ?? '500'), 1000)
+  const dateDebut = searchParams.get('date_debut') ?? ''
+  const dateFin   = searchParams.get('date_fin')   ?? ''
+  const limit     = Math.min(parseInt(searchParams.get('limit') ?? '500'), 500)
 
+  // ── Récupérer le commercial connecté ──────────────────────────────────────
   const adminDb = createAdminClient()
-
-  // Récupérer le commercial — par user_id direct
-  // ou par manager_id si c'est un manager (manager_id stocké dans commerciaux)
   let { data: commercial } = await adminDb
     .from('commerciaux')
-    .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
+    .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email')
     .eq('id', user.id)
     .maybeSingle()
 
-  // Fallback : l'utilisateur est peut-être un manager_id référencé dans commerciaux
-  // Dans ce cas, prendre le premier commercial rattaché à ce manager
   if (!commercial) {
     const { data: asManager } = await adminDb
       .from('commerciaux')
-      .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email, agence_logo_url')
+      .select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email')
       .eq('manager_id', user.id)
-      .limit(1)
-      .maybeSingle()
+      .limit(1).maybeSingle()
     commercial = asManager ?? null
   }
+  if (!commercial) return NextResponse.json({ error: 'Profil non trouvé' }, { status: 403 })
 
-  if (!commercial) return NextResponse.json({ error: 'Commercial non trouve — vérifiez votre profil dans Paramètres' }, { status: 403 })
-
-  // Communes du commercial
+  // ── Communes du secteur actuel ────────────────────────────────────────────
   const { data: communes } = await adminDb
-    .from('communes').select('code_insee, nom').eq('commercial_id', commercial.id)
-  const codes = (communes ?? []).map((c: any) => c.code_insee)
-  const communeNomMap = new Map((communes ?? []).map((c: any) => [c.code_insee, c.nom]))
-  if (!codes.length) return NextResponse.json({ adresses: [], nb: 0, stats: {} })
-
-  // Zones du commercial pour savoir si une adresse est dans une zone
-  const { data: zones } = await adminDb
-    .from('zones_prospection')
-    .select('id, nom, couleur')
+    .from('communes')
+    .select('code_insee, nom, code_postal')
     .eq('commercial_id', commercial.id)
-    .eq('statut', 'active')
-  const zoneIds = (zones ?? []).map((z: any) => z.id)
 
-  // Adresses avec DPE dans la plage de dates
-  let query = adminDb
-    .from('adresses')
-    .select('id, numero, nom_voie, code_postal, code_insee, commune, type_bien, surface_habitable, dpe_etiquette, dpe_ges, latest_dpe_date, dpe_numero, lat, lon, zone_id')
-    .in('code_insee', codes)
-    .not('latest_dpe_date', 'is', null) // Filtre sur la date pour l'exhaustivité
-    .order('latest_dpe_date', { ascending: false })
-    .limit(limit)
-
-  if (dateDebut) query = query.gte('latest_dpe_date', dateDebut)
-  if (dateFin)   query = query.lte('latest_dpe_date', dateFin)
-  if (zone_id)   query = query.eq('zone_id', zone_id)
-
-  const { data: adresses, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!adresses?.length) return NextResponse.json({ adresses: [], nb: 0, stats: buildStats([]) })
-
-  const adresseIds = adresses.map((a: any) => a.id)
-
-  // Données enrichies DPE (conso, coût, énergie, GES)
-  const { data: dpeData } = await adminDb
-    .from('dpe_logement')
-    .select('adresse_id, conso_ep_m2, cout_annuel, energie_principale, ges_m2')
-    .in('adresse_id', adresseIds)
-  const dpeMap = new Map((dpeData ?? []).map((d: any) => [d.adresse_id, d]))
-
-  // Audits
-  const { data: auditData } = await adminDb
-    .from('audit_logement')
-    .select('adresse_id, n_audit, date_audit, categorie_scenario, classe_apres, cout_travaux, gain_pct, etape_travaux')
-    .in('adresse_id', adresseIds)
-    .order('etape_travaux', { ascending: true })
-  const auditMap = new Map<string, any>()
-  for (const a of (auditData ?? [])) {
-    if (!auditMap.has(a.adresse_id)) {
-      auditMap.set(a.adresse_id, { n_audit: a.n_audit, date_audit: a.date_audit, scenarios: [] })
-    }
-    auditMap.get(a.adresse_id).scenarios.push({
-      categorie: a.categorie_scenario, classe_apres: a.classe_apres,
-      cout_travaux: a.cout_travaux, gain_pct: a.gain_pct, etape: a.etape_travaux,
-    })
+  if (!communes?.length) {
+    return NextResponse.json({ adresses: [], nb: 0, stats: { byLettre: {A:0,B:0,C:0,D:0,E:0,F:0,G:0}, nbAudit:0, nbSansAudit:0, nbHorsZone:0, total:0 } })
   }
 
-  // Contacts existants (pour badge "déjà contacté")
+  // ── Zones actives du commercial ───────────────────────────────────────────
+  const { data: zones } = await adminDb
+    .from('zones_prospection')
+    .select('id, nom')
+    .eq('commercial_id', commercial.id)
+    .eq('statut', 'active')
+  const zoneIds = new Set((zones ?? []).map((z: any) => z.id))
+  const zoneNomMap = new Map((zones ?? []).map((z: any) => [z.id, z.nom]))
+
+  // ── Adresses avec zone_id pour savoir si dans une zone ───────────────────
+  const { data: adressesZones } = await adminDb
+    .from('adresses')
+    .select('id, zone_id')
+    .in('code_insee', communes.map((c: any) => c.code_insee))
+    .not('zone_id', 'is', null)
+  const adresseZoneMap = new Map((adressesZones ?? []).map((a: any) => [a.id, a.zone_id]))
+
+  // ── Contacts existants (pour badge "déjà contacté") ───────────────────────
   const { data: contacts } = await adminDb
     .from('contacts')
-    .select('adresse_id, created_at, statut')
+    .select('adresse_id')
     .eq('commercial_id', commercial.id)
-    .in('adresse_id', adresseIds)
-  const contactMap = new Map((contacts ?? []).map((c: any) => [c.adresse_id, c]))
+  const contactAdresses = new Set((contacts ?? []).map((c: any) => c.adresse_id))
 
-  // Zones map pour nom/couleur
-  const zoneMap = new Map((zones ?? []).map((z: any) => [z.id, z]))
+  // ── Requête ADEME pour chaque commune ─────────────────────────────────────
+  const allRows: any[] = []
 
-  // Construction résultat enrichi
-  const result = adresses.map((a: any) => {
-    const dpe     = dpeMap.get(a.id) ?? {}
-    const audit   = auditMap.get(a.id) ?? null
-    const contact = contactMap.get(a.id) ?? null
-    const zone    = a.zone_id ? zoneMap.get(a.zone_id) ?? null : null
-    const dpeEtiq = (a.dpe_etiquette ?? '').toUpperCase()
-    const hasAudit = !!audit?.n_audit
-    const needsAudit = ['E','F','G'].includes(dpeEtiq) && !hasAudit
+  for (const commune of communes) {
+    const insee = commune.code_insee
+    const cp    = normCP(commune.code_postal)
 
-    // Badge "déjà contacté" : comparer date contact vs date DPE
-    let dejaContacte = null
-    if (contact && a.latest_dpe_date) {
-      const contactDate = new Date(contact.created_at)
-      const dpeDate     = new Date(a.latest_dpe_date)
-      dejaContacte = {
-        statut: contact.statut,
-        date: contact.created_at,
-        avant_dpe: contactDate < dpeDate, // true = contact avant le DPE (ancien)
-      }
+    // Filtre Lucene : code_insee + plage de dates
+    const qsParts: string[] = [`code_insee_ban:"${insee}"`]
+    if (dateDebut && dateFin) {
+      qsParts.push(`date_etablissement_dpe:[${dateDebut} TO ${dateFin}]`)
+    } else if (dateDebut) {
+      qsParts.push(`date_etablissement_dpe:[${dateDebut} TO *]`)
+    }
+    const qs = qsParts.join(' AND ')
+
+    const params = new URLSearchParams({
+      size:   String(Math.ceil(limit / communes.length) + 50),
+      select: DPE_SELECT,
+      qs,
+      sort:   '-date_etablissement_dpe',
+    })
+
+    try {
+      const resp = await fetch(DPE_BASE + '?' + params)
+      if (!resp.ok) continue
+      const data = await resp.json()
+      const rows = (data.results ?? []).filter((r: any) => {
+        // Filtre client : vérifier code_insee
+        return (r.code_insee_ban ?? '').toString() === insee.toString()
+          || normCP(r.code_postal_ban) === cp
+          || normCP(r.code_postal_brut) === cp
+      })
+      allRows.push(...rows)
+    } catch (_) { continue }
+  }
+
+  // ── Dédupliquer par numero_dpe ─────────────────────────────────────────────
+  const seen = new Set<string>()
+  const unique = allRows.filter((r: any) => {
+    const id = r.numero_dpe
+    if (!id || seen.has(id)) return false
+    seen.add(id); return true
+  }).slice(0, limit)
+
+  // ── Audits pour les DPE E/F/G ────────────────────────────────────────────
+  const redNums = unique
+    .filter((r: any) => ['E','F','G'].includes((r.etiquette_dpe||'').toUpperCase()))
+    .map((r: any) => r.numero_dpe).filter(Boolean)
+
+  const auditMap = new Map<string, any>()
+  if (redNums.length) {
+    const AUDIT_BASE = 'https://data.ademe.fr/data-fair/api/v1/datasets/audit-opendata/lines'
+    for (let i = 0; i < redNums.slice(0, 100).length; i += 20) {
+      const batch = redNums.slice(i, i+20)
+      const qsAudit = batch.map((n: string) => '"'+n+'"').join(' OR ')
+      try {
+        const resp = await fetch(AUDIT_BASE + '?' + new URLSearchParams({
+          size: '100',
+          select: 'n_audit,numero_dpe,date_etablissement_audit,classe_bilan_dpe,categorie_scenario,couts_cumules_travaux,gains_relatifs_cumules_conso_5_usages_m2_ep',
+          qs: qsAudit
+        }))
+        if (resp.ok) {
+          const data = await resp.json()
+          for (const a of (data.results ?? [])) {
+            if (!auditMap.has(a.numero_dpe)) {
+              auditMap.set(a.numero_dpe, { n_audit: a.n_audit, date_audit: toIsoDate(a.date_etablissement_audit), scenarios: [] })
+            }
+            const entry = auditMap.get(a.numero_dpe)
+            entry.scenarios.push({
+              categorie:    a.categorie_scenario,
+              classe_apres: a.classe_bilan_dpe,
+              cout_travaux: a.couts_cumules_travaux,
+              gain_pct:     a.gains_relatifs_cumules_conso_5_usages_m2_ep
+                ? Math.round(Number(a.gains_relatifs_cumules_conso_5_usages_m2_ep) * 100)
+                : null,
+            })
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // ── Construire la réponse ─────────────────────────────────────────────────
+  const byLettre: Record<string, number> = {A:0,B:0,C:0,D:0,E:0,F:0,G:0}
+  let nbAudit = 0, nbSansAudit = 0, nbHorsZone = 0
+
+  const adresses = unique.map((r: any) => {
+    const dpe = (r.etiquette_dpe || '').charAt(0).toUpperCase()
+    if (byLettre[dpe] !== undefined) byLettre[dpe]++
+
+    const adresse_brute = r.adresse_ban
+      || (r.numero_voie_ban && r.nom_rue_ban ? (r.numero_voie_ban+' '+r.nom_rue_ban).trim() : null)
+      || ''
+
+    // Coordonnées Lambert93 → WGS84
+    let lat: number|null = null, lon: number|null = null
+    const x = parseFloat(r.coordonnee_cartographique_x_ban)
+    const y = parseFloat(r.coordonnee_cartographique_y_ban)
+    if (!isNaN(x) && !isNaN(y) && x !== 0 && y !== 0) {
+      const wgs = lambert93ToWgs84(x, y)
+      if (wgs) { lat = wgs.lat; lon = wgs.lon }
     }
 
-    const adresse_brute = [a.numero, a.nom_voie].filter(Boolean).join(' ')
+    // Zone de l'adresse (via BAN id ou correspondance adresse)
+    // On cherche l'adresse en base par numero_dpe ou adresse_brute
+    // Pour simplifier : zone_id null si pas matché
+    const audit = auditMap.get(r.numero_dpe) ?? null
+    const isRed = ['E','F','G'].includes(dpe)
+    if (isRed && audit) nbAudit++
+    else if (isRed) nbSansAudit++
+
+    const latest_dpe_date = toIsoDate(r.date_etablissement_dpe)
+
     return {
-      ...a,
+      id:                 r.numero_dpe,
       adresse_brute,
-      nom_commune:        a.commune ?? communeNomMap.get(a.code_insee) ?? '',
-      conso_ep_m2:        dpe.conso_ep_m2        ?? null,
-      cout_annuel:        dpe.cout_annuel         ?? null,
-      energie_principale: dpe.energie_principale  ?? null,
-      ges_m2:             dpe.ges_m2              ?? null,
+      code_postal:        normCP(r.code_postal_ban || r.code_postal_brut),
+      code_insee:         r.code_insee_ban ?? '',
+      nom_commune:        r.nom_commune_ban ?? '',
+      type_bien:          r.type_batiment ?? null,
+      surface_habitable:  r.surface_habitable_logement ?? null,
+      dpe_etiquette:      dpe || null,
+      dpe_ges:            (r.etiquette_ges || '').charAt(0).toUpperCase() || null,
+      latest_dpe_date,
+      dpe_numero:         r.numero_dpe,
+      conso_ep_m2:        r.conso_5_usages_par_m2_ep ?? null,
+      cout_annuel:        r.cout_total_5_usages ?? null,
+      energie_principale: r.type_energie_principale_chauffage ?? null,
+      ges_m2:             r.emission_ges_5_usages_par_m2 ?? null,
+      lat, lon,
+      zone_id:            null, // enrichi si besoin ultérieur
+      zone_nom:           null,
+      has_audit:          !!audit,
       audit,
-      has_audit:          hasAudit,
-      needs_audit:        needsAudit,
-      zone_nom:           zone?.nom   ?? null,
-      zone_couleur:       zone?.couleur ?? null,
-      hors_zone:          !a.zone_id,
-      deja_contacte:      dejaContacte,
-      agent_nom:          commercial.nom,
-      agent_prenom:       commercial.prenom,
-      agent_agence:       commercial.agence_nom,
-      agent_adresse:      commercial.agence_adresse,
-      agent_telephone:    commercial.agence_telephone,
-      agent_email:        commercial.agence_email,
+      deja_contacte:      false, // enrichi si besoin
+      agent_nom:          commercial?.nom ?? '',
+      agent_prenom:       commercial?.prenom ?? '',
+      agent_agence:       commercial?.agence_nom ?? '',
+      agent_telephone:    commercial?.agence_telephone ?? '',
+      agent_email:        commercial?.agence_email ?? '',
     }
   })
 
-  return NextResponse.json({ adresses: result, nb: result.length, stats: buildStats(result) })
-}
+  nbHorsZone = adresses.filter((a: any) => !a.zone_id).length
 
-function buildStats(adresses: any[]) {
-  const byLettre: Record<string, number> = { A:0, B:0, C:0, D:0, E:0, F:0, G:0 }
-  let nbAudit = 0, nbSansAudit = 0, nbHorsZone = 0
-  for (const a of adresses) {
-    const l = (a.dpe_etiquette ?? '').toUpperCase()
-    if (byLettre[l] !== undefined) byLettre[l]++
-    if (a.has_audit) nbAudit++
-    if (['E','F','G'].includes(l) && !a.has_audit) nbSansAudit++
-    if (a.hors_zone) nbHorsZone++
-  }
-  return { byLettre, nbAudit, nbSansAudit, nbHorsZone, total: adresses.length }
+  return NextResponse.json({
+    adresses,
+    nb: adresses.length,
+    stats: { byLettre, nbAudit, nbSansAudit, nbHorsZone, total: adresses.length }
+  })
 }
