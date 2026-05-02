@@ -20,17 +20,28 @@ const DPE_SELECT = [
   'coordonnee_cartographique_x_ban', 'coordonnee_cartographique_y_ban',
 ].join(',')
 
-function lambert93ToWgs84(x: number, y: number) {
-  const n = 0.7256077650, F = 11754255.426, e = 0.0818191910, lc = 0.04079234433
-  const R = F * Math.exp(-n * Math.log(Math.sqrt(x*x + (y-6467437.664)*(y-6467437.664))))
-  const g = Math.atan(x / (6467437.664 - y))
-  let lon = g/n + lc
-  let lat = 2*Math.atan(Math.exp(Math.log(R/F)/n)) - Math.PI/2
-  for (let i = 0; i < 5; i++) {
-    const s = e*Math.sin(lat)
-    lat = 2*Math.atan(Math.pow((1+s)/(1-s), e/2) * Math.exp(Math.log(R/F)/n)) - Math.PI/2
+// Conversion Lambert-93 (EPSG:2154) → WGS84 — formule IGN NTG_71
+function lambert93ToWgs84(X: number, Y: number): { lat: number; lon: number } | null {
+  const n  = 0.7256077650532670
+  const C  = 11754255.4260960990
+  const Xs = 700000.0
+  const Ys = 12655612.0499
+  const e  = 0.0818191910428158
+  const dX = X - Xs, dY = Y - Ys
+  const R  = Math.sqrt(dX*dX + dY*dY)
+  if (R === 0) return null
+  const gamma  = Math.atan(dX / (-dY))
+  const lonRad = gamma / n + (3.0 * Math.PI / 180.0)
+  const L      = -Math.log(R / C) / n
+  let phi = 2 * Math.atan(Math.exp(L)) - Math.PI / 2
+  for (let i = 0; i < 20; i++) {
+    const s = e * Math.sin(phi)
+    const p = 2 * Math.atan(Math.exp(L) * Math.pow((1+s)/(1-s), e/2)) - Math.PI/2
+    if (Math.abs(p - phi) < 1e-10) { phi = p; break }
+    phi = p
   }
-  lon = lon*180/Math.PI; lat = lat*180/Math.PI
+  const lat = phi * 180.0 / Math.PI
+  const lon = lonRad * 180.0 / Math.PI
   if (lat < 41 || lat > 52 || lon < -6 || lon > 10) return null
   return { lat, lon }
 }
