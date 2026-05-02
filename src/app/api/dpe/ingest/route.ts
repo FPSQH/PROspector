@@ -132,7 +132,15 @@ export async function POST(req: Request) {
     const data = await resp.json()
     const rawRows: any[] = data.results || []
     const total = data.total || 0
-    const nextAfterCursor: string | null = data.after ?? null
+    // DataFair retourne "next" (URL) et non "after" directement
+    // Extraire le paramètre after= depuis l'URL next
+    let nextAfterCursor: string | null = null
+    if (data.next) {
+      try {
+        const nextUrl = new URL(data.next)
+        nextAfterCursor = nextUrl.searchParams.get('after')
+      } catch (_) {}
+    }
 
     // ── Traitement des lignes ─────────────────────────────────────────────────
     const rows = []
@@ -205,7 +213,7 @@ export async function POST(req: Request) {
     }
 
     // ── Mise à jour derniere_ingest_dpe si c'est la dernière page ─────────────
-    const hasMore = nextAfterCursor !== null && rawRows.length >= size
+    const hasMore = (nextAfterCursor !== null) || (rawRows.length >= size && rawRows.length < total)
     if (!hasMore && nbInserted > 0) {
       await adminDb
         .from('communes')
