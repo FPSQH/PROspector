@@ -11,7 +11,7 @@
 // Body : { code_postal, code_insee, after?, force_full? }
 // Retourne : { nb_inserted, nb_raw, total, after, has_more, mode }
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse }  from 'next/server'
 import { normCP, toIsoDate, buildAdresseBrute } from '@/lib/dpe/normalize'
 import { geocodeAdresse } from '@/lib/ban'
@@ -68,6 +68,10 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
   const adminDb = createAdminClient()
 
   const body = await req.json().catch(() => null)
@@ -209,7 +213,7 @@ export async function POST(req: Request) {
         .eq('code_insee', code_insee)
 
       // Propager latest_dpe_date vers adresses
-      await adminDb.rpc('propagate_dpe_dates', { p_code_insee: code_insee }).catch(() => null)
+      try { await adminDb.rpc('propagate_dpe_dates', { p_code_insee: code_insee }) } catch (_) {}
     }
 
     return NextResponse.json({
