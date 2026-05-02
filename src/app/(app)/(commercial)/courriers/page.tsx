@@ -26,6 +26,7 @@ export default function CourriersPage() {
   const mapRef    = useRef<HTMLDivElement>(null)
   const mapInst   = useRef<maplibregl.Map | null>(null)
   const markers   = useRef<maplibregl.Marker[]>([])
+  const [mapReady, setMapReady] = useState(false)
 
   const [dateDebut, setDateDebut] = useState(daysAgo(90))
   const [dateFin,   setDateFin]   = useState(today())
@@ -77,13 +78,14 @@ export default function CourriersPage() {
     })
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
     mapInst.current = map
+    map.on('load', () => setMapReady(true))
     return () => { map.remove(); mapInst.current = null }
   }, [])
 
   // ── Mettre à jour les marqueurs ───────────────────────────────────────────────
   useEffect(() => {
     const map = mapInst.current
-    if (!map) return
+    if (!map || !map.loaded()) return
     markers.current.forEach(m => m.remove())
     markers.current = []
     const filtered = getFiltered()
@@ -108,7 +110,7 @@ export default function CourriersPage() {
       bounds.extend([a.lon, a.lat])
     }
     if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 14 })
-  }, [adresses, filterVille, filterType])
+  }, [adresses, filterVille, filterType, mapReady])
 
   // ── Lettre ────────────────────────────────────────────────────────────────────
   useEffect(() => {
