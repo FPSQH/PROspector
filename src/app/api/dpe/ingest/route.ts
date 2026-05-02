@@ -219,12 +219,14 @@ export async function POST(req: Request) {
     if (!idDpe) return null
 
     // Coordonnées Lambert93 → WGS84
-    let geom: string | null = null
+    // Le trigger fill_dpe_geom() remplit geom automatiquement depuis lat/lon
+    let dpe_lat: number | null = null
+    let dpe_lon: number | null = null
     const x = parseFloat(r.coordonnee_cartographique_x_ban)
     const y = parseFloat(r.coordonnee_cartographique_y_ban)
     if (!isNaN(x) && !isNaN(y) && x !== 0 && y !== 0) {
       const wgs = lambert93ToWgs84(x, y)
-      if (wgs) geom = `SRID=4326;POINT(${wgs.lon} ${wgs.lat})`
+      if (wgs) { dpe_lat = wgs.lat; dpe_lon = wgs.lon }
     }
 
     const adresse_brute = r.adresse_ban
@@ -251,7 +253,9 @@ export async function POST(req: Request) {
       cout_annuel:         r.cout_total_5_usages != null ? Number(r.cout_total_5_usages) : null,
       energie_principale:  r.type_energie_principale_chauffage ?? null,
       ges_m2:              r.emission_ges_5_usages_par_m2 != null ? Number(r.emission_ges_5_usages_par_m2) : null,
-      geom,
+      lat:                 dpe_lat,
+      lon:                 dpe_lon,
+      // geom est rempli automatiquement par le trigger fill_dpe_geom()
       match_confiance:     'non_matche',
       has_audit:           !!audit,
       audit_n:             audit?.n_audit ?? null,
