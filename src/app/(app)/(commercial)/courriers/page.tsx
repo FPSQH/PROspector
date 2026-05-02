@@ -285,7 +285,13 @@ export default function CourriersPage() {
                 <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(a.id)}
                   onClick={e => e.stopPropagation()}
                   style={{ marginTop:4, flexShrink:0 }} />
-                <div style={{ flex:1, minWidth:0 }} onClick={() => setSelected(a)}>
+                <div style={{ flex:1, minWidth:0 }} onClick={() => {
+                setSelected(a)
+                const map = mapInst.current
+                if (map && a.lat && a.lon) {
+                  map.flyTo({ center: [a.lon, a.lat], zoom: 16, duration: 600 })
+                }
+              }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4, flexWrap:'wrap' }}>
                     <span style={{ background:DPE_COLORS[dpe]??'#999', color:'#fff', borderRadius:3, padding:'1px 6px', fontSize:'0.7rem', fontWeight:700 }}>{dpe}</span>
                     <span style={{ fontSize:'0.7rem', color:'#9b9b96' }}>{a.type_bien ?? 'inconnu'}</span>
