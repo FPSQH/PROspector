@@ -22,7 +22,7 @@ export async function GET() {
   // Communes du commercial
   const { data: communes } = await supabase
     .from('communes')
-    .select('id, code_insee, nom, code_postal, chargee_at, dpe_chargee_at')
+    .select('id, code_insee, nom, code_postal, chargee_at, dpe_chargee_at, derniere_verif_dpe, nb_dpe')
     .eq('commercial_id', user.id)
 
   if (!communes) return NextResponse.json({ statuts: [] })
@@ -59,9 +59,10 @@ export async function GET() {
         commune_id:     c.id,
         ban_chargee:    banChargee,
         nb_adresses:    nbAdresses ?? 0,
-        dpe_chargee:    !!c.dpe_chargee_at,
-        dpe_chargee_at: c.dpe_chargee_at,
-        nb_dpe:         nbDpe ?? 0,
+        dpe_chargee:        !!c.dpe_chargee_at || (nbDpe ?? 0) > 0,
+        dpe_chargee_at:     c.dpe_chargee_at,
+        derniere_verif_dpe: c.derniere_verif_dpe ?? null,
+        nb_dpe:             nbDpe ?? c.nb_dpe ?? 0,
       }
     })
   )
