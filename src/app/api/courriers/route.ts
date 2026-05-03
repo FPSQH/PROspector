@@ -57,26 +57,10 @@ export async function GET(request: Request) {
     .eq('statut', 'active')
   const zoneNomMap = new Map((zones ?? []).map((z: any) => [z.id, z.nom]))
 
-  // ── Adresses → zone_id (via adresse_id du dpe_logement) ──────────────────
-  const { data: adressesZones } = await adminDb
-    .from('adresses')
-    .select('id, zone_id')
-    .in('code_insee', codeInsees)
-    .not('zone_id', 'is', null)
-  const adresseZoneMap = new Map((adressesZones ?? []).map((a: any) => [a.id, a.zone_id]))
-
-  // ── Requête principale sur dpe_logement ───────────────────────────────────
+  // ── Requête principale sur dpe_logement avec join adresses pour zone_id ────
   let query = adminDb
     .from('dpe_logement')
-    .select([
-      'id', 'numero_dpe', 'code_insee', 'adresse_brute', 'adresse_id',
-      'type_batiment', 'surface_habitable',
-      'etiquette_dpe', 'etiquette_ges',
-      'date_etablissement', 'date_modification',
-      'conso_ep_m2', 'cout_annuel', 'energie_principale', 'ges_m2',
-      'lat', 'lon',
-      'has_audit', 'audit_n', 'audit_date', 'audit_scenarios',
-    ].join(', '))
+    .select('id, numero_dpe, code_insee, adresse_brute, adresse_id, type_batiment, surface_habitable, etiquette_dpe, etiquette_ges, date_etablissement, date_modification, conso_ep_m2, cout_annuel, energie_principale, ges_m2, lat, lon, has_audit, audit_n, audit_date, audit_scenarios, adresses(zone_id)')
     .in('code_insee', codeInsees)
     .not('etiquette_dpe', 'is', null)
     .order('date_etablissement', { ascending: false })
@@ -101,8 +85,8 @@ export async function GET(request: Request) {
     if (isRed && hasAud) nbAudit++
     else if (isRed)      nbSansAudit++
 
-    // Zone via adresse_id
-    const zoneId  = d.adresse_id ? adresseZoneMap.get(d.adresse_id) ?? null : null
+    // Zone via join adresses
+    const zoneId  = (d as any).adresses?.zone_id ?? null
     const zoneNom = zoneId ? (zoneNomMap.get(zoneId) ?? null) : null
     if (!zoneId) nbHorsZone++
 
