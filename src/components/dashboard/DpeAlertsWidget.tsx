@@ -33,6 +33,9 @@ export default function DpeAlertsWidget() {
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
+    // Vérification DPE secteur à la connexion (fire & forget)
+    fetch('/api/dpe/check-secteur').catch(() => {})
+    // Charger les DPE du mois
     fetch('/api/alerts/dpe')
       .then(r => r.json())
       .then(d => { setData(d.dpe ?? {}); setTotal(d.total ?? 0); setSince(d.since ?? ''); setLoading(false) })
