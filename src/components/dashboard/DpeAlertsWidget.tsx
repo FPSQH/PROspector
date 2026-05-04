@@ -25,6 +25,7 @@ export default function DpeAlertsWidget() {
   const [loading, setLoading]       = useState(true)
   const [expanded, setExpanded]     = useState(false)
   const [nbNouveaux, setNbNouveaux] = useState(0)
+  const [nbNew, setNbNew]           = useState(0)
 
   // Progression mise à jour
   const [majEnCours, setMajEnCours]   = useState(false)
@@ -33,7 +34,7 @@ export default function DpeAlertsWidget() {
   const loadAlerts = useCallback(async () => {
     const r = await fetch('/api/alerts/dpe')
     const d = await r.json()
-    setData(d.dpe ?? {}); setTotal(d.total ?? 0); setSince(d.since ?? '')
+    setData(d.dpe ?? {}); setTotal(d.total ?? 0); setSince(d.since ?? ''); setNbNew(d.nb_new ?? 0)
     setLoading(false)
   }, [])
 
@@ -146,6 +147,11 @@ export default function DpeAlertsWidget() {
                 const colors = DPE_COLORS[a.classe] ?? { bg:'#F3F4F6', text:'#374151' }
                 return (
                   <div key={i} style={{ padding:'7px 20px 7px 28px', display:'flex', alignItems:'center', gap:8, borderBottom:'1px solid #F8F7F4' }}>
+                    {a.is_new && (
+                      <span style={{ fontSize:10, fontWeight:800, padding:'1px 5px', borderRadius:4, background:'#10b981', color:'#fff', flexShrink:0, letterSpacing:'0.05em' }}>
+                        NEW
+                      </span>
+                    )}
                     <span style={{ fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:4, background:colors.bg, color:colors.text, flexShrink:0 }}>
                       {a.classe ?? '?'}
                     </span>
