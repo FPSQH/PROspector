@@ -317,11 +317,23 @@ export default function PlanningPage() {
       </div>
 
       {/* ── Colonne droite : détail session ── */}
-      {selected && (() => {
-        const st = STATUT_STYLE[selected.statut] ?? STATUT_STYLE.planifiee
-        const z  = selected.zones_prospection
-        const pct = selected.nb_adresses_total > 0 ? Math.round(selected.nb_adresses_visitees / selected.nb_adresses_total * 100) : null
-        return (
+      {selected && <SelectedDetail
+        selected={selected} zones={zones} zoneMenu={zoneMenu} setZoneMenu={setZoneMenu}
+        today={today} editVisitees={editVisitees} setEditVisitees={setEditVisitees}
+        editContacts={editContacts} setEditContacts={setEditContacts}
+        editNotes={editNotes} setEditNotes={setEditNotes}
+        onPatch={patch} onSave={saveTracking} onClose={() => setSelectedId(null)}
+      />}
+    </div>
+  )
+}
+
+// Composant détail session extrait pour éviter le IIFE JSX
+function SelectedDetail({ selected, zones, zoneMenu, setZoneMenu, today, editVisitees, setEditVisitees, editContacts, setEditContacts, editNotes, setEditNotes, onPatch, onSave, onClose }: any) {
+  const st  = STATUT_STYLE[selected.statut] ?? STATUT_STYLE.planifiee
+  const z   = selected.zones_prospection
+  const pct = selected.nb_adresses_total > 0 ? Math.round(selected.nb_adresses_visitees / selected.nb_adresses_total * 100) : null
+  return (
           <div style={{ flex:1, background:'#fff', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ padding:'14px 18px', borderBottom:'1px solid #E8E6DF', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
               <button onClick={() => setSelectedId(null)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, color:'#9ca3af', padding:0 }}>←</button>
@@ -436,8 +448,5 @@ export default function PlanningPage() {
 
             </div>
           </div>
-        )
-      })()}
-    </div>
   )
 }
