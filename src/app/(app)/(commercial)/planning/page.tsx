@@ -13,12 +13,14 @@ const MOIS = ['','Janvier','FÃ©vrier','Mars','Avril','Mai','Juin','Juillet','AoÃ
 const JOURS_COURTS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
 const JOURS_LONGS  = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']
 
-function addMin(t: string, m: number) {
+function addMin(t: string|undefined, m: number): string {
+  if (!t) return ''
   const [h, mn] = t.split(':').map(Number)
   const tot = h*60+mn+m
   return `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`
 }
-function fmtDate(s: string) {
+function fmtDate(s: string|undefined): string {
+  if (!s) return ''
   return new Date(s+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})
 }
 
@@ -114,7 +116,7 @@ export default function PlanningPage() {
   const daysInMonth = new Date(annee,mois,0).getDate()
   const firstDay    = new Date(annee,mois-1,1).getDay()
   const byDate      = new Map(sessions.map(s=>[s.date_prevue,s]))
-  const heureFin    = addMin(cfg.heure_debut,cfg.duree_minutes)
+  const heureFin    = cfg?.heure_debut ? addMin(cfg.heure_debut, cfg.duree_minutes) : ''
 
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden',background:'#F8F7F4',fontFamily:'-apple-system,sans-serif'}}>
