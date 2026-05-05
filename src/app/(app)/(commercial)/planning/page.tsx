@@ -64,7 +64,11 @@ export default function PlanningPage() {
     ])
     setSessions(pd.planning??[])
     setKpis(pd.kpis??null)
-    if(pd.config) setCfg(pd.config)
+    if(pd.config) setCfg({
+      jours_semaine: pd.config.jours_semaine ?? [2,3,5],
+      heure_debut:   pd.config.heure_debut   ?? '10:00',
+      duree_minutes: pd.config.duree_minutes  ?? 120,
+    })
     setZones(zd.zones??[])
     setLoading(false)
   },[])
@@ -142,9 +146,9 @@ export default function PlanningPage() {
             <div style={{fontSize:11,color:'#9ca3af',marginBottom:5}}>JOURS</div>
             <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
               {[1,2,3,4,5,6,0].map(j=>(
-                <button key={j} onClick={()=>setCfg(c=>({...c,jours_semaine:c.jours_semaine.includes(j)?c.jours_semaine.filter(x=>x!==j):[...c.jours_semaine,j].sort()}))}
+                <button key={j} onClick={()=>setCfg(c=>({...c,jours_semaine:(c.jours_semaine??[]).includes(j)?(c.jours_semaine??[]).filter(x=>x!==j):[...(c.jours_semaine??[]),j].sort()}))}
                   style={{padding:'3px 9px',borderRadius:20,fontSize:12,fontWeight:600,cursor:'pointer',
-                    background:cfg.jours_semaine.includes(j)?'#d1fae5':'#f3f4f6',
+                    background:(cfg.jours_semaine??[]).includes(j)?'#d1fae5':'#f3f4f6',
                     color:cfg.jours_semaine.includes(j)?'#065f46':'#6b7280',
                     border:'1.5px solid '+(cfg.jours_semaine.includes(j)?'#6ee7b7':'#e5e7eb')}}>
                   {JOURS_LONGS[j].slice(0,3)}
