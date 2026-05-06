@@ -281,6 +281,22 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
       type: 'FeatureCollection', features,
     })
 
+    // Centrer sur les adresses — première adresse en focus
+    const withCoords = adresses.filter((a) => a.lat && a.lon)
+    if (withCoords.length > 0) {
+      const first = withCoords[0]
+      if (withCoords.length === 1) {
+        map.flyTo({ center: [first.lon, first.lat], zoom: 17, duration: 800 })
+      } else {
+        const lons = withCoords.map((a) => a.lon)
+        const lats = withCoords.map((a) => a.lat)
+        map.fitBounds(
+          [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+          { padding: 60, maxZoom: 17, duration: 800 }
+        )
+      }
+    }
+
     // Itinéraire : relier les adresses dans l'ordre
     const sorted = [...adresses].filter((a) => a.lat && a.lon).sort((a, b) => a.ordre - b.ordre)
     if (sorted.length >= 2) {
