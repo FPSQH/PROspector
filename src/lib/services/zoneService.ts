@@ -248,9 +248,21 @@ export class ZoneService {
 
       insertedZoneIds.push(zone.id)
 
+      // Lien via IDs des points du clustering
       const adresseBatches = this.chunk(dz.points.map((p: any) => p.id), 100)
       for (const batch of adresseBatches) {
         await this.supabase.from('adresses').update({ zone_id: zone.id }).in('id', batch)
+      }
+      // Filet de sécurité : recalage PostGIS via polygone_geojson pour les adresses manquantes
+      if (polygonGeoJSON) {
+        try {
+          await this.supabase.rpc('recalage_zone_geojson', {
+            p_zone_id: zone.id,
+            p_geojson: polygonGeoJSON,
+          })
+        } catch (_) {
+          // RPC optionnelle — pas bloquant si absente
+        }
       }
     }
     return warnings
