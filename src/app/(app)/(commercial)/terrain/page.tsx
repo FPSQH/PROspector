@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import BottomSheet from '@/components/terrain/BottomSheet'
 
@@ -51,7 +51,8 @@ interface Session {
 type AppState = 'choix_zone' | 'pre_session' | 'en_cours' | 'terminee'
 
 export default function TerrainPage() {
-  const router = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
 
   const [appState, setAppState]     = useState<AppState>('choix_zone')
   const [zones, setZones]           = useState<Zone[]>([])
@@ -101,12 +102,21 @@ export default function TerrainPage() {
     return result
   }
 
-  // Charger les zones
+  // Charger les zones + pré-sélectionner depuis ?zone_id=
   useEffect(() => {
     fetch('/api/zones')
       .then((r) => r.json())
-      .then((d) => setZones(d.zones ?? []))
-  }, [])
+      .then((d) => {
+        const zonesData = d.zones ?? []
+        setZones(zonesData)
+        // Si zone_id dans l'URL → lancer le preview automatiquement
+        const zoneIdParam = searchParams.get('zone_id')
+        if (zoneIdParam) {
+          const zone = zonesData.find((z: Zone) => z.id === zoneIdParam)
+          if (zone) handleZonePreview(zone)
+        }
+      })
+  }, []) // eslint-disable-line
 
   // Aperçu de zone avant démarrage
   const handleZonePreview = async (zone: Zone) => {
