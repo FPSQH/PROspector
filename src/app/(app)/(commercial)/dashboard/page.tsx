@@ -202,7 +202,7 @@ export default async function DashboardPage() {
                     <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a1a18' }}>{zoneRecommandee.nom}</div>
                     <div style={{ fontSize: '0.78rem', color: '#5F5E5A', marginTop: 2 }}>{zoneRecommandee.nb_prospectables} adresses · créneau 10h–12h</div>
                   </div>
-                  <Link href="/zones" style={{ padding: '8px 14px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none', flexShrink: 0 }}>
+                  <Link href={`/terrain?zone_id=${zoneRecommandee.id}`} style={{ padding: '8px 14px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none', flexShrink: 0 }}>
                     Démarrer →
                   </Link>
                 </div>
