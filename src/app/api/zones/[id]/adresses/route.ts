@@ -61,7 +61,8 @@ export async function GET(_req: Request, { params }: Params) {
         type_bien, nb_bal, has_commerce, prospectable,
         type_habitat, mode_prospection, statut_prospectabilite,
         motif_exclusion, courrier_cible_possible, commentaire_adresse,
-        nom_syndic, nb_acces_observe
+        nom_syndic, nb_acces_observe,
+        latest_dpe_date
       `)
       .eq('zone_id', params.id)
       .not('lat', 'is', null)
