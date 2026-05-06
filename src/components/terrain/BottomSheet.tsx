@@ -260,7 +260,9 @@ export default function BottomSheet({
             )}
             {adresse.latest_dpe_date && (
               <div style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8', fontWeight:600 }}>
-                DPE {new Date(adresse.latest_dpe_date).toLocaleDateString('fr-FR', {month:'short', year:'numeric'})}
+                {adresse.dpe_etiquette && <span style={{fontWeight:800, marginRight:4}}>{adresse.dpe_etiquette}</span>}
+                DPE {new Date(adresse.latest_dpe_date + 'T12:00:00').toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}
+                {adresse.has_audit && <span style={{marginLeft:4, background:'#fef3c7', color:'#92400e', borderRadius:4, padding:'0 4px', fontSize:10, fontWeight:700}}>Audit</span>}
               </div>
             )}
           </div>
