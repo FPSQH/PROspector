@@ -267,11 +267,13 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
           flagged:      dpeFlags.includes(a.id),
           dpe_signal:   (() => {
             if (!a.latest_dpe_date) return null;
-            const days = (Date.now() - new Date(a.latest_dpe_date).getTime()) / 86400000;
-            if (days <= 30) return 'hot';
-            if (days <= 90) return 'warm';
-            if (days <= 365) return 'recent';
-            return null;
+            const dpeMs = new Date(a.latest_dpe_date).getTime();
+            if (dpeFilterFrom) {
+              const fromMs = new Date(dpeFilterFrom).getTime();
+              const toMs   = dpeFilterTo ? new Date(dpeFilterTo).getTime() : Date.now();
+              return (dpeMs >= fromMs && dpeMs <= toMs) ? 'hot' : null;
+            }
+            return (Date.now() - dpeMs) / 86400000 <= 30 ? 'hot' : null;
           })(),
         },
         geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
