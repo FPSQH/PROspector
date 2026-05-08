@@ -31,6 +31,8 @@ interface Adresse {
   ordre: number
   score?: number
   latest_dpe_date?: string | null
+  dpe_etiquette?:  string | null
+  has_audit?:      boolean
   type_habitat?: string
   mode_prospection?: string
   statut_prospectabilite?: string
@@ -127,7 +129,7 @@ export default function TerrainPage() {
     setPreLoading(true)
     const now = new Date()
     const toDate = now.toISOString().split('T')[0]
-    const fromDate = new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0]
+    const fromDate = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
     setDpeTo(toDate)
     setDpeFrom(fromDate)
     setPendingTo(toDate)
@@ -368,7 +370,7 @@ export default function TerrainPage() {
               Chargement…
             </div>
           ) : (
-            <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} dpeFlags={dpeFlags} />
+            <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} dpeFlags={dpeFlags} dpeFilterFrom={dpeFrom} dpeFilterTo={dpeTo} />
           )}
           {dpeFlags.length > 0 && (
             <div style={{ position: 'absolute', bottom: 16, left: 12, background: 'rgba(245,158,11,0.92)', borderRadius: 8, padding: '5px 12px', fontSize: '0.72rem', color: '#fff', fontWeight: 600, pointerEvents: 'none' }}>
