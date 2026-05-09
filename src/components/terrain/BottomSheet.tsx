@@ -9,6 +9,9 @@ interface Adresse {
   interaction?: { resultat?: string; action?: string; type_habitat?: string }
   score?: number
   latest_dpe_date?: string | null
+  etiquette_dpe?:   string | null
+  has_audit?:       boolean
+  audit_n?:         string | null
 }
 
 const btn = (active: boolean, color = '#1D9E75'): any => ({
@@ -24,6 +27,11 @@ const chipBtn = (active: boolean, color = '#1D9E75'): any => ({
   background: active ? color : '#fff',
   color: active ? '#fff' : '#5F5E5A', cursor: 'pointer',
 })
+
+const DPE_COLORS: Record<string, string> = {
+  A: '#009B4D', B: '#57B947', C: '#B6D234',
+  D: '#F9E000', E: '#F4A51A', F: '#EC6608', G: '#E2001A',
+}
 
 export default function BottomSheet({
   adresse, open, onClose, onQualification, sessionId
@@ -80,7 +88,6 @@ export default function BottomSheet({
     const finalAction = overrideAction || action
     if (!finalAction) return
     setSaving(true)
-    // Mettre à jour adresse si nouveaux champs
     const adresseUpdate: any = {}
     if (typeHabitat && typeHabitat !== adresse.type_habitat) adresseUpdate.type_habitat = typeHabitat
     if (nbBal && parseInt(nbBal) !== adresse.nb_bal) adresseUpdate.nb_bal = parseInt(nbBal)
@@ -92,7 +99,6 @@ export default function BottomSheet({
         body: JSON.stringify(adresseUpdate)
       })
     }
-    // Créer interaction
     await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -125,7 +131,6 @@ export default function BottomSheet({
 
   const submitContact = async () => {
     setSaving(true)
-    // Mettre à jour adresse
     const adresseUpdate: any = {}
     if (typeHabitat && typeHabitat !== adresse.type_habitat) adresseUpdate.type_habitat = typeHabitat
     if (Object.keys(adresseUpdate).length) {
@@ -134,7 +139,6 @@ export default function BottomSheet({
         body: JSON.stringify(adresseUpdate)
       })
     }
-    // Créer interaction
     await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -144,7 +148,6 @@ export default function BottomSheet({
         notes: note || null,
       })
     })
-    // Créer contact si renseigné
     let contactId = null
     if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
       const cr = await fetch('/api/contacts', {
@@ -163,7 +166,6 @@ export default function BottomSheet({
       })
       const cd = await cr.json()
       contactId = cd.contact?.id
-      // Créer projet si type renseigné
       if (contactId && typeProjet.length) {
         await fetch('/api/projets', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -216,7 +218,7 @@ export default function BottomSheet({
           ))}
         </div>
 
-        {/* Quick Actions - Ergonomie optimisée */}
+        {/* Quick Actions */}
         <div style={{ padding: '12px 20px 8px', display: 'flex', gap: 10 }}>
           <button
             onClick={() => submitPasReponse('flyer')}
@@ -247,7 +249,7 @@ export default function BottomSheet({
         {/* Header adresse */}
         <div style={{ padding:'12px 20px 10px', borderBottom:'1px solid #F0EDE6' }}>
           <div style={{ fontWeight:700, fontSize:15 }}>{adresseLabel || 'Adresse'}</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:4 }}>
             <div style={{ fontSize:12, color:'#9ca3af' }}>{adresse.commune}</div>
             {adresse.score !== undefined && (
               <div style={{
@@ -258,11 +260,32 @@ export default function BottomSheet({
                 {adresse.score >= 80 ? '🔥 ' : adresse.score >= 60 ? '⭐ ' : ''}{adresse.score}/100
               </div>
             )}
+            {/* Badge DPE enrichi */}
             {adresse.latest_dpe_date && (
-              <div style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8', fontWeight:600 }}>
-                {adresse.dpe_etiquette && <span style={{fontWeight:800, marginRight:4}}>{adresse.dpe_etiquette}</span>}
-                DPE {new Date(adresse.latest_dpe_date + 'T12:00:00').toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}
-                {adresse.has_audit && <span style={{marginLeft:4, background:'#fef3c7', color:'#92400e', borderRadius:4, padding:'0 4px', fontSize:10, fontWeight:700}}>Audit</span>}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontSize:11, padding:'2px 8px', borderRadius:10,
+                background:'#eff6ff', color:'#1d4ed8', fontWeight:600
+              }}>
+                {adresse.etiquette_dpe && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 20, height: 20, borderRadius: 4, fontWeight: 800, fontSize: 12,
+                    background: DPE_COLORS[adresse.etiquette_dpe] ?? '#999',
+                    color: ['A','B','C'].includes(adresse.etiquette_dpe) ? '#fff' : '#000',
+                  }}>
+                    {adresse.etiquette_dpe}
+                  </span>
+                )}
+                DPE {new Date(adresse.latest_dpe_date + 'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'})}
+                {adresse.has_audit && ['E','F','G'].includes(adresse.etiquette_dpe ?? '') && (
+                  <span style={{
+                    marginLeft:2, background:'#fef3c7', color:'#92400e',
+                    borderRadius:4, padding:'0 4px', fontSize:10, fontWeight:700
+                  }}>
+                    📋 Audit{adresse.audit_n ? ` ${adresse.audit_n}` : ''}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -393,7 +416,6 @@ export default function BottomSheet({
                 style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
             </div>
 
-            {/* Fiche contact optionnelle */}
             <div style={{ padding:'10px 20px 0' }}>
               <button onClick={() => setShowContactForm(!showContactForm)}
                 style={{ fontSize:13, color:'#1D9E75', fontWeight:600, background:'none', border:'none', cursor:'pointer', padding:0 }}>
