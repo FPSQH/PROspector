@@ -55,18 +55,30 @@ export async function GET(_req: Request, { params }: Params) {
   const interMap = new Map((interactions ?? []).map((i: any) => [i.adresse_id, i]))
   const itinMap  = new Map((itineraire ?? []).map((i: any) => [i.adresse_id, i.ordre]))
 
-
-  // DPE les plus récents par adresse
+  // DPE les plus récents par adresse — avec tous les champs
   const adresseIds = allAdresses.map((a: any) => a.id)
-  const dpeMap: Record<string, string> = {}
+  type DpeInfo = {
+    date_etablissement: string
+    etiquette_dpe:      string | null
+    has_audit:          boolean
+    audit_n:            string | null
+  }
+  const dpeMap: Record<string, DpeInfo> = {}
   if (adresseIds.length > 0) {
     const { data: dpes } = await supabase
       .from('dpe_logement')
-      .select('adresse_id, date_etablissement')
+      .select('adresse_id, date_etablissement, etiquette_dpe, has_audit, audit_n')
       .in('adresse_id', adresseIds)
       .order('date_etablissement', { ascending: false })
     for (const d of (dpes ?? [])) {
-      if (!dpeMap[d.adresse_id]) dpeMap[d.adresse_id] = d.date_etablissement
+      if (!dpeMap[d.adresse_id]) {
+        dpeMap[d.adresse_id] = {
+          date_etablissement: d.date_etablissement,
+          etiquette_dpe:      d.etiquette_dpe ?? null,
+          has_audit:          d.has_audit ?? false,
+          audit_n:            d.audit_n ?? null,
+        }
+      }
     }
   }
 
@@ -83,8 +95,6 @@ export async function GET(_req: Request, { params }: Params) {
       if (projets.some((p: any) => p.statut === 'actif')) projetSet.add(c.adresse_id)
     }
   }
-
-  // Calcul score
 
   // Visites dans les 30 derniers jours (pour le score "jamais visité")
   const visiteMap: Record<string, string> = {}
@@ -105,8 +115,8 @@ export async function GET(_req: Request, { params }: Params) {
     if (a.statut_prospectabilite === 'non_prospectable' || a.mode_prospection === 'exclure') return 0
     let score = 0
 
-    // Signal DPE
-    const dpeDate = dpeMap[a.id] ? new Date(dpeMap[a.id]) : null
+    const dpeInfo = dpeMap[a.id]
+    const dpeDate = dpeInfo ? new Date(dpeInfo.date_etablissement) : null
     const now = new Date()
     if (dpeDate) {
       const days = (now.getTime() - dpeDate.getTime()) / (1000 * 60 * 60 * 24)
@@ -114,39 +124,34 @@ export async function GET(_req: Request, { params }: Params) {
       else if (days <= 90)  score += 40
       else if (days <= 180) score += 20
       else if (days <= 365) score += 5
-      // > 1 an : 0 pts
     }
 
-    // Type de bien
     if (a.type_habitat === 'individuel' || a.type_bien === 'maison') score += 25
     if (a.type_habitat === 'activite' || a.type_bien === 'commerce') score -= 10
-
-    // Mode de prospection / contact
     if (a.mode_prospection === 'porte_a_porte') score += 5
-
-    // Projet immobilier actif
     if (projetSet.has(a.id)) score += 15
-
-    // Jamais visité dans le mois
     if (!visiteMap[a.id]) score += 25
 
     return Math.min(100, Math.max(0, score))
   }
 
-
   const adressesAvecStatut = allAdresses.map((a) => {
-    const inter = interMap.get(a.id)
-    const statut = !inter ? 'a_faire'
+    const inter   = interMap.get(a.id)
+    const dpeInfo = dpeMap[a.id] ?? null
+    const statut  = !inter ? 'a_faire'
       : inter.resultat === 'contact_etabli' ? 'contact'
       : inter.action === 'flyer' || inter.action === 'courrier' ? 'boite'
       : 'visite'
     return {
       ...a,
-      statut_carte: statut,
-      interaction:       inter ?? null,
-      ordre:              itinMap.get(a.id) ?? 9999,
-      score:              calcScore(a),
-      latest_dpe_date:    dpeMap[a.id] ?? null,
+      statut_carte:    statut,
+      interaction:     inter ?? null,
+      ordre:           itinMap.get(a.id) ?? 9999,
+      score:           calcScore(a),
+      latest_dpe_date: dpeInfo?.date_etablissement ?? null,
+      etiquette_dpe:   dpeInfo?.etiquette_dpe ?? null,
+      has_audit:       dpeInfo?.has_audit ?? false,
+      audit_n:         dpeInfo?.audit_n ?? null,
     }
   }).sort((a, b) => a.ordre - b.ordre)
 
@@ -154,8 +159,8 @@ export async function GET(_req: Request, { params }: Params) {
 
   return NextResponse.json({
     session,
-    adresses:   adressesAvecStatut,
-    nb_total:   allAdresses.length,
+    adresses:    adressesAvecStatut,
+    nb_total:    allAdresses.length,
     nb_visites,
     pct_couvert: allAdresses.length > 0
       ? Math.round((nb_visites / allAdresses.length) * 100)
@@ -164,7 +169,6 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 // PATCH /api/sessions/[id] — mettre à jour (terminer, annuler, modifier)
-// Body : { statut?, heure_fin?, nb_portes?, nb_boites?, notes? }
 export async function PATCH(req: Request, { params }: Params) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -183,7 +187,6 @@ export async function PATCH(req: Request, { params }: Params) {
   if (date_session) updates.date_session = date_session
   if (zone_id)      updates.zone_id      = zone_id
 
-  // Si on termine la session, enregistrer l'heure de fin réelle
   if (statut === 'realisee' && !heure_fin) {
     updates.heure_fin_reel = new Date().toTimeString().slice(0, 5)
   }
@@ -197,6 +200,6 @@ export async function PATCH(req: Request, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  
-return NextResponse.json({ session: data })
+
+  return NextResponse.json({ session: data })
 }
