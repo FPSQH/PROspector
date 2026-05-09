@@ -33,6 +33,7 @@ interface Adresse {
   latest_dpe_date?: string | null
   dpe_etiquette?:  string | null
   has_audit?:      boolean
+  audit_n?: string | null
   type_habitat?: string
   mode_prospection?: string
   statut_prospectabilite?: string
