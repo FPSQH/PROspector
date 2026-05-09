@@ -79,16 +79,29 @@ export async function GET(_req: Request, { params }: Params) {
 
   const adresseIds = allAdresses.map((a: any) => a.id)
 
-  // DPE les plus récents par adresse (batch)
-  const dpeMap: Record<string, string> = {}
+  // DPE les plus récents par adresse (batch) — avec tous les champs nécessaires
+  type DpeInfo = {
+    date_etablissement: string
+    etiquette_dpe:      string | null
+    has_audit:          boolean
+    audit_n:            string | null
+  }
+  const dpeMap: Record<string, DpeInfo> = {}
   const { data: dpes } = await supabase
     .from('dpe_logement')
-    .select('adresse_id, date_etablissement')
+    .select('adresse_id, date_etablissement, etiquette_dpe, has_audit, audit_n')
     .in('adresse_id', adresseIds)
     .order('date_etablissement', { ascending: false })
 
   for (const d of (dpes ?? [])) {
-    if (!dpeMap[d.adresse_id]) dpeMap[d.adresse_id] = d.date_etablissement
+    if (!dpeMap[d.adresse_id]) {
+      dpeMap[d.adresse_id] = {
+        date_etablissement: d.date_etablissement,
+        etiquette_dpe:      d.etiquette_dpe ?? null,
+        has_audit:          d.has_audit ?? false,
+        audit_n:            d.audit_n ?? null,
+      }
+    }
   }
 
   // Projets actifs par adresse (via contacts)
@@ -106,7 +119,7 @@ export async function GET(_req: Request, { params }: Params) {
     }
   }
 
-  // Dernière visite par adresse (interactions de la semaine)
+  // Dernière visite par adresse (interactions du mois)
   const visiteMap: Record<string, string> = {}
   const oneWeekAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
   const { data: interactions } = await supabase
@@ -122,11 +135,15 @@ export async function GET(_req: Request, { params }: Params) {
 
   // Assembler avec score
   const result = allAdresses.map((a: any) => {
+    const dpeInfo = dpeMap[a.id] ?? null
     const enriched = {
       ...a,
-      latest_dpe_date:   dpeMap[a.id] ?? null,
-      has_projet_actif:  projetSet.has(a.id),
-      derniere_visite:   visiteMap[a.id] ?? null,
+      latest_dpe_date:  dpeInfo?.date_etablissement ?? null,
+      etiquette_dpe:    dpeInfo?.etiquette_dpe ?? null,
+      has_audit:        dpeInfo?.has_audit ?? false,
+      audit_n:          dpeInfo?.audit_n ?? null,
+      has_projet_actif: projetSet.has(a.id),
+      derniere_visite:  visiteMap[a.id] ?? null,
     }
     return {
       ...enriched,
