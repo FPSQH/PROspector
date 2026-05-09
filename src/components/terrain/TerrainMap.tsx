@@ -36,7 +36,7 @@ interface Props {
   dpeFlags?:           string[]
 }
 
-export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, onAdresseClick, dpeFlags = [] }: Props) {
+export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, onAdresseClick, dpeFlags = [], dpeFilterFrom, dpeFilterTo }: Props) {
   const containerRef  = useRef<HTMLDivElement>(null)
   const mapRef        = useRef<any>(null)
   const adressesRef   = useRef<Adresse[]>([])
@@ -273,7 +273,14 @@ export default function TerrainMap({ adresses, zonePolygon, prochaineAdresseId, 
               const toMs   = dpeFilterTo ? new Date(dpeFilterTo).getTime() : Date.now();
               return (dpeMs >= fromMs && dpeMs <= toMs) ? 'hot' : null;
             }
-            return (Date.now() - dpeMs) / 86400000 <= 30 ? 'hot' : null;
+            return (() => {
+            if (dpeFilterFrom) {
+              const from = new Date(dpeFilterFrom).getTime()
+              const to   = dpeFilterTo ? new Date(dpeFilterTo).getTime() : Date.now()
+              return (dpeMs >= from && dpeMs <= to) ? 'hot' : null
+            }
+            return (Date.now() - dpeMs) / 86400000 <= 30 ? 'hot' : null
+          })()
           })(),
         },
         geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
