@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// Valeurs par défaut si pas de config
-const DEFAULT_JOURS    = [2, 3, 5] // mar, mer, ven
-const DEFAULT_DEBUT    = '10:00'
-const DEFAULT_DUREE    = 120 // minutes
+const DEFAULT_JOURS   = [2, 3, 5]
+const DEFAULT_DEBUT   = '10:00'
+const DEFAULT_DUREE   = 120
+const DEFAULT_SESSIONS = 1
 
 function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(':').map(Number)
@@ -15,16 +15,19 @@ function addMinutes(time: string, minutes: number): string {
 async function getConfig(supabase: any, userId: string) {
   const { data } = await supabase
     .from('planning_config')
-    .select('jours_semaine, heure_debut, duree_minutes')
+    .select('jours_semaine, heure_debut, duree_minutes, date_debut, nb_sessions_par_jour')
     .eq('commercial_id', userId)
     .maybeSingle()
   return {
-    jours:  data?.jours_semaine ?? DEFAULT_JOURS,
-    debut:  data?.heure_debut   ?? DEFAULT_DEBUT,
-    duree:  data?.duree_minutes ?? DEFAULT_DUREE,
+    jours:             data?.jours_semaine       ?? DEFAULT_JOURS,
+    debut:             data?.heure_debut          ?? DEFAULT_DEBUT,
+    duree:             data?.duree_minutes        ?? DEFAULT_DUREE,
+    date_debut:        data?.date_debut           ?? null,
+    nb_sessions_par_jour: data?.nb_sessions_par_jour ?? DEFAULT_SESSIONS,
   }
 }
 
+// GET /api/planning
 export async function GET(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -38,7 +41,7 @@ export async function GET(req: Request) {
   const [sessionsRes, configRes] = await Promise.all([
     supabase
       .from('planning_sessions')
-      .select('id, date_prevue, heure_debut, heure_fin, statut, zone_id, notes, nb_adresses_total, nb_adresses_visitees, nb_contacts, zones_prospection (id, nom, couleur, numero)')
+      .select('id, date_prevue, heure_debut, heure_fin, statut, zone_id, notes, nb_adresses_total, nb_adresses_visitees, nb_contacts, nb_maisons_qualifiees, nb_immeubles_qualifies, nb_syndics_qualifies, nb_adresses_supprimees, zones_prospection (id, nom, couleur, numero)')
       .eq('commercial_id', user.id)
       .eq('mois', mois)
       .eq('annee', annee)
@@ -48,34 +51,33 @@ export async function GET(req: Request) {
 
   const sessions = sessionsRes.data ?? []
 
-  // KPIs du mois
-  const nbPlanifiees    = sessions.filter((s: any) => s.statut === 'planifiee').length
-  const nbRealisees     = sessions.filter((s: any) => s.statut === 'realisee').length
-  const nbAnnulees      = sessions.filter((s: any) => ['annulee','non_realisee'].includes(s.statut)).length
-  const totalAdresses   = sessions.reduce((s: number, x: any) => s + (x.nb_adresses_total ?? 0), 0)
-  const visitees        = sessions.reduce((s: number, x: any) => s + (x.nb_adresses_visitees ?? 0), 0)
-  const totalContacts   = sessions.reduce((s: number, x: any) => s + (x.nb_contacts ?? 0), 0)
-  const pctRealise      = totalAdresses > 0 ? Math.round(visitees / totalAdresses * 100) : 0
+  const nbPlanifiees  = sessions.filter((s: any) => s.statut === 'planifiee').length
+  const nbRealisees   = sessions.filter((s: any) => s.statut === 'realisee').length
+  const nbAnnulees    = sessions.filter((s: any) => ['annulee','non_realisee'].includes(s.statut)).length
+  const totalAdresses = sessions.reduce((s: number, x: any) => s + (x.nb_adresses_total ?? 0), 0)
+  const visitees      = sessions.reduce((s: number, x: any) => s + (x.nb_adresses_visitees ?? 0), 0)
+  const totalContacts = sessions.reduce((s: number, x: any) => s + (x.nb_contacts ?? 0), 0)
+  const pctRealise    = totalAdresses > 0 ? Math.round(visitees / totalAdresses * 100) : 0
 
   return NextResponse.json({
     planning: sessions,
     mois, annee,
-    config:  configRes,
+    config: configRes,
     kpis: { nbPlanifiees, nbRealisees, nbAnnulees, totalAdresses, visitees, totalContacts, pctRealise },
   })
 }
 
+// POST /api/planning — générer le planning du mois
 export async function POST(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({}))
+  const body  = await req.json().catch(() => ({}))
   const now   = new Date()
   const mois  = parseInt(body.mois  ?? now.getMonth() + 1)
   const annee = parseInt(body.annee ?? now.getFullYear())
 
-  // Config personnalisée
   const cfg = await getConfig(supabase, user.id)
 
   const { data: existing } = await supabase
@@ -85,13 +87,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Planning deja genere pour ce mois', nb_sessions: existing.length }, { status: 409 })
 
   const { data: zones } = await supabase
-    .from('zones_prospection').select('id, nom, numero, nb_adresses')
+    .from('zones_prospection').select('id, nom, numero')
     .eq('commercial_id', user.id).eq('statut', 'active')
     .order('numero', { ascending: true })
   if (!zones?.length)
     return NextResponse.json({ error: 'Aucune zone active pour generer le planning' }, { status: 400 })
 
-  // Compter les adresses par zone pour le suivi
   const { data: adressesCounts } = await supabase
     .from('adresses').select('zone_id')
     .in('zone_id', zones.map((z: any) => z.id))
@@ -100,32 +101,51 @@ export async function POST(req: Request) {
     countByZone.set(a.zone_id, (countByZone.get(a.zone_id) ?? 0) + 1)
   }
 
-  const sessions = []
+  const nbSessionsParJour = Math.max(1, Math.min(3, cfg.nb_sessions_par_jour))
   const daysInMonth = new Date(annee, mois, 0).getDate()
-  const heureFin = addMinutes(cfg.debut, cfg.duree)
+  const sessions: any[] = []
   let zoneIndex = 0
 
-  for (let day = 1; day <= daysInMonth; day++) {
+  // Date de début : si configurée et dans le bon mois, partir de ce jour
+  let startDay = 1
+  if (cfg.date_debut) {
+    const dd = new Date(cfg.date_debut + 'T12:00:00')
+    if (dd.getFullYear() === annee && dd.getMonth() + 1 === mois) {
+      startDay = dd.getDate()
+    }
+  }
+
+  for (let day = startDay; day <= daysInMonth; day++) {
     const jourSemaine = new Date(annee, mois - 1, day).getDay()
     if (!cfg.jours.includes(jourSemaine)) continue
 
-    const zone    = zones[zoneIndex % zones.length]
     const dateStr = annee + '-' + String(mois).padStart(2,'0') + '-' + String(day).padStart(2,'0')
 
-    sessions.push({
-      commercial_id:        user.id,
-      zone_id:              zone.id,
-      date_prevue:          dateStr,
-      heure_debut:          cfg.debut,
-      heure_fin:            heureFin,
-      statut:               'planifiee',
-      mois,
-      annee,
-      nb_adresses_total:    countByZone.get(zone.id) ?? 0,
-      nb_adresses_visitees: 0,
-      nb_contacts:          0,
-    })
-    zoneIndex++
+    for (let slot = 0; slot < nbSessionsParJour; slot++) {
+      const zone = zones[zoneIndex % zones.length]
+      // Décaler l'heure pour chaque slot : durée + 60min de pause
+      const heureDebut = slot === 0 ? cfg.debut : addMinutes(cfg.debut, slot * (cfg.duree + 60))
+      const heureFin   = addMinutes(heureDebut, cfg.duree)
+
+      sessions.push({
+        commercial_id:           user.id,
+        zone_id:                 zone.id,
+        date_prevue:             dateStr,
+        heure_debut:             heureDebut,
+        heure_fin:               heureFin,
+        statut:                  'planifiee',
+        mois,
+        annee,
+        nb_adresses_total:       countByZone.get(zone.id) ?? 0,
+        nb_adresses_visitees:    0,
+        nb_contacts:             0,
+        nb_maisons_qualifiees:   0,
+        nb_immeubles_qualifies:  0,
+        nb_syndics_qualifies:    0,
+        nb_adresses_supprimees:  0,
+      })
+      zoneIndex++
+    }
   }
 
   if (!sessions.length)
@@ -139,6 +159,41 @@ export async function POST(req: Request) {
   return NextResponse.json({ planning: inserted ?? [], nb_sessions: sessions.length, mois, annee })
 }
 
+// PATCH /api/planning — reporter toutes les sessions planifiées après une date
+export async function PATCH(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const { date_reference, nb_jours } = await req.json().catch(() => ({}))
+  if (!date_reference || !nb_jours)
+    return NextResponse.json({ error: 'date_reference et nb_jours requis' }, { status: 400 })
+
+  const { data: sessions } = await supabase
+    .from('planning_sessions')
+    .select('id, date_prevue')
+    .eq('commercial_id', user.id)
+    .eq('statut', 'planifiee')
+    .gt('date_prevue', date_reference)
+    .order('date_prevue', { ascending: true })
+
+  if (!sessions?.length) return NextResponse.json({ ok: true, nb: 0 })
+
+  for (const s of sessions) {
+    const d = new Date(s.date_prevue + 'T12:00:00')
+    d.setDate(d.getDate() + nb_jours)
+    const newDate  = d.toISOString().split('T')[0]
+    const newMois  = d.getMonth() + 1
+    const newAnnee = d.getFullYear()
+    await supabase.from('planning_sessions')
+      .update({ date_prevue: newDate, mois: newMois, annee: newAnnee })
+      .eq('id', s.id).eq('commercial_id', user.id)
+  }
+
+  return NextResponse.json({ ok: true, nb: sessions.length })
+}
+
+// DELETE /api/planning
 export async function DELETE(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
