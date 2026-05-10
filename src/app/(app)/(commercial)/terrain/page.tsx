@@ -305,6 +305,22 @@ export default function TerrainPage() {
               {loading ? 'Chargement…' : 'Reprendre la session →'}
             </button>
             <button
+              onClick={async () => {
+                if (!confirm('Terminer et clôturer cette session avec enregistrement des stats ?')) return
+                setLoading(true)
+                await fetch(`/api/sessions/${activeSessionFound.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ statut: 'realisee' }),
+                })
+                try { localStorage.removeItem(SESSION_KEY) } catch (_) {}
+                router.push('/dashboard')
+              }}
+              disabled={loading}
+              style={{ width:'100%', padding:'11px', borderRadius:10, background:'#fff', color:'#1D9E75', fontWeight:600, fontSize:'0.85rem', border:'1.5px solid #bbf7d0', cursor:loading?'not-allowed':'pointer' }}>
+              ✓ Terminer et clôturer la session
+            </button>
+            <button
               onClick={handleAbandonAndNew}
               style={{ width:'100%', padding:'11px', borderRadius:10, background:'#fff', color:'#dc2626', fontWeight:600, fontSize:'0.85rem', border:'1.5px solid #fca5a5', cursor:'pointer' }}>
               Abandonner et démarrer une nouvelle
