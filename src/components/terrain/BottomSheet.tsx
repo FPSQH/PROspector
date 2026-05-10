@@ -356,7 +356,7 @@ export default function BottomSheet({
 
             <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
               <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
-              <button onClick={submitPasReponse} disabled={!action || saving}
+              <button onClick={() => submitPasReponse()} disabled={!action || saving}
                 style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: !action || saving ? '#E8E6DF' : '#1D9E75', color:'#fff', border:'none', cursor: !action || saving ? 'not-allowed':'pointer' }}>
                 {saving ? 'Enregistrement...' : 'Valider'}
               </button>
