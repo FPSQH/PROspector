@@ -706,12 +706,17 @@ export default function ZonesPage() {
           onClick={() => setEditingZone(null)}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
             onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 18px', fontSize: '1rem', fontWeight: 700 }}>Modifier la zone</h3>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 700 }}>Modifier la zone</h3>
+<p style={{ fontSize: '0.75rem', color: '#9b9b96', margin: '0 0 18px' }}>
+  Le nom personnalisé sera affiché dans toutes les pages de l'application.
+</p>
 
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5F5E5A', display: 'block', marginBottom: 6 }}>Nom</label>
-            <input value={editNom} onChange={(e) => setEditNom(e.target.value)} maxLength={50}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.9rem', marginBottom: 16, boxSizing: 'border-box' as const }}/>
-
+            <input value={editNom} onChange={(e) => setEditNom(e.target.value)} maxLength={45}
+  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e8e7e0', fontSize: '0.9rem', marginBottom: 4, boxSizing: 'border-box' as const }}/>
+<div style={{ fontSize:'0.72rem', color: editNom.length >= 40 ? '#d97706' : '#9b9b96', textAlign:'right', marginBottom: 14 }}>
+  {editNom.length}/45 caractères
+</div>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5F5E5A', display: 'block', marginBottom: 8 }}>Couleur</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 20 }}>
               {PALETTE.map((c) => (
