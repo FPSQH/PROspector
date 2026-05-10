@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server'
 
 type Params = { params: { id: string } }
 
+// GET /api/zones/[id]
 export async function GET(_req: Request, { params }: Params) {
   const supabase = await createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
@@ -17,7 +17,6 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (!zone) return NextResponse.json({ error: 'Zone non trouvée' }, { status: 404 })
 
-  // Itinéraire TSP dans l'ordre
   const { data: itineraire } = await supabase
     .from('itineraires_zone')
     .select(`
@@ -32,34 +31,71 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json({ zone, itineraire: itineraire ?? [] })
 }
 
+// PUT /api/zones/[id]
 export async function PUT(req: Request, { params }: Params) {
   const supabase = await createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const body = await req.json()
+  // Vérifier que la zone appartient à l'utilisateur
+  const { data: existing } = await supabase
+    .from('zones_prospection')
+    .select('id')
+    .eq('id', params.id)
+    .eq('commercial_id', user.id)
+    .single()
+
+  if (!existing) return NextResponse.json({ error: 'Zone non trouvée' }, { status: 404 })
+
+  const body = await req.json().catch(() => ({}))
   const updates: Record<string, unknown> = {}
 
-  if (body.nom !== undefined)    updates.nom    = String(body.nom).slice(0, 100)
-  if (body.couleur !== undefined && /^#[0-9A-Fa-f]{6}$/.test(body.couleur))
+  // Nom personnalisé — max 45 caractères
+  if (body.nom !== undefined) {
+    const nom = String(body.nom).trim()
+    if (!nom) return NextResponse.json({ error: 'Le nom ne peut pas être vide' }, { status: 400 })
+    updates.nom = nom.slice(0, 45)
+  }
+
+  // Couleur
+  if (body.couleur !== undefined) {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(body.couleur))
+      return NextResponse.json({ error: 'Couleur invalide' }, { status: 400 })
     updates.couleur = body.couleur
-  if (body.numero !== undefined) updates.numero = Number(body.numero)
+  }
+
+  // Numéro
+  if (body.numero !== undefined) {
+    updates.numero = Number(body.numero)
+  }
+
+  // Qualification terrain
+  if (body.type_bien    !== undefined) updates.type_bien    = body.type_bien
+  if (body.has_commerce !== undefined) updates.has_commerce = Boolean(body.has_commerce)
+  if (body.statut       !== undefined) updates.statut       = body.statut
+  if (body.motif_exclusion !== undefined) updates.motif_exclusion = body.motif_exclusion
+  if (body.notes        !== undefined) updates.notes        = body.notes
+
+  // Garde : au moins un champ à mettre à jour
+  if (!Object.keys(updates).length)
+    return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 })
 
   const { data, error } = await supabase
     .from('zones_prospection')
     .update(updates)
     .eq('id', params.id)
+    .eq('commercial_id', user.id)
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
   return NextResponse.json({ zone: data })
 }
 
+// DELETE /api/zones/[id]
 export async function DELETE(_req: Request, { params }: Params) {
   const supabase = await createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
@@ -67,7 +103,9 @@ export async function DELETE(_req: Request, { params }: Params) {
     .from('zones_prospection')
     .delete()
     .eq('id', params.id)
+    .eq('commercial_id', user.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
   return NextResponse.json({ ok: true })
 }
