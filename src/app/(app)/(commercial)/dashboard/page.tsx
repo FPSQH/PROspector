@@ -59,6 +59,14 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false }).limit(1),
   ])
 
+  const { data: sessionsHistorique } = await supabase
+    .from('sessions_prospection')
+    .select('id, date_session, heure_debut_reel, heure_fin_reel, nb_portes, nb_boites, nb_contacts_saisis, nb_qualifications, rapport_json, zones_prospection(id, nom, couleur, numero)')
+    .eq('commercial_id', commercial.id)
+    .eq('statut', 'realisee')
+    .order('date_session', { ascending: false })
+    .limit(8)
+
   const nbZones            = zones?.length ?? 0
   const totalAdressesZones = (zones ?? []).reduce((s: number, z: any) => s + (z.nb_prospectables ?? 0), 0)
   const prochaineSession   = prochaineSessions?.[0] ?? null
@@ -371,6 +379,83 @@ export default async function DashboardPage() {
           </div>
         </div>
       </main>
+
+      <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 28px 20px' }}>
+        {sessionsHistorique && sessionsHistorique.length > 0 && (
+          <div style={{ background:'#fff', borderRadius:12, border:'1px solid #f0efeb', padding:'20px 24px' }}>
+            <h2 style={{ margin:'0 0 16px', fontSize:'0.9rem', fontWeight:600, color:'#1a1a18' }}>Historique des sessions</h2>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {(sessionsHistorique as any[]).map((s) => {
+                const z = s.zones_prospection
+                const rapport = s.rapport_json ?? {}
+                const dateFr = s.date_session
+                  ? new Date(s.date_session + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'short', day:'numeric', month:'short' })
+                  : '—'
+                const nbVisites  = rapport.nb_visites  ?? s.nb_portes ?? 0
+                const nbContacts = rapport.nb_contacts ?? s.nb_contacts_saisis ?? 0
+                const nbFlyers   = rapport.nb_flyers   ?? s.nb_boites ?? 0
+                const nbQualifs  = rapport.nb_qualifications ?? s.nb_qualifications ?? 0
+                const contacts   = rapport.contacts ?? []
+                return (
+                  <details key={s.id} style={{ borderRadius:8, border:'1px solid #f0efeb', overflow:'hidden' }}>
+                    <summary style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', cursor:'pointer', listStyle:'none', background:'#fafaf8' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:7, flex:1, minWidth:0 }}>
+                        {z && <div style={{ width:8, height:8, borderRadius:'50%', background:z.couleur, flexShrink:0 }}/>}
+                        <span style={{ fontWeight:600, fontSize:'0.82rem', color:'#1a1a18' }}>{dateFr}</span>
+                        <span style={{ fontSize:'0.78rem', color:'#6b7280' }}>{z?.nom ?? '—'}</span>
+                      </div>
+                      <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+                        {nbVisites > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#f0fdf4', color:'#065f46' }}>🚶 {nbVisites}</span>}
+                        {nbContacts > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#fff7ed', color:'#ea580c' }}>🤝 {nbContacts}</span>}
+                        {nbFlyers > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#f5f3ff', color:'#7c3aed' }}>📄 {nbFlyers}</span>}
+                        {nbQualifs > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8' }}>✓ {nbQualifs}</span>}
+                      </div>
+                      <span style={{ fontSize:'0.72rem', color:'#9b9b96', marginLeft:8 }}>▼</span>
+                    </summary>
+                    <div style={{ padding:'12px 14px', borderTop:'1px solid #f0efeb', background:'#fff' }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12 }}>
+                        {[
+                          { label:'Visites',      value:nbVisites,  color:'#1D9E75', bg:'#f0fdf4' },
+                          { label:'Contacts',     value:nbContacts, color:'#ea580c', bg:'#fff7ed' },
+                          { label:'Flyers',       value:nbFlyers,   color:'#7c3aed', bg:'#f5f3ff' },
+                          { label:'Qualifiées',   value:nbQualifs,  color:'#1d4ed8', bg:'#eff6ff' },
+                        ].map(k => (
+                          <div key={k.label} style={{ background:k.bg, borderRadius:8, padding:'8px 10px', textAlign:'center' }}>
+                            <div style={{ fontSize:'1.1rem', fontWeight:700, color:k.color }}>{k.value || '—'}</div>
+                            <div style={{ fontSize:'0.65rem', color:'#9b9b96' }}>{k.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {rapport.nb_maisons > 0 || rapport.nb_immeubles > 0 ? (
+                        <div style={{ fontSize:'0.75rem', color:'#6b7280', marginBottom:contacts.length ? 10 : 0 }}>
+                          {rapport.nb_maisons > 0 && <span style={{ marginRight:12 }}>🏠 {rapport.nb_maisons} maison{rapport.nb_maisons>1?'s':''}</span>}
+                          {rapport.nb_immeubles > 0 && <span>🏢 {rapport.nb_immeubles} immeuble{rapport.nb_immeubles>1?'s':''}</span>}
+                        </div>
+                      ) : null}
+                      {contacts.length > 0 && (
+                        <div>
+                          <div style={{ fontSize:'0.7rem', fontWeight:700, color:'#9b9b96', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.04em' }}>Contacts ({contacts.length})</div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                            {contacts.map((c: any) => (
+                              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:6, background:'#f8f7f4' }}>
+                                <div style={{ width:24, height:24, borderRadius:'50%', background:'#1D9E75', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                  <span style={{ fontSize:'0.65rem', color:'#fff', fontWeight:700 }}>{(c.prenom?.[0] ?? c.nom?.[0] ?? '?').toUpperCase()}</span>
+                                </div>
+                                <span style={{ fontSize:'0.78rem', fontWeight:600, color:'#1a1a18' }}>{[c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'}</span>
+                                {c.tel1 && <span style={{ fontSize:'0.72rem', color:'#9b9b96' }}>{c.tel1}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ maxWidth:900, margin:'0 auto', padding:'0 16px 32px' }}>
         <DpeAlertsWidget />
