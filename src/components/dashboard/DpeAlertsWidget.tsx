@@ -15,7 +15,9 @@ function typeBienLabel(t: string | null): string {
   return ({ maison: 'Maison', appartement: 'Appt', immeuble: 'Immeuble' } as any)[t.toLowerCase()] ?? t
 }
 
-interface DpeEntry { adresse: string; classe: string; type_bien: string | null; date: string }
+const DPE_CHECK_KEY = 'dpe_check_date'
+
+interface DpeEntry { adresse: string; classe: string; type_bien: string | null; date: string; is_new?: boolean }
 interface CommuneAVerifier { code_insee: string; nom: string; code_postal: string; force_full: boolean }
 
 export default function DpeAlertsWidget() {
@@ -26,8 +28,6 @@ export default function DpeAlertsWidget() {
   const [expanded, setExpanded]     = useState(false)
   const [nbNouveaux, setNbNouveaux] = useState(0)
   const [nbNew, setNbNew]           = useState(0)
-
-  // Progression mise à jour
   const [majEnCours, setMajEnCours]   = useState(false)
   const [majProgress, setMajProgress] = useState({ done: 0, total: 0, commune: '' })
 
@@ -38,7 +38,6 @@ export default function DpeAlertsWidget() {
     setLoading(false)
   }, [])
 
-  // Ingestion progressive commune par commune
   const runIngestions = useCallback(async (communes: CommuneAVerifier[]) => {
     if (!communes.length) return
     setMajEnCours(true)
@@ -58,22 +57,30 @@ export default function DpeAlertsWidget() {
 
     setMajProgress(p => ({ ...p, done: communes.length, commune: '' }))
     setMajEnCours(false)
-    // Rafraîchir le widget après toutes les ingestions
     await loadAlerts()
   }, [loadAlerts])
 
   useEffect(() => {
-    // 1. Charger les alertes immédiatement
     loadAlerts()
 
-    // 2. Vérifier le secteur — récupérer les communes à mettre à jour
+    // ── Garde : ne vérifier le secteur DPE qu'une fois par jour ──
+    try {
+      const lastCheck = localStorage.getItem(DPE_CHECK_KEY)
+      const today     = new Date().toISOString().split('T')[0]
+      if (lastCheck === today) return // déjà vérifié aujourd'hui
+    } catch (_) {}
+
     fetch('/api/dpe/check-secteur')
       .then(r => r.json())
-      .then(d => {
+      .then(async d => {
         setNbNouveaux(d.nb_nouveaux ?? 0)
         if (d.communes_a_verifier?.length > 0) {
-          runIngestions(d.communes_a_verifier)
+          await runIngestions(d.communes_a_verifier)
         }
+        // Marquer la vérification comme faite aujourd'hui
+        try {
+          localStorage.setItem(DPE_CHECK_KEY, new Date().toISOString().split('T')[0])
+        } catch (_) {}
       })
       .catch(() => {})
   }, [loadAlerts, runIngestions])
@@ -84,7 +91,6 @@ export default function DpeAlertsWidget() {
   return (
     <div style={{ background:'#fff', borderRadius:12, border: hasData ? '1px solid #d1fae5' : '1px solid #E8E6DF', marginBottom:16, overflow:'hidden' }}>
 
-      {/* Bandeau mise à jour en cours */}
       {majEnCours && (
         <div style={{ background:'#fffbeb', borderBottom:'1px solid #fde68a', padding:'8px 20px', display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:14, height:14, borderRadius:'50%', border:'2px solid #f59e0b', borderTopColor:'transparent',
@@ -97,7 +103,6 @@ export default function DpeAlertsWidget() {
         </div>
       )}
 
-      {/* Header */}
       <div style={{ padding:'14px 20px', borderBottom:'1px solid #F0EDE6', display:'flex', alignItems:'center', gap:12 }}>
         <div style={{ flex:1 }}>
           <div style={{ fontWeight:700, fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
@@ -126,7 +131,6 @@ export default function DpeAlertsWidget() {
         )}
       </div>
 
-      {/* Contenu */}
       {loading ? (
         <div style={{ padding:'20px', textAlign:'center', color:'#9ca3af', fontSize:13 }}>Chargement...</div>
       ) : !hasData ? (
@@ -181,9 +185,7 @@ export default function DpeAlertsWidget() {
         </div>
       )}
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
