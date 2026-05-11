@@ -12,6 +12,16 @@ interface Adresse {
   etiquette_dpe?:   string | null
   has_audit?:       boolean
   audit_n?:         string | null
+  // Zone info
+  zone_id?:         string | null
+  zone_nom?:        string | null
+  zone_couleur?:    string | null
+  is_manuelle?:     boolean
+}
+
+const DPE_COLORS: Record<string, string> = {
+  A: '#009B4D', B: '#57B947', C: '#B6D234',
+  D: '#F9E000', E: '#F4A51A', F: '#EC6608', G: '#E2001A',
 }
 
 const btn = (active: boolean, color = '#1D9E75'): any => ({
@@ -28,25 +38,17 @@ const chipBtn = (active: boolean, color = '#1D9E75'): any => ({
   color: active ? '#fff' : '#5F5E5A', cursor: 'pointer',
 })
 
-const DPE_COLORS: Record<string, string> = {
-  A: '#009B4D', B: '#57B947', C: '#B6D234',
-  D: '#F9E000', E: '#F4A51A', F: '#EC6608', G: '#E2001A',
-}
-
 export default function BottomSheet({
   adresse, open, onClose, onQualification, sessionId
 }: {
   adresse: Adresse; open: boolean; onClose: () => void
   onQualification: (data: any) => void; sessionId?: string
 }) {
-  // Niveau 1 — résultat principal
   const [step, setStep]               = useState<'main'|'pas_reponse'|'contact'|'exclure'>('main')
-  // Niveau 2a — pas de réponse
   const [typeHabitat, setTypeHabitat] = useState(adresse.type_habitat ?? '')
   const [action, setAction]           = useState('')
   const [nbBal, setNbBal]             = useState<string>(adresse.nb_bal?.toString() ?? '')
   const [courrierCible, setCourrierCible] = useState(false)
-  // Niveau 2b — contact
   const [profil, setProfil]           = useState('')
   const [typeProjet, setTypeProjet]   = useState<string[]>([])
   const [horizon, setHorizon]         = useState('')
@@ -55,7 +57,6 @@ export default function BottomSheet({
   const [dateRelance, setDateRelance] = useState('')
   const [contact, setContact]         = useState({ nom:'', prenom:'', tel1:'', email1:'' })
   const [showContactForm, setShowContactForm] = useState(false)
-  // Niveau 2c — exclusion
   const [motifExclusion, setMotifExclusion] = useState('')
   const [nomSyndic, setNomSyndic]     = useState('')
   const [saving, setSaving]           = useState(false)
@@ -70,8 +71,7 @@ export default function BottomSheet({
       setProfil(''); setTypeProjet([]); setHorizon(''); setAutreProjet(false)
       setNote(''); setDateRelance(''); setMotifExclusion('')
       setContact({ nom:'', prenom:'', tel1:'', email1:'' })
-      setNomSyndic('')
-      setShowContactForm(false)
+      setNomSyndic(''); setShowContactForm(false)
     }
   }, [open, adresse])
 
@@ -169,11 +169,7 @@ export default function BottomSheet({
       if (contactId && typeProjet.length) {
         await fetch('/api/projets', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contact_id: contactId,
-            type_projet: typeProjet,
-            horizon_projet: horizon || 'inconnu',
-          })
+          body: JSON.stringify({ contact_id: contactId, type_projet: typeProjet, horizon_projet: horizon || 'inconnu' })
         })
       }
     }
@@ -195,94 +191,85 @@ export default function BottomSheet({
         <div style={handle}/>
 
         {/* Quick Type Selection */}
-        <div style={{ padding: '16px 20px 0', display: 'flex', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} className="no-scrollbar">
-          {[
-            ['individuel', '🏠 Maison'],
-            ['collectif', '🏢 Immeuble'],
-            ['mixte', '🏪 Mixte'],
-            ['activite', '🏭 Activité']
-          ].map(([v, l]) => (
-            <button
-              key={v}
-              onClick={() => setTypeHabitat(v)}
-              style={{
-                ...chipBtn(typeHabitat === v),
-                flexShrink: 0,
-                padding: '6px 10px',
-                fontSize: '11px',
-                whiteSpace: 'nowrap'
-              }}
-            >
+        <div style={{ padding:'16px 20px 0', display:'flex', gap:6, flexWrap:'nowrap', overflowX:'auto', WebkitOverflowScrolling:'touch' }} className="no-scrollbar">
+          {[['individuel','🏠 Maison'],['collectif','🏢 Immeuble'],['mixte','🏪 Mixte'],['activite','🏭 Activité']].map(([v,l]) => (
+            <button key={v} onClick={() => setTypeHabitat(v)}
+              style={{ ...chipBtn(typeHabitat===v), flexShrink:0, padding:'6px 10px', fontSize:'11px', whiteSpace:'nowrap' }}>
               {l}
             </button>
           ))}
         </div>
 
         {/* Quick Actions */}
-        <div style={{ padding: '12px 20px 8px', display: 'flex', gap: 10 }}>
-          <button
-            onClick={() => submitPasReponse('flyer')}
-            disabled={saving}
-            style={{
-              flex: 1, height: 48, borderRadius: 12, background: '#f0fdf4', border: '1.5px solid #bbf7d0',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              fontSize: 14, fontWeight: 700, color: '#166534', cursor: 'pointer'
-            }}
-          >
+        <div style={{ padding:'12px 20px 8px', display:'flex', gap:10 }}>
+          <button onClick={() => submitPasReponse('flyer')} disabled={saving}
+            style={{ flex:1, height:48, borderRadius:12, background:'#f0fdf4', border:'1.5px solid #bbf7d0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:14, fontWeight:700, color:'#166534', cursor:'pointer' }}>
             📄 Flyer
           </button>
-          <button
-            onClick={() => submitPasReponse('rien')}
-            disabled={saving}
-            style={{
-              flex: 1, height: 48, borderRadius: 12, background: '#f8f9fa', border: '1.5px solid #e9ecef',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              fontSize: 14, fontWeight: 700, color: '#495057', cursor: 'pointer'
-            }}
-          >
+          <button onClick={() => submitPasReponse('rien')} disabled={saving}
+            style={{ flex:1, height:48, borderRadius:12, background:'#f8f9fa', border:'1.5px solid #e9ecef', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:14, fontWeight:700, color:'#495057', cursor:'pointer' }}>
             ⚪ Rien
           </button>
         </div>
 
-        <div style={{ margin: '0 20px', height: 1, background: '#F0EDE6' }} />
+        <div style={{ margin:'0 20px', height:1, background:'#F0EDE6' }}/>
 
         {/* Header adresse */}
         <div style={{ padding:'12px 20px 10px', borderBottom:'1px solid #F0EDE6' }}>
           <div style={{ fontWeight:700, fontSize:15 }}>{adresseLabel || 'Adresse'}</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:4 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginTop:4 }}>
             <div style={{ fontSize:12, color:'#9ca3af' }}>{adresse.commune}</div>
-            {adresse.score !== undefined && (
-              <div style={{
-                fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10,
-                background: adresse.score >= 80 ? '#dcfce7' : adresse.score >= 60 ? '#fef9c3' : '#f3f4f6',
-                color: adresse.score >= 80 ? '#15803d' : adresse.score >= 60 ? '#a16207' : '#6b7280',
+
+            {/* Badge zone / Hors Zone */}
+            {adresse.zone_id ? (
+              <span style={{
+                display:'inline-flex', alignItems:'center', gap:4,
+                fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:10,
+                background: (adresse.zone_couleur ?? '#1D9E75') + '22',
+                color: adresse.zone_couleur ?? '#1D9E75',
+                border: '1px solid ' + (adresse.zone_couleur ?? '#1D9E75') + '55',
               }}>
-                {adresse.score >= 80 ? '🔥 ' : adresse.score >= 60 ? '⭐ ' : ''}{adresse.score}/100
+                <span style={{ width:6, height:6, borderRadius:'50%', background: adresse.zone_couleur ?? '#1D9E75', flexShrink:0 }}/>
+                {adresse.zone_nom ?? 'Zone'}
+              </span>
+            ) : (
+              <span style={{
+                fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:10,
+                background:'#fff7ed', color:'#ea580c', border:'1px solid #fed7aa',
+              }}>
+                🌐 Hors Zone
+              </span>
+            )}
+
+            {/* Badge adresse manuelle */}
+            {adresse.is_manuelle && (
+              <span style={{ fontSize:10, fontWeight:600, padding:'2px 6px', borderRadius:10, background:'#f5f3ff', color:'#7c3aed', border:'1px solid #ddd6fe' }}>
+                ✎ Manuelle
+              </span>
+            )}
+
+            {/* Score */}
+            {adresse.score !== undefined && (
+              <div style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10,
+                background: adresse.score>=80?'#dcfce7':adresse.score>=60?'#fef9c3':'#f3f4f6',
+                color: adresse.score>=80?'#15803d':adresse.score>=60?'#a16207':'#6b7280' }}>
+                {adresse.score>=80?'🔥 ':adresse.score>=60?'⭐ ':''}{adresse.score}/100
               </div>
             )}
-            {/* Badge DPE enrichi */}
+
+            {/* Badge DPE */}
             {adresse.latest_dpe_date && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                fontSize:11, padding:'2px 8px', borderRadius:10,
-                background:'#eff6ff', color:'#1d4ed8', fontWeight:600
-              }}>
+              <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'2px 8px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8', fontWeight:600 }}>
                 {adresse.etiquette_dpe && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 20, height: 20, borderRadius: 4, fontWeight: 800, fontSize: 12,
+                  <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:20, height:20, borderRadius:4, fontWeight:800, fontSize:12,
                     background: DPE_COLORS[adresse.etiquette_dpe] ?? '#999',
-                    color: ['A','B','C'].includes(adresse.etiquette_dpe) ? '#fff' : '#000',
-                  }}>
+                    color: ['A','B','C'].includes(adresse.etiquette_dpe) ? '#fff' : '#000' }}>
                     {adresse.etiquette_dpe}
                   </span>
                 )}
                 DPE {new Date(adresse.latest_dpe_date + 'T12:00:00').toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'})}
                 {adresse.has_audit && ['E','F','G'].includes(adresse.etiquette_dpe ?? '') && (
-                  <span style={{
-                    marginLeft:2, background:'#fef3c7', color:'#92400e',
-                    borderRadius:4, padding:'0 4px', fontSize:10, fontWeight:700
-                  }}>
+                  <span style={{ marginLeft:2, background:'#fef3c7', color:'#92400e', borderRadius:4, padding:'0 4px', fontSize:10, fontWeight:700 }}>
                     📋 Audit{adresse.audit_n ? ` ${adresse.audit_n}` : ''}
                   </span>
                 )}
@@ -291,26 +278,20 @@ export default function BottomSheet({
           </div>
         </div>
 
-        {/* ── NIVEAU 1 : Résultat principal ── */}
-        {step === 'main' && (
+        {/* Niveau 1 */}
+        {step==='main' && (
           <div style={section}>
             <span style={label}>QUE SE PASSE-T-IL ?</span>
             <div style={{ display:'flex', gap:10 }}>
-              <button style={btn(false)} onClick={() => setStep('pas_reponse')}>
-                🚪 Pas de réponse
-              </button>
-              <button style={btn(false, '#1D9E75')} onClick={() => setStep('contact')}>
-                🤝 Contact
-              </button>
-              <button style={btn(false, '#E24B4A')} onClick={() => setStep('exclure')}>
-                ✕ Exclure
-              </button>
+              <button style={btn(false)} onClick={() => setStep('pas_reponse')}>🚪 Pas de réponse</button>
+              <button style={btn(false,'#1D9E75')} onClick={() => setStep('contact')}>🤝 Contact</button>
+              <button style={btn(false,'#E24B4A')} onClick={() => setStep('exclure')}>✕ Exclure</button>
             </div>
           </div>
         )}
 
-        {/* ── NIVEAU 2a : Pas de réponse ── */}
-        {step === 'pas_reponse' && (
+        {/* Niveau 2a : Pas de réponse */}
+        {step==='pas_reponse' && (
           <>
             <div style={section}>
               <span style={label}>TYPE DE BIEN</span>
@@ -320,52 +301,48 @@ export default function BottomSheet({
                 ))}
               </div>
             </div>
-
-            {(isCollectif || typeHabitat === 'mixte') && (
+            {(isCollectif||typeHabitat==='mixte') && (
               <div style={section}>
                 <span style={label}>NB BOÎTES AUX LETTRES</span>
                 <input type="number" value={nbBal} onChange={e=>setNbBal(e.target.value)} placeholder="Ex: 12"
                   style={{ width:100, padding:'8px 12px', borderRadius:8, border:'1.5px solid #E8E6DF', fontSize:14, outline:'none' }}/>
               </div>
             )}
-            {(isCollectif || typeHabitat === 'mixte') && (
+            {(isCollectif||typeHabitat==='mixte') && (
               <div style={section}>
                 <span style={label}>NOM DU SYNDIC (optionnel)</span>
-                <input type="text" value={nomSyndic} onChange={e=>setNomSyndic(e.target.value)} placeholder="Ex: Foncia, Nexity Lamy..."
+                <input type="text" value={nomSyndic} onChange={e=>setNomSyndic(e.target.value)} placeholder="Ex: Foncia, Nexity..."
                   style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none', boxSizing:'border-box' }}/>
               </div>
             )}
-
             <div style={section}>
               <span style={label}>ACTION</span>
               <div style={{ display:'flex', gap:10 }}>
                 <button style={btn(action==='flyer')} onClick={() => setAction('flyer')}>📄 Flyer déposé</button>
-                <button style={btn(action==='rien', '#9ca3af')} onClick={() => setAction('rien')}>— Rien</button>
+                <button style={btn(action==='rien','#9ca3af')} onClick={() => setAction('rien')}>— Rien</button>
               </div>
             </div>
-
             {isIndividuel && (
               <div style={{ padding:'10px 20px 0', display:'flex', alignItems:'center', gap:10 }}>
                 <button onClick={() => setCourrierCible(!courrierCible)}
-                  style={{ width:22, height:22, borderRadius:6, border:'1.5px solid #E8E6DF', background: courrierCible ? '#1D9E75' : '#fff', cursor:'pointer', fontSize:14, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {courrierCible ? '✓' : ''}
+                  style={{ width:22, height:22, borderRadius:6, border:'1.5px solid #E8E6DF', background:courrierCible?'#1D9E75':'#fff', cursor:'pointer', fontSize:14, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {courrierCible?'✓':''}
                 </button>
                 <span style={{ fontSize:13, color:'#5F5E5A' }}>Courrier nominatif possible</span>
               </div>
             )}
-
             <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
               <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
-              <button onClick={() => submitPasReponse()} disabled={!action || saving}
-                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: !action || saving ? '#E8E6DF' : '#1D9E75', color:'#fff', border:'none', cursor: !action || saving ? 'not-allowed':'pointer' }}>
-                {saving ? 'Enregistrement...' : 'Valider'}
+              <button onClick={() => submitPasReponse()} disabled={!action||saving}
+                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background:!action||saving?'#E8E6DF':'#1D9E75', color:'#fff', border:'none', cursor:!action||saving?'not-allowed':'pointer' }}>
+                {saving?'Enregistrement...':'Valider'}
               </button>
             </div>
           </>
         )}
 
-        {/* ── NIVEAU 2b : Contact ── */}
-        {step === 'contact' && (
+        {/* Niveau 2b : Contact */}
+        {step==='contact' && (
           <>
             <div style={section}>
               <span style={label}>PROFIL</span>
@@ -375,17 +352,15 @@ export default function BottomSheet({
                 ))}
               </div>
             </div>
-
             <div style={section}>
-              <span style={label}>TYPE DE PROJET (plusieurs possibles)</span>
+              <span style={label}>TYPE DE PROJET</span>
               <div style={row}>
                 {[['vente','🏷 Vente'],['achat','🔑 Achat'],['estimation','📊 Estimation'],['investissement','💰 Invest.'],['location','🏠 Location'],['pas_de_projet','— Pas de projet']].map(([v,l]) => (
                   <button key={v} style={chipBtn(typeProjet.includes(v))} onClick={() => toggleProjet(v)}>{l}</button>
                 ))}
               </div>
             </div>
-
-            {typeProjet.length > 0 && (
+            {typeProjet.length>0 && (
               <div style={section}>
                 <span style={label}>HORIZON</span>
                 <div style={row}>
@@ -395,34 +370,29 @@ export default function BottomSheet({
                 </div>
               </div>
             )}
-
             <div style={{ padding:'10px 20px 0', display:'flex', alignItems:'center', gap:10 }}>
               <button onClick={() => setAutreProjet(!autreProjet)}
-                style={{ width:22, height:22, borderRadius:6, border:'1.5px solid #E8E6DF', background: autreProjet ? '#1D9E75' : '#fff', cursor:'pointer', fontSize:14, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {autreProjet ? '✓' : ''}
+                style={{ width:22, height:22, borderRadius:6, border:'1.5px solid #E8E6DF', background:autreProjet?'#1D9E75':'#fff', cursor:'pointer', fontSize:14, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {autreProjet?'✓':''}
               </button>
               <span style={{ fontSize:13, color:'#5F5E5A' }}>Autre projet connu dans l&apos;entourage</span>
             </div>
-
             <div style={section}>
               <span style={label}>NOTE</span>
-              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Note courte sur le projet..." maxLength={200}
+              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Note courte..." maxLength={200}
                 style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, resize:'none', minHeight:60, outline:'none', boxSizing:'border-box', fontFamily:'inherit' }}/>
             </div>
-
             <div style={section}>
               <span style={label}>DATE DE RELANCE</span>
               <input type="date" value={dateRelance} onChange={e=>setDateRelance(e.target.value)}
                 style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
             </div>
-
             <div style={{ padding:'10px 20px 0' }}>
               <button onClick={() => setShowContactForm(!showContactForm)}
                 style={{ fontSize:13, color:'#1D9E75', fontWeight:600, background:'none', border:'none', cursor:'pointer', padding:0 }}>
-                {showContactForm ? '▾ Masquer la fiche contact' : '＋ Créer une fiche contact'}
+                {showContactForm?'▾ Masquer la fiche contact':'＋ Créer une fiche contact'}
               </button>
             </div>
-
             {showContactForm && (
               <div style={{ padding:'10px 20px 0', display:'flex', flexDirection:'column', gap:8 }}>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
@@ -437,43 +407,32 @@ export default function BottomSheet({
                   style={{ padding:'9px 12px', borderRadius:10, border:'1.5px solid #E8E6DF', fontSize:13, outline:'none' }}/>
               </div>
             )}
-
             <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
               <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
               <button onClick={submitContact} disabled={saving}
-                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: saving ? '#E8E6DF' : '#1D9E75', color:'#fff', border:'none', cursor: saving ? 'not-allowed':'pointer' }}>
-                {saving ? 'Enregistrement...' : 'Valider le contact'}
+                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background:saving?'#E8E6DF':'#1D9E75', color:'#fff', border:'none', cursor:saving?'not-allowed':'pointer' }}>
+                {saving?'Enregistrement...':'Valider le contact'}
               </button>
             </div>
           </>
         )}
 
-        {/* ── NIVEAU 2c : Exclusion ── */}
-        {step === 'exclure' && (
+        {/* Niveau 2c : Exclusion */}
+        {step==='exclure' && (
           <>
             <div style={section}>
               <span style={label}>MOTIF D&apos;EXCLUSION</span>
               <div style={row}>
-                {[
-                  ['parc_public','Parc public / HLM'],
-                  ['administration','Administration'],
-                  ['equipement_public','Équipement public'],
-                  ['bureaux_uniquement','Bureaux seuls'],
-                  ['commerce_uniquement','Commerce seul'],
-                  ['site_ferme','Site fermé'],
-                  ['doublon_ban','Doublon BAN'],
-                  ['autre','Autre'],
-                ].map(([v,l]) => (
-                  <button key={v} style={chipBtn(motifExclusion===v, '#E24B4A')} onClick={() => setMotifExclusion(v)}>{l}</button>
+                {[['parc_public','Parc public / HLM'],['administration','Administration'],['equipement_public','Équipement public'],['bureaux_uniquement','Bureaux seuls'],['commerce_uniquement','Commerce seul'],['site_ferme','Site fermé'],['doublon_ban','Doublon BAN'],['autre','Autre']].map(([v,l]) => (
+                  <button key={v} style={chipBtn(motifExclusion===v,'#E24B4A')} onClick={() => setMotifExclusion(v)}>{l}</button>
                 ))}
               </div>
             </div>
-
             <div style={{ padding:'16px 20px 0', display:'flex', gap:10 }}>
               <button onClick={() => setStep('main')} style={{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E8E6DF', background:'#fff', cursor:'pointer', fontSize:13 }}>← Retour</button>
-              <button onClick={submitExclusion} disabled={!motifExclusion || saving}
-                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background: !motifExclusion || saving ? '#E8E6DF' : '#E24B4A', color:'#fff', border:'none', cursor: !motifExclusion || saving ? 'not-allowed':'pointer' }}>
-                {saving ? 'Enregistrement...' : 'Exclure cette adresse'}
+              <button onClick={submitExclusion} disabled={!motifExclusion||saving}
+                style={{ flex:1, padding:'12px', borderRadius:10, fontWeight:700, fontSize:14, background:!motifExclusion||saving?'#E8E6DF':'#E24B4A', color:'#fff', border:'none', cursor:!motifExclusion||saving?'not-allowed':'pointer' }}>
+                {saving?'Enregistrement...':'Exclure cette adresse'}
               </button>
             </div>
           </>
