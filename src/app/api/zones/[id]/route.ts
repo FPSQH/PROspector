@@ -61,15 +61,13 @@ export async function PUT(req: Request, { params }: Params) {
   if (!Object.keys(updates).length)
     return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 })
 
-  const { data, error } = await supabase
-    .from('zones_prospection')
-    .update(updates)
-    .eq('id', params.id)
-    .select()
-    .single()
+const { error } = await supabase
+  .from('zones_prospection')
+  .update(updates)
+  .eq('id', params.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ zone: data })
+if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+return NextResponse.json({ ok: true })
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
