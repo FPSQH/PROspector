@@ -37,16 +37,6 @@ export async function PUT(req: Request, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  // Vérifier que la zone appartient à l'utilisateur
-  const { data: existing } = await supabase
-    .from('zones_prospection')
-    .select('id')
-    .eq('id', params.id)
-    .eq('commercial_id', user.id)
-    .single()
-
-  if (!existing) return NextResponse.json({ error: 'Zone non trouvée' }, { status: 404 })
-
   const body = await req.json().catch(() => ({}))
   const updates: Record<string, unknown> = {}
 
@@ -65,9 +55,7 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   // Numéro
-  if (body.numero !== undefined) {
-    updates.numero = Number(body.numero)
-  }
+  if (body.numero !== undefined) updates.numero = Number(body.numero)
 
   // Qualification terrain
   if (body.type_bien    !== undefined) updates.type_bien    = body.type_bien
@@ -76,7 +64,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (body.motif_exclusion !== undefined) updates.motif_exclusion = body.motif_exclusion
   if (body.notes        !== undefined) updates.notes        = body.notes
 
-  // Garde : au moins un champ à mettre à jour
+  // Garde : au moins un champ
   if (!Object.keys(updates).length)
     return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 })
 
@@ -84,11 +72,11 @@ export async function PUT(req: Request, { params }: Params) {
     .from('zones_prospection')
     .update(updates)
     .eq('id', params.id)
-    .eq('commercial_id', user.id)
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data)  return NextResponse.json({ error: 'Zone non trouvée' }, { status: 404 })
 
   return NextResponse.json({ zone: data })
 }
@@ -103,9 +91,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     .from('zones_prospection')
     .delete()
     .eq('id', params.id)
-    .eq('commercial_id', user.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
   return NextResponse.json({ ok: true })
 }
