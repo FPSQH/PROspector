@@ -65,6 +65,10 @@ export default function TerrainPage() {
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [newAddress, setNewAddress] = useState({ numero:'', nom_voie:'', type_habitat:'individuel', nb_bal:'' })
   const [savingAddress, setSavingAddress] = useState(false)
+  const [placingAddress, setPlacingAddress] = useState(false)
+  const [pendingFormData, setPendingFormData] = useState<any>(null)
+  const [placementCoords, setPlacementCoords] = useState<{lat:number,lon:number}|null>(null)
+  const [geolocating, setGeolocating] = useState(false)
 
   const calculerItineraire = (adrs:Adresse[]):string[] => {
     const points = adrs.filter(a=>a.lat&&a.lon&&a.prospectable!==false)
@@ -323,7 +327,7 @@ export default function TerrainPage() {
           {[{color:'#ef4444',label:'À faire'},{color:'#3b82f6',label:'Boîté'},{color:'#22c55e',label:'Contact'},{color:'#9b9b96',label:'Autre'}].map(item=>(<div key={item.label} style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}><div style={{width:8,height:8,borderRadius:'50%',background:item.color,flexShrink:0}}/><span>{item.label}</span></div>))}
           {isHorsZone&&<div style={{marginTop:4,paddingTop:4,borderTop:'1px solid #f0efeb',color:'#ea580c',fontWeight:600}}>🌐 Prospection libre</div>}
         </div>
-        {isHorsZone&&!showAddressForm&&<button onClick={()=>setShowAddressForm(true)} style={{position:'absolute',bottom:sheetOpen?336:32,right:16,width:52,height:52,borderRadius:'50%',background:'#ea580c',color:'#fff',border:'none',fontSize:'1.5rem',fontWeight:700,cursor:'pointer',boxShadow:'0 4px 16px rgba(234,88,12,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10}}>+</button>}
+        {isHorsZone&&!showAddressForm&&!placingAddress&&<button onClick={()=>setShowAddressForm(true)} style={{position:'absolute',bottom:sheetOpen?340:100,left:16,width:48,height:48,borderRadius:'50%',background:'#ea580c',color:'#fff',border:'none',fontSize:'1.4rem',fontWeight:700,cursor:'pointer',boxShadow:'0 4px 16px rgba(234,88,12,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10}}>+</button>}
         {isHorsZone&&showAddressForm&&(
           <div style={{position:'absolute',bottom:0,left:0,right:0,background:'#fff',borderRadius:'20px 20px 0 0',padding:'16px 20px 32px',boxShadow:'0 -4px 20px rgba(0,0,0,0.15)',zIndex:500}}>
             <div style={{width:36,height:4,borderRadius:2,background:'#D4D2CC',margin:'0 auto 14px'}}/>
@@ -333,11 +337,58 @@ export default function TerrainPage() {
             {(newAddress.type_habitat==='collectif'||newAddress.type_habitat==='mixte')&&<input type="number" placeholder="Nb boîtes aux lettres" value={newAddress.nb_bal} onChange={e=>setNewAddress(a=>({...a,nb_bal:e.target.value}))} style={{width:'100%',padding:'9px 10px',borderRadius:8,border:'1.5px solid #E8E6DF',fontSize:13,outline:'none',marginBottom:10,boxSizing:'border-box'}}/>}
             <div style={{display:'flex',gap:8}}>
               <button onClick={()=>setShowAddressForm(false)} style={{padding:'10px 16px',borderRadius:10,border:'1.5px solid #E8E6DF',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
-              <button onClick={handleAddManualAddress} disabled={!newAddress.nom_voie.trim()||savingAddress} style={{flex:1,padding:'11px',borderRadius:10,fontWeight:700,fontSize:14,background:!newAddress.nom_voie.trim()||savingAddress?'#E8E6DF':'#ea580c',color:'#fff',border:'none',cursor:!newAddress.nom_voie.trim()||savingAddress?'not-allowed':'pointer'}}>{savingAddress?'Enregistrement...':'Ajouter et qualifier →'}</button>
+              <button onClick={handlePrepareAddress} disabled={!newAddress.nom_voie.trim()} style={{flex:1,padding:'11px',borderRadius:10,fontWeight:700,fontSize:14,background:!newAddress.nom_voie.trim()?'#E8E6DF':'#ea580c',color:'#fff',border:'none',cursor:!newAddress.nom_voie.trim()?'not-allowed':'pointer'}}>Placer sur la carte →</button>
             </div>
           </div>
         )}
       </div>
+      {/* Overlay placement adresse manuelle */}
+      {isHorsZone&&placingAddress&&(
+        <div style={{position:'absolute',bottom:0,left:0,right:0,background:'#fff',borderRadius:'20px 20px 0 0',padding:'16px 20px 32px',boxShadow:'0 -4px 20px rgba(0,0,0,0.15)',zIndex:500}}>
+          <div style={{width:36,height:4,borderRadius:2,background:'#D4D2CC',margin:'0 auto 14px'}}/>
+          <div style={{fontWeight:700,fontSize:'0.95rem',color:'#1a1a18',marginBottom:4}}>📍 Placer l'adresse sur la carte</div>
+          <div style={{fontSize:'0.78rem',color:'#9b9b96',marginBottom:16}}>{pendingFormData?.numero?`${pendingFormData.numero} `:''}{ pendingFormData?.nom_voie}</div>
+          {/* Géolocalisation */}
+          <button onClick={handleGeolocate} disabled={geolocating}
+            style={{width:'100%',padding:'12px',borderRadius:10,background:geolocating?'#e8e7e0':'#eff6ff',color:geolocating?'#9b9b96':'#1e40af',fontWeight:600,fontSize:'0.9rem',border:'1.5px solid #bfdbfe',cursor:geolocating?'not-allowed':'pointer',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {geolocating?'Localisation en cours...':'📡 Utiliser ma position GPS'}
+          </button>
+          {/* Coordonnées manuelles si pas de géoloc */}
+          {!placementCoords&&!geolocating&&(
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:'0.72rem',color:'#9b9b96',marginBottom:6,textAlign:'center'}}>ou saisir les coordonnées manuellement</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <div><div style={{fontSize:'0.7rem',color:'#9b9b96',marginBottom:3}}>Latitude</div>
+                  <input type="number" step="0.000001" placeholder="48.123456"
+                    onChange={e=>setPlacementCoords(prev=>({lat:parseFloat(e.target.value)||0,lon:prev?.lon??0}))}
+                    style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1.5px solid #E8E6DF',fontSize:12,outline:'none',boxSizing:'border-box'}}/></div>
+                <div><div style={{fontSize:'0.7rem',color:'#9b9b96',marginBottom:3}}>Longitude</div>
+                  <input type="number" step="0.000001" placeholder="-2.123456"
+                    onChange={e=>setPlacementCoords(prev=>({lat:prev?.lat??0,lon:parseFloat(e.target.value)||0}))}
+                    style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1.5px solid #E8E6DF',fontSize:12,outline:'none',boxSizing:'border-box'}}/></div>
+              </div>
+            </div>
+          )}
+          {/* Position trouvée */}
+          {placementCoords&&(
+            <div style={{marginBottom:12,padding:'10px 14px',borderRadius:8,background:'#f0fdf4',border:'1px solid #bbf7d0',display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:'1.2rem'}}>📍</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:'0.82rem',fontWeight:600,color:'#065f46'}}>Position sélectionnée</div>
+                <div style={{fontSize:'0.72rem',color:'#6b7280'}}>{placementCoords.lat.toFixed(6)}, {placementCoords.lon.toFixed(6)}</div>
+              </div>
+              <button onClick={()=>setPlacementCoords(null)} style={{background:'none',border:'none',color:'#9b9b96',cursor:'pointer',fontSize:'1rem'}}>✕</button>
+            </div>
+          )}
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>{setPlacingAddress(false);setShowAddressForm(true)}} style={{padding:'10px 16px',borderRadius:10,border:'1.5px solid #E8E6DF',background:'#fff',cursor:'pointer',fontSize:13}}>← Retour</button>
+            <button onClick={handleConfirmPlacement} disabled={!placementCoords||savingAddress}
+              style={{flex:1,padding:'11px',borderRadius:10,fontWeight:700,fontSize:14,background:!placementCoords||savingAddress?'#E8E6DF':'#ea580c',color:'#fff',border:'none',cursor:!placementCoords||savingAddress?'not-allowed':'pointer'}}>
+              {savingAddress?'Enregistrement...':'✓ Confirmer et qualifier →'}
+            </button>
+          </div>
+        </div>
+      )}
       {selectedAdresse&&<BottomSheet open={sheetOpen} adresse={selectedAdresse} sessionId={session?.id??''} onClose={()=>{setSheetOpen(false);setSelectedAdresse(null)}} onQualification={handleQualification}/>}
     </div>
   )
