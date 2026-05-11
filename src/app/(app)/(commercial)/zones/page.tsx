@@ -245,21 +245,30 @@ export default function ZonesPage() {
     setLoadingHistorique(false)
   }
 
-  const saveEdit = async () => {
-    if (!editingZone) return
-    setSaveStatus('saving')
-    const res = await fetch(`/api/zones/${editingZone.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nom: editNom, couleur: editCouleur }),
-    })
-    if (res.ok) {
-      setSaveStatus('saved')
-      await loadZones()
-      await loadChevauchements()
-      setTimeout(() => { setEditingZone(null); setSaveStatus('idle') }, 700)
+ const saveEdit = async () => {
+  if (!editingZone) return
+  setSaveStatus('saving')
+  const res = await fetch(`/api/zones/${editingZone.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nom: editNom, couleur: editCouleur }),
+  })
+  if (res.ok) {
+    // Mise à jour locale immédiate sans re-fetch
+    setZones(prev => prev.map(z =>
+      z.id === editingZone.id ? { ...z, nom: editNom, couleur: editCouleur } : z
+    ))
+    if (selectedZone?.id === editingZone.id) {
+      setSelectedZone(prev => prev ? { ...prev, nom: editNom, couleur: editCouleur } : null)
     }
+    setSaveStatus('saved')
+    setTimeout(() => { setEditingZone(null); setSaveStatus('idle') }, 600)
+  } else {
+    const d = await res.json().catch(() => ({}))
+    alert('Erreur : ' + (d.error ?? 'impossible de sauvegarder'))
+    setSaveStatus('idle')
   }
+}
 
   const handleRestaurer = async (version: number) => {
     if (!editingZone) return
