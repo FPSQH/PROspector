@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 
 type Params = { params: { id: string } }
 
-// GET /api/sessions/[id] — détail session + adresses avec statut
 export async function GET(_req: Request, { params }: Params) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -15,6 +14,7 @@ export async function GET(_req: Request, { params }: Params) {
       id, zone_id, date_session, heure_debut, heure_fin,
       heure_debut_reel, heure_fin_reel, statut, created_at,
       nb_portes, nb_boites, nb_contacts_saisis, nb_qualifications, notes, rapport_json,
+      type_session, commune_code_insee, commune_nom,
       zones_prospection (id, nom, couleur, numero, nb_prospectables)
     `)
     .eq('id', params.id)
@@ -23,35 +23,59 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (!session) return NextResponse.json({ error: 'Session non trouvee' }, { status: 404 })
 
+  // ── Chargement des adresses selon le type de session ──────────
   const allAdresses: any[] = []
   let from = 0
-  while (true) {
-    const { data, error } = await supabase
-      .from('adresses')
-      .select('id, lat, lon, numero, nom_voie, code_postal, commune, type_bien, nb_bal, prospectable, type_habitat, mode_prospection, statut_prospectabilite, motif_exclusion, courrier_cible_possible, commentaire_adresse, nom_syndic, nb_acces_observe')
-      .eq('zone_id', session.zone_id)
-      .not('lat', 'is', null)
-      .range(from, from + 999)
-    if (error || !data || data.length === 0) break
-    allAdresses.push(...data)
-    if (data.length < 1000) break
-    from += 1000
+
+  if (session.zone_id) {
+    // Session sur zone identifiée
+    while (true) {
+      const { data, error } = await supabase
+        .from('adresses')
+        .select('id, lat, lon, numero, nom_voie, code_postal, commune, type_bien, nb_bal, prospectable, type_habitat, mode_prospection, statut_prospectabilite, motif_exclusion, courrier_cible_possible, commentaire_adresse, nom_syndic, nb_acces_observe, zone_id, is_manuelle')
+        .eq('zone_id', session.zone_id)
+        .not('lat', 'is', null)
+        .range(from, from + 999)
+      if (error || !data || data.length === 0) break
+      allAdresses.push(...data)
+      if (data.length < 1000) break
+      from += 1000
+    }
+  } else if (session.commune_code_insee) {
+    // Session hors zone — toutes les adresses de la commune
+    while (true) {
+      const { data, error } = await supabase
+        .from('adresses')
+        .select('id, lat, lon, numero, nom_voie, code_postal, commune, type_bien, nb_bal, prospectable, type_habitat, mode_prospection, statut_prospectabilite, motif_exclusion, courrier_cible_possible, commentaire_adresse, nom_syndic, zone_id, is_manuelle')
+        .eq('code_insee', session.commune_code_insee)
+        .not('lat', 'is', null)
+        .range(from, from + 999)
+      if (error || !data || data.length === 0) break
+      allAdresses.push(...data)
+      if (data.length < 1000) break
+      from += 1000
+    }
   }
 
-  const { data: interactions } = await supabase
+  // ── Interactions de la session ────────────────────────────────
+  const { data: interactions, error: interError } = await supabase
     .from('interactions')
     .select('id, adresse_id, resultat, action, type_contact, type_habitat, note, date_relance')
     .eq('session_id', params.id)
 
-  const { data: itineraire } = await supabase
+  if (interError) console.error('[sessions/GET] interactions error:', interError.message)
+
+  // ── Itinéraire (zones seulement) ──────────────────────────────
+  const { data: itineraire } = session.zone_id ? await supabase
     .from('itineraires_zone')
     .select('adresse_id, ordre')
     .eq('zone_id', session.zone_id)
-    .order('ordre')
+    .order('ordre') : { data: null }
 
   const interMap = new Map((interactions ?? []).map((i: any) => [i.adresse_id, i]))
   const itinMap  = new Map((itineraire ?? []).map((i: any) => [i.adresse_id, i.ordre]))
 
+  // ── DPE ───────────────────────────────────────────────────────
   const adresseIds = allAdresses.map((a: any) => a.id)
   type DpeInfo = { date_etablissement: string; etiquette_dpe: string | null; has_audit: boolean; audit_n: string | null }
   const dpeMap: Record<string, DpeInfo> = {}
@@ -71,6 +95,7 @@ export async function GET(_req: Request, { params }: Params) {
     }
   }
 
+  // ── Projets actifs ────────────────────────────────────────────
   const projetSet = new Set<string>()
   if (adresseIds.length > 0) {
     const { data: contacts } = await supabase
@@ -82,6 +107,7 @@ export async function GET(_req: Request, { params }: Params) {
     }
   }
 
+  // ── Visites récentes ──────────────────────────────────────────
   const visiteMap: Record<string, string> = {}
   if (adresseIds.length > 0) {
     const oneMonthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
@@ -118,8 +144,9 @@ export async function GET(_req: Request, { params }: Params) {
   const adressesAvecStatut = allAdresses.map((a) => {
     const inter   = interMap.get(a.id)
     const dpeInfo = dpeMap[a.id] ?? null
+    // FIX : accepter 'contact' ET 'contact_etabli'
     const statut  = !inter ? 'a_faire'
-      : inter.resultat === 'contact_etabli' ? 'contact'
+      : (inter.resultat === 'contact' || inter.resultat === 'contact_etabli') ? 'contact'
       : inter.action === 'flyer' || inter.action === 'courrier' ? 'boite'
       : 'visite'
     return {
@@ -148,7 +175,6 @@ export async function GET(_req: Request, { params }: Params) {
   })
 }
 
-// PATCH /api/sessions/[id]
 export async function PATCH(req: Request, { params }: Params) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -158,35 +184,36 @@ export async function PATCH(req: Request, { params }: Params) {
   const { statut, heure_fin, nb_portes, nb_boites, notes, date_session, zone_id } = body
 
   const updates: any = {}
-  if (zone_id)      updates.zone_id      = zone_id
-  if (notes !== undefined) updates.notes = notes
-  if (date_session) updates.date_session = date_session
+  if (zone_id)                updates.zone_id      = zone_id
+  if (notes !== undefined)    updates.notes        = notes
+  if (date_session)           updates.date_session = date_session
 
-  // ── Clôture avec calcul automatique des stats ──────────────────
   if (statut === 'realisee') {
-    updates.statut        = 'realisee'
+    updates.statut         = 'realisee'
     updates.heure_fin_reel = new Date().toISOString()
 
-    // Récupérer toutes les interactions de cette session
-    const { data: inters } = await supabase
+    // FIX : sélectionner 'type_habitat' (pas 'type_habitat_observe')
+    const { data: inters, error: interError } = await supabase
       .from('interactions')
-      .select('resultat, action, type_habitat_observe, adresse_id')
+      .select('resultat, action, type_habitat, adresse_id')
       .eq('session_id', params.id)
 
-    const allInters      = inters ?? []
-    const nb_visites     = allInters.length
-    const nb_contacts    = allInters.filter((i: any) => i.resultat === 'contact').length
-    const nb_flyers      = allInters.filter((i: any) => i.action === 'flyer').length
-    const nb_maisons     = allInters.filter((i: any) => i.type_habitat_observe === 'individuel').length
-    const nb_immeubles   = allInters.filter((i: any) => i.type_habitat_observe === 'collectif').length
-    const nb_qualifs     = nb_maisons + nb_immeubles
+    if (interError) console.error('[sessions/PATCH] interactions error:', interError.message)
 
-    // Récupérer la session pour connaître l'heure de début (pour les contacts)
+    const allInters    = inters ?? []
+    const nb_visites   = allInters.length
+    // FIX : compter 'contact' ET 'contact_etabli'
+    const nb_contacts  = allInters.filter((i: any) => i.resultat === 'contact' || i.resultat === 'contact_etabli').length
+    const nb_flyers    = allInters.filter((i: any) => i.action === 'flyer').length
+    // FIX : utiliser 'type_habitat' (pas 'type_habitat_observe')
+    const nb_maisons   = allInters.filter((i: any) => i.type_habitat === 'individuel').length
+    const nb_immeubles = allInters.filter((i: any) => i.type_habitat === 'collectif').length
+    const nb_qualifs   = nb_maisons + nb_immeubles
+
     const { data: sess } = await supabase
       .from('sessions_prospection').select('created_at, heure_debut_reel').eq('id', params.id).single()
     const sessionStart = sess?.heure_debut_reel ?? sess?.created_at ?? new Date(Date.now() - 7200000).toISOString()
 
-    // Contacts créés pendant la session
     const { data: contactsCrees } = await supabase
       .from('contacts')
       .select('id, nom, prenom, tel1, adresse_id, statut_pipeline')
@@ -210,7 +237,6 @@ export async function PATCH(req: Request, { params }: Params) {
     updates.nb_qualifications  = nb_qualifs
     updates.rapport_json       = rapport
 
-    // Sync planning_sessions lié à cette session
     await supabase.from('planning_sessions')
       .update({
         nb_adresses_visitees:   nb_visites,
@@ -230,7 +256,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (!Object.keys(updates).length)
-    return NextResponse.json({ error: 'Rien à mettre à jour' }, { status: 400 })
+    return NextResponse.json({ error: 'Rien a mettre a jour' }, { status: 400 })
 
   const { data, error } = await supabase
     .from('sessions_prospection')
