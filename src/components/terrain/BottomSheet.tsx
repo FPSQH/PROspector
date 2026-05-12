@@ -93,11 +93,12 @@ export default function BottomSheet({
     if (nbBal && parseInt(nbBal) !== adresse.nb_bal) adresseUpdate.nb_bal = parseInt(nbBal)
     if (nomSyndic.trim()) adresseUpdate.nom_syndic = nomSyndic.trim()
     if (courrierCible) adresseUpdate.courrier_cible_possible = true
-    if (Object.keys(adresseUpdate).length) {
+    // Ne pas PATCH les adresses manuelles (ID non-UUID)
+    if (!adresse.is_manuelle && Object.keys(adresseUpdate).length) {
       await fetch('/api/adresses/' + adresse.id, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adresseUpdate)
-      })
+      }).catch(()=>{})
     }
     await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -107,7 +108,7 @@ export default function BottomSheet({
         type_habitat_observe: typeHabitat || null,
         observations_terrain: courrierCible ? { courrier_possible: true } : {},
       })
-    })
+    }).catch(()=>{})
     setSaving(false)
     onQualification({ resultat: 'pas_de_reponse', action: finalAction, type_habitat: typeHabitat })
     onClose()
@@ -116,14 +117,16 @@ export default function BottomSheet({
   const submitExclusion = async () => {
     if (!motifExclusion) return
     setSaving(true)
-    await fetch('/api/adresses/' + adresse.id, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statut_prospectabilite: 'non_prospectable', motif_exclusion: motifExclusion, mode_prospection: 'exclure' })
-    })
+    if (!adresse.is_manuelle) {
+      await fetch('/api/adresses/' + adresse.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut_prospectabilite: 'non_prospectable', motif_exclusion: motifExclusion, mode_prospection: 'exclure' })
+      }).catch(()=>{})
+    }
     await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adresse_id: adresse.id, session_id: sessionId, resultat: 'exclusion', action: 'rien', observations_terrain: { motif_exclusion: motifExclusion } })
-    })
+    }).catch(()=>{})
     setSaving(false)
     onQualification({ resultat: 'exclusion', motif_exclusion: motifExclusion })
     onClose()
@@ -133,11 +136,11 @@ export default function BottomSheet({
     setSaving(true)
     const adresseUpdate: any = {}
     if (typeHabitat && typeHabitat !== adresse.type_habitat) adresseUpdate.type_habitat = typeHabitat
-    if (Object.keys(adresseUpdate).length) {
+    if (!adresse.is_manuelle && Object.keys(adresseUpdate).length) {
       await fetch('/api/adresses/' + adresse.id, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adresseUpdate)
-      })
+      }).catch(()=>{})
     }
     await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -147,7 +150,7 @@ export default function BottomSheet({
         type_habitat_observe: typeHabitat || null,
         notes: note || null,
       })
-    })
+    }).catch(()=>{})
     let contactId = null
     if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
       const cr = await fetch('/api/contacts', {
