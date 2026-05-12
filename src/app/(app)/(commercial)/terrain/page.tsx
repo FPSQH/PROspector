@@ -156,13 +156,44 @@ export default function TerrainPage() {
   const ouvrirGoogleMaps=()=>{ const adr=adresses.find(a=>a.id===itineraire[idxCourant]); if(!adr?.lat||!adr?.lon) return; window.open(`https://www.google.com/maps/dir/?api=1&destination=${adr.lat},${adr.lon}&travelmode=walking`,'_blank') }
   const handleEndSession=async()=>{ if(!session) return; if(!confirm('Terminer et clôturer cette session ?')) return; setLoading(true); const res=await fetch(`/api/sessions/${session.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({statut:'realisee',nb_portes:nbVisites})}); const d=await res.json(); setRapport(d.rapport??null); try{localStorage.removeItem(SESSION_KEY)}catch(_){}; setLoading(false); setAppState('terminee') }
 
-  const handleAddManualAddress=async()=>{
-    if(!newAddress.nom_voie.trim()||!session) return; setSavingAddress(true)
-    const lat=preAdresses[0]?.lat??adresses[0]?.lat??48.5; const lon=preAdresses[0]?.lon??adresses[0]?.lon??-2.5
-    const res=await fetch('/api/adresses/manuel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat,lon,numero:newAddress.numero||null,nom_voie:newAddress.nom_voie,code_insee:communeChoisie?.code_insee??session.commune_code_insee,commune:communeChoisie?.nom??session.commune_nom,code_postal:communeChoisie?.code_postal??'',type_habitat:newAddress.type_habitat,nb_bal:newAddress.nb_bal||null})})
+  const handlePrepareAddress = () => {
+    if(!newAddress.nom_voie.trim()||!session) return
+    setPendingFormData({...newAddress})
+    setShowAddressForm(false)
+    setPlacementCoords(null)
+    setPlacingAddress(true)
+  }
+
+  const handleGeolocate = () => {
+    if(!navigator.geolocation) return
+    setGeolocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setPlacementCoords({lat:pos.coords.latitude,lon:pos.coords.longitude}); setGeolocating(false) },
+      () => { setGeolocating(false) },
+      {enableHighAccuracy:true,timeout:8000}
+    )
+  }
+
+  const handleConfirmPlacement = async() => {
+    if(!pendingFormData||!session||!placementCoords) return
+    setSavingAddress(true)
+    const res=await fetch('/api/adresses/manuel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      lat:placementCoords.lat, lon:placementCoords.lon,
+      numero:pendingFormData.numero||null, nom_voie:pendingFormData.nom_voie,
+      code_insee:communeChoisie?.code_insee??session.commune_code_insee,
+      commune:communeChoisie?.nom??session.commune_nom,
+      code_postal:communeChoisie?.code_postal??'',
+      type_habitat:pendingFormData.type_habitat,
+      nb_bal:pendingFormData.nb_bal||null,
+    })})
     const data=await res.json()
-    if(res.ok&&data.adresse){ const newAdr:Adresse={...data.adresse,statut_carte:'a_faire',ordre:adresses.length,zone_id:null,zone_nom:null,zone_couleur:null,is_manuelle:true}; setAdresses(prev=>[...prev,newAdr]); setNbTotal(prev=>prev+1); setNewAddress({numero:'',nom_voie:'',type_habitat:'individuel',nb_bal:''}); setShowAddressForm(false); setSelectedAdresse(newAdr); setSheetOpen(true) }
-    setSavingAddress(false)
+    setSavingAddress(false); setPlacingAddress(false); setPendingFormData(null); setPlacementCoords(null)
+    if(res.ok&&data.adresse){
+      const newAdr:Adresse={...data.adresse,statut_carte:'a_faire',ordre:adresses.length,zone_id:null,zone_nom:null,zone_couleur:null,is_manuelle:true}
+      setAdresses(prev=>[...prev,newAdr]); setNbTotal(prev=>prev+1)
+      setNewAddress({numero:'',nom_voie:'',type_habitat:'individuel',nb_bal:''})
+      setSelectedAdresse(newAdr); setSheetOpen(true)
+    } else { alert('Erreur : '+(data.error??'inconnue')) }
   }
 
   const prochaineAdresseId=isHorsZone?null:(itineraire[idxCourant]??null)
