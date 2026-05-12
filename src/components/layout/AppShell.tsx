@@ -26,20 +26,22 @@ function IconDashboard() {
 function IconSecteur() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-      <path d="M9 22V12h6v10"/>
-      <circle cx="18" cy="5" r="3"/>
-      <path d="M18 8v3"/>
+      <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+      <line x1="9" y1="3" x2="9" y2="18"/>
+      <line x1="15" y1="6" x2="15" y2="21"/>
     </svg>
   )
 }
 
 function IconZones() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
-      <line x1="9" y1="3" x2="9" y2="18"/>
-      <line x1="15" y1="6" x2="15" y2="21"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <circle cx="12" cy="12" r="8"/>
+      <line x1="12" y1="2" x2="12" y2="6"/>
+      <line x1="12" y1="18" x2="12" y2="22"/>
+      <line x1="2" y1="12" x2="6" y2="12"/>
+      <line x1="18" y1="12" x2="22" y2="12"/>
+      <circle cx="12" cy="12" r="2" fill="currentColor"/>
     </svg>
   )
 }
@@ -56,8 +58,8 @@ function IconCourrier() {
 function IconTerrain() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-      <polyline points="9 22 9 12 15 12 15 22"/>
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+      <circle cx="12" cy="9" r="2.5"/>
     </svg>
   )
 }
@@ -148,10 +150,7 @@ export default function AppShell({ children, userName, userInitials }: Props) {
   const pathname  = usePathname()
   const [expanded, setExpanded] = useState(false)
 
-  // Pages sans sidebar (plein écran)
   const fullscreen = ['/zones/edit'].some((p) => pathname.startsWith(p))
-  const terrainActif = pathname.startsWith('/terrain')
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   if (fullscreen) return <>{children}</>
 
   const isActive = (item: NavItem) =>
@@ -167,16 +166,16 @@ export default function AppShell({ children, userName, userInitials }: Props) {
         onMouseEnter={() => setExpanded(true)}
         onMouseLeave={() => setExpanded(false)}
         style={{
-          width:          sidebarW,
-          minWidth:       sidebarW,
-          background:     '#fff',
-          borderRight:    '1px solid #e8e7e0',
-          display:        'flex',
-          flexDirection:  'column',
-          overflow:       'hidden',
-          transition:     'width 0.18s ease, min-width 0.18s ease',
-          zIndex:         100,
-          flexShrink:     0,
+          width:         sidebarW,
+          minWidth:      sidebarW,
+          background:    '#fff',
+          borderRight:   '1px solid #e8e7e0',
+          display:       'flex',
+          flexDirection: 'column',
+          overflow:      'hidden',
+          transition:    'width 0.18s ease, min-width 0.18s ease',
+          zIndex:        100,
+          flexShrink:    0,
         }}
       >
         {/* Logo */}
@@ -202,9 +201,11 @@ export default function AppShell({ children, userName, userInitials }: Props) {
           </div>
           {expanded && (
             <span style={{
-              fontWeight: 700, fontSize: '0.9rem', color: '#1a1a18',
-              whiteSpace: 'nowrap', opacity: expanded ? 1 : 0,
-              transition: 'opacity 0.1s',
+              fontWeight:  700,
+              fontSize:    '0.9rem',
+              color:       '#1a1a18',
+              whiteSpace:  'nowrap',
+              transition:  'opacity 0.1s',
             }}>
               PROspector
             </span>
@@ -221,7 +222,8 @@ export default function AppShell({ children, userName, userInitials }: Props) {
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '9px 8px', borderRadius: 8,
-                    color: '#ccc', whiteSpace: 'nowrap', overflow: 'hidden',
+                    color: '#d1d5db',
+                    whiteSpace: 'nowrap', overflow: 'hidden',
                     cursor: 'not-allowed',
                   }}>
                     <span style={{ flexShrink: 0, opacity: 0.4 }}>{item.icon}</span>
@@ -230,21 +232,22 @@ export default function AppShell({ children, userName, userInitials }: Props) {
                 ) : (
                   <Link href={item.href} style={{ textDecoration: 'none' }}>
                     <div style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '9px 8px', borderRadius: 8,
-                      background: active ? '#f0fdf4' : 'transparent',
-                      color: active ? '#0F6E56' : '#5F5E5A',
-                      whiteSpace: 'nowrap', overflow: 'hidden',
-                      transition: 'background 0.12s',
+                      display:    'flex',
+                      alignItems: 'center',
+                      gap:        10,
+                      padding:    '9px 8px',
+                      borderRadius: 8,
+                      background: active ? '#f0efeb' : 'transparent',
+                      color:      active ? '#1a1a18' : '#9b9b96',
+                      whiteSpace: 'nowrap',
+                      overflow:   'hidden',
+                      transition: 'background 0.12s, color 0.12s',
                     }}>
-                      <span style={{
-                        flexShrink: 0,
-                        color: active ? '#1D9E75' : '#9b9b96',
-                      }}>
-                        {item.icon}
-                      </span>
+                      <span style={{ flexShrink: 0 }}>{item.icon}</span>
                       {expanded && (
-                        <span style={{ fontSize: '0.82rem' }}>{item.label}</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: active ? 600 : 400 }}>
+                          {item.label}
+                        </span>
                       )}
                     </div>
                   </Link>
@@ -259,34 +262,57 @@ export default function AppShell({ children, userName, userInitials }: Props) {
           <div style={{ padding: '2px 0', marginBottom: 4 }}>
             <Link href="/settings" style={{ textDecoration: 'none' }}>
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '9px 8px', borderRadius: 8,
-                color: pathname === '/settings' ? '#0F6E56' : '#9b9b96',
-                whiteSpace: 'nowrap', overflow: 'hidden',
+                display:    'flex',
+                alignItems: 'center',
+                gap:        10,
+                padding:    '9px 8px',
+                borderRadius: 8,
+                background: pathname === '/settings' ? '#f0efeb' : 'transparent',
+                color:      pathname === '/settings' ? '#1a1a18' : '#9b9b96',
+                whiteSpace: 'nowrap',
+                overflow:   'hidden',
+                transition: 'background 0.12s',
               }}>
                 <span style={{ flexShrink: 0 }}><IconSettings /></span>
-                {expanded && <span style={{ fontSize: '0.82rem' }}>Paramètres</span>}
+                {expanded && (
+                  <span style={{ fontSize: '0.82rem', fontWeight: pathname === '/settings' ? 600 : 400 }}>
+                    Paramètres
+                  </span>
+                )}
               </div>
             </Link>
           </div>
 
           {/* Avatar */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '6px 8px', overflow: 'hidden',
+            display:    'flex',
+            alignItems: 'center',
+            gap:        10,
+            padding:    '6px 8px',
+            overflow:   'hidden',
           }}>
             <div style={{
-              width: 28, height: 28, borderRadius: '50%',
-              background: '#E1F5EE', color: '#0F6E56',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.7rem', fontWeight: 700, flexShrink: 0,
+              width:    28,
+              height:   28,
+              borderRadius: '50%',
+              background: '#f0efeb',
+              color:    '#5F5E5A',
+              display:  'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              flexShrink: 0,
             }}>
               {userInitials ?? 'FP'}
             </div>
             {expanded && (
               <span style={{
-                fontSize: '0.78rem', color: '#5F5E5A',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontSize:     '0.78rem',
+                color:        '#5F5E5A',
+                overflow:     'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace:   'nowrap',
               }}>
                 {userName ?? 'Commercial'}
               </span>
