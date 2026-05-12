@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     )
   }
 
-  // Vérifier que la session appartient au commercial (client normal = RLS)
+  // Vérifier ownership session (client normal)
   const { data: session } = await supabase
     .from('sessions_prospection')
     .select('id, statut')
@@ -30,33 +30,32 @@ export async function POST(req: Request) {
 
   if (!session) return NextResponse.json({ error: 'Session non trouvee' }, { status: 404 })
 
-  // Utiliser admin client pour bypasser RLS sur interactions
+  // Admin client pour bypasser RLS sur interactions
   const adminDb = createAdminClient()
 
-  // Upsert : si une interaction existe déjà pour cette adresse+session, la remplacer
+  // maybeSingle() retourne null sans erreur si aucune ligne
   const { data: existing } = await adminDb
     .from('interactions')
     .select('id')
     .eq('session_id', session_id)
     .eq('adresse_id', adresse_id)
-    .single()
-    .then(r => r)
-    .catch(() => ({ data: null }))
+    .maybeSingle()
 
   let interaction: any
+
   if (existing) {
     const { data, error } = await adminDb
       .from('interactions')
       .update({
         resultat,
-        action:        action        ?? null,
-        type_habitat:  type_habitat  ?? null,
-        nb_etages:     nb_etages     ?? null,
-        nom_boite:     nom_boite     ?? null,
-        type_contact:  type_contact  ?? null,
-        note:          note          ?? null,
-        date_relance:  date_relance  ?? null,
-        updated_at:    new Date().toISOString(),
+        action:       action       ?? null,
+        type_habitat: type_habitat ?? null,
+        nb_etages:    nb_etages    ?? null,
+        nom_boite:    nom_boite    ?? null,
+        type_contact: type_contact ?? null,
+        note:         note         ?? null,
+        date_relance: date_relance ?? null,
+        updated_at:   new Date().toISOString(),
       })
       .eq('id', existing.id)
       .select()
@@ -91,9 +90,9 @@ export async function POST(req: Request) {
     interaction = data
   }
 
-  // Incrémenter nb_portes (fire & forget — non bloquant)
+  // Incrémenter nb_portes — fire & forget non bloquant
   adminDb.rpc('increment_session_portes', { p_session_id: session_id })
-    .then(({ error }) => { if (error) console.warn('[interactions] rpc error:', error.message) })
+    .then(({ error }) => { if (error) console.warn('[interactions] rpc:', error.message) })
     .catch(() => {})
 
   return NextResponse.json({ interaction, nouveau: !existing })
