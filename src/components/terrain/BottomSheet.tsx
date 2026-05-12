@@ -93,21 +93,24 @@ export default function BottomSheet({
     if (nbBal && parseInt(nbBal) !== adresse.nb_bal) adresseUpdate.nb_bal = parseInt(nbBal)
     if (nomSyndic.trim()) adresseUpdate.nom_syndic = nomSyndic.trim()
     if (courrierCible) adresseUpdate.courrier_cible_possible = true
-    // Ne pas PATCH les adresses manuelles (ID non-UUID)
     if (!adresse.is_manuelle && Object.keys(adresseUpdate).length) {
       await fetch('/api/adresses/' + adresse.id, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adresseUpdate)
-      }).catch(()=>{})
+      }).catch(e => console.warn('[BottomSheet] PATCH adresse:', e))
     }
-    await fetch('/api/interactions', {
+    const interRes = await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({
-  adresse_id: adresse.id, session_id: sessionId,
-  resultat: 'pas_de_reponse', action: finalAction,
-  type_habitat: typeHabitat || null,           // ← nom correct
-})
-    }).catch(()=>{})
+      body: JSON.stringify({
+        adresse_id: adresse.id, session_id: sessionId,
+        resultat: 'pas_de_reponse', action: finalAction,
+        type_habitat: typeHabitat || null,
+      })
+    }).catch(e => { console.error('[BottomSheet] interactions network error:', e); return null })
+    if (interRes && !interRes.ok) {
+      const err = await interRes.json().catch(()=>({}))
+      console.error('[BottomSheet] interactions error', interRes.status, err, { adresse_id: adresse.id, session_id: sessionId, resultat: 'pas_de_reponse' })
+    }
     setSaving(false)
     onQualification({ resultat: 'pas_de_reponse', action: finalAction, type_habitat: typeHabitat })
     onClose()
@@ -120,12 +123,16 @@ export default function BottomSheet({
       await fetch('/api/adresses/' + adresse.id, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut_prospectabilite: 'non_prospectable', motif_exclusion: motifExclusion, mode_prospection: 'exclure' })
-      }).catch(()=>{})
+      }).catch(e => console.warn('[BottomSheet] PATCH adresse exclusion:', e))
     }
-    await fetch('/api/interactions', {
+    const interExclRes = await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adresse_id: adresse.id, session_id: sessionId, resultat: 'exclusion', action: 'rien', observations_terrain: { motif_exclusion: motifExclusion } })
-    }).catch(()=>{})
+      body: JSON.stringify({ adresse_id: adresse.id, session_id: sessionId, resultat: 'exclusion', action: 'rien', type_habitat: typeHabitat || null })
+    }).catch(e => { console.error('[BottomSheet] interactions network error:', e); return null })
+    if (interExclRes && !interExclRes.ok) {
+      const err = await interExclRes.json().catch(()=>({}))
+      console.error('[BottomSheet] interactions exclusion error', interExclRes.status, err)
+    }
     setSaving(false)
     onQualification({ resultat: 'exclusion', motif_exclusion: motifExclusion })
     onClose()
@@ -139,17 +146,21 @@ export default function BottomSheet({
       await fetch('/api/adresses/' + adresse.id, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adresseUpdate)
-      }).catch(()=>{})
+      }).catch(e => console.warn('[BottomSheet] PATCH adresse:', e))
     }
-    await fetch('/api/interactions', {
+    const interContactRes = await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({
-  adresse_id: adresse.id, session_id: sessionId,
-  resultat: 'contact_etabli', action: 'rien', 
-    type_habitat: typeHabitat || null,
-note: note || null,    // ← 'note' pas 'notes'
+      body: JSON.stringify({
+        adresse_id: adresse.id, session_id: sessionId,
+        resultat: 'contact_etabli', action: 'rien',
+        type_habitat: typeHabitat || null,
+        note: note || null,
       })
-    }).catch(()=>{})
+    }).catch(e => { console.error('[BottomSheet] interactions network error:', e); return null })
+    if (interContactRes && !interContactRes.ok) {
+      const err = await interContactRes.json().catch(()=>({}))
+      console.error('[BottomSheet] interactions contact error', interContactRes.status, err, { adresse_id: adresse.id, session_id: sessionId })
+    }
     let contactId = null
     if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
       const cr = await fetch('/api/contacts', {
@@ -176,7 +187,7 @@ note: note || null,    // ← 'note' pas 'notes'
       }
     }
     setSaving(false)
-    onQualification({ resultat: 'contact', profil, type_projet: typeProjet, contact_id: contactId })
+    onQualification({ resultat: 'contact_etabli', profil, type_projet: typeProjet, contact_id: contactId })
     onClose()
   }
 
