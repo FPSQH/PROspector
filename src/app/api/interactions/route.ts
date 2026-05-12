@@ -20,6 +20,16 @@ export async function POST(req: Request) {
     )
   }
 
+  // Normaliser les valeurs action vers les valeurs acceptées par la contrainte DB
+  const actionMap: Record<string, string> = {
+    'flyer':   'flyer_depose',
+    'courrier':'courrier_depose',
+    'rien':    'rien',
+    'flyer_depose':    'flyer_depose',
+    'courrier_depose': 'courrier_depose',
+  }
+  const actionNorm = action ? (actionMap[action] ?? 'rien') : 'rien'
+
   // Vérifier ownership session (client normal)
   const { data: session } = await supabase
     .from('sessions_prospection')
@@ -48,7 +58,7 @@ export async function POST(req: Request) {
       .from('interactions')
       .update({
         resultat,
-        action:       action       ?? null,
+        action:       actionNorm,
         type_habitat: type_habitat ?? null,
         nb_etages:    nb_etages    ?? null,
         nom_boite:    nom_boite    ?? null,
@@ -73,7 +83,7 @@ export async function POST(req: Request) {
         adresse_id,
         commercial_id: user.id,
         resultat,
-        action:       action       ?? null,
+        action:       actionNorm,
         type_habitat: type_habitat ?? null,
         nb_etages:    nb_etages    ?? null,
         nom_boite:    nom_boite    ?? null,
