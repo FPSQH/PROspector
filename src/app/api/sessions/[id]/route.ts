@@ -147,7 +147,7 @@ export async function GET(_req: Request, { params }: Params) {
     // FIX : accepter 'contact' ET 'contact_etabli'
     const statut  = !inter ? 'a_faire'
       : (inter.resultat === 'contact' || inter.resultat === 'contact_etabli') ? 'contact'
-      : inter.action === 'flyer' || inter.action === 'courrier' ? 'boite'
+      : (inter.action === 'flyer' || inter.action === 'flyer_depose' || inter.action === 'courrier' || inter.action === 'courrier_depose') ? 'boite'
       : 'visite'
     return {
       ...a,
@@ -204,7 +204,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const nb_visites   = allInters.length
     // FIX : compter 'contact' ET 'contact_etabli'
     const nb_contacts  = allInters.filter((i: any) => i.resultat === 'contact' || i.resultat === 'contact_etabli').length
-    const nb_flyers    = allInters.filter((i: any) => i.action === 'flyer').length
+    const nb_flyers    = allInters.filter((i: any) => i.action === 'flyer' || i.action === 'flyer_depose').length
     // FIX : utiliser 'type_habitat' (pas 'type_habitat_observe')
     const nb_maisons   = allInters.filter((i: any) => i.type_habitat === 'individuel').length
     const nb_immeubles = allInters.filter((i: any) => i.type_habitat === 'collectif').length
