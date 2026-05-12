@@ -48,20 +48,35 @@ export default async function DashboardPage() {
       .select('zone_id, nb_adresses_visitees, nb_adresses_total, nb_contacts, nb_maisons_qualifiees, nb_immeubles_qualifies, nb_syndics_qualifies')
       .eq('commercial_id', commercial.id).eq('statut', 'realisee'),
 
+    // Uniquement le statut pour le comptage planifiées/réalisées
     supabase.from('planning_sessions')
-      .select('zone_id, statut, nb_adresses_visitees, nb_adresses_total, nb_contacts, nb_maisons_qualifiees, nb_immeubles_qualifies, nb_syndics_qualifies')
+      .select('zone_id, statut')
       .eq('commercial_id', commercial.id).eq('mois', moisActuel).eq('annee', anneeActuel),
 
     // Session terrain active
     supabase.from('sessions_prospection')
-      .select('id, created_at, heure_debut_reel, date_session, zones_prospection(id, nom, couleur, numero)')
+      .select('id, created_at, heure_debut_reel, date_session, type_session, commune_nom, zones_prospection(id, nom, couleur, numero)')
       .eq('commercial_id', commercial.id).eq('statut', 'en_cours')
       .order('created_at', { ascending: false }).limit(1),
   ])
 
+  // ── Sessions réalisées ce mois — source de vérité pour les KPIs ──
+  const moisDebut = `${anneeActuel}-${String(moisActuel).padStart(2, '0')}-01`
+  const moisFin   = moisActuel === 12
+    ? `${anneeActuel + 1}-01-01`
+    : `${anneeActuel}-${String(moisActuel + 1).padStart(2, '0')}-01`
+
+  const { data: sessionsMoisReal } = await supabase
+    .from('sessions_prospection')
+    .select('id, rapport_json, nb_portes, nb_boites, nb_contacts_saisis, nb_qualifications, type_session')
+    .eq('commercial_id', commercial.id)
+    .eq('statut', 'realisee')
+    .gte('date_session', moisDebut)
+    .lt('date_session', moisFin)
+
   const { data: sessionsHistorique } = await supabase
     .from('sessions_prospection')
-    .select('id, date_session, heure_debut_reel, heure_fin_reel, nb_portes, nb_boites, nb_contacts_saisis, nb_qualifications, rapport_json, zones_prospection(id, nom, couleur, numero)')
+    .select('id, date_session, heure_debut_reel, heure_fin_reel, nb_portes, nb_boites, nb_contacts_saisis, nb_qualifications, rapport_json, type_session, commune_nom, zones_prospection(id, nom, couleur, numero)')
     .eq('commercial_id', commercial.id)
     .eq('statut', 'realisee')
     .order('date_session', { ascending: false })
@@ -83,7 +98,7 @@ export default async function DashboardPage() {
     ? new Date(activeTerrainSession.date_session + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
     : ''
 
-  // ── Cumul par zone ────────────────────────────────────────────
+  // ── Cumul par zone (depuis planning_sessions) ──────────────────
   type ZoneStat = { visitees: number; total: number; contacts: number; maisons: number; immeubles: number; syndics: number }
   const statsByZone = new Map<string, ZoneStat>()
   for (const s of (sessionStats ?? [])) {
@@ -98,20 +113,21 @@ export default async function DashboardPage() {
     })
   }
 
-  // ── Synthèse mensuelle ────────────────────────────────────────
-  const moisReal = (sessionsMois ?? []).filter((s: any) => s.statut === 'realisee')
+  // ── Synthèse mensuelle — depuis sessions_prospection.rapport_json ──
+  // Capture TOUTES les sessions (zone, libre, hors_zone)
   const moisPlan = (sessionsMois ?? []).filter((s: any) => s.statut === 'planifiee')
+  const sessReal = sessionsMoisReal ?? []
   const mois = {
-    nbRealisees:  moisReal.length,
+    nbRealisees:  sessReal.length,
     nbPlanifiees: moisPlan.length,
-    visitees:     moisReal.reduce((s: number, x: any) => s + (x.nb_adresses_visitees   ?? 0), 0),
-    total:        moisReal.reduce((s: number, x: any) => s + (x.nb_adresses_total      ?? 0), 0),
-    contacts:     moisReal.reduce((s: number, x: any) => s + (x.nb_contacts            ?? 0), 0),
-    maisons:      moisReal.reduce((s: number, x: any) => s + (x.nb_maisons_qualifiees  ?? 0), 0),
-    immeubles:    moisReal.reduce((s: number, x: any) => s + (x.nb_immeubles_qualifies ?? 0), 0),
-    syndics:      moisReal.reduce((s: number, x: any) => s + (x.nb_syndics_qualifies   ?? 0), 0),
+    visitees:  sessReal.reduce((s: number, x: any) => s + (x.rapport_json?.nb_visites   ?? x.nb_portes          ?? 0), 0),
+    contacts:  sessReal.reduce((s: number, x: any) => s + (x.rapport_json?.nb_contacts  ?? x.nb_contacts_saisis ?? 0), 0),
+    maisons:   sessReal.reduce((s: number, x: any) => s + (x.rapport_json?.nb_maisons   ?? 0), 0),
+    immeubles: sessReal.reduce((s: number, x: any) => s + (x.rapport_json?.nb_immeubles ?? 0), 0),
+    syndics:   sessReal.reduce((s: number, x: any) => s + (x.rapport_json?.nb_syndics   ?? 0), 0),
+    nbHorsZone: sessReal.filter((x: any) => x.type_session === 'hors_zone').length,
   }
-  const moisPct = mois.total > 0 ? Math.round(mois.visitees / mois.total * 100) : 0
+  const moisPct = 0 // couverture non applicable en cumul multi-sessions
 
   const prochaineZone   = (prochaineSession as any)?.zones_prospection ?? null
   const prochaineDateFr = prochaineSession
@@ -141,11 +157,15 @@ export default async function DashboardPage() {
         {/* ── Bannière session terrain active ── */}
         {activeTerrainSession && (
           <div style={{ background:'#fff', border:'1.5px solid #fed7aa', borderRadius:12, padding:'14px 20px', display:'flex', alignItems:'center', gap:16, marginBottom:20 }}>
-            <div style={{ fontSize:'1.4rem', flexShrink:0 }}>⚡</div>
+            <div style={{ fontSize:'1.4rem', flexShrink:0 }}>
+              {(activeTerrainSession as any).type_session === 'hors_zone' ? '🌐' : '⚡'}
+            </div>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontWeight:700, fontSize:'0.9rem', color:'#92400e', marginBottom:2 }}>Session terrain en cours</div>
               <div style={{ fontSize:'0.8rem', color:'#b45309' }}>
-                {(activeTerrainSession as any).zones_prospection?.nom ?? 'Zone'}
+                {(activeTerrainSession as any).type_session === 'hors_zone'
+                  ? ((activeTerrainSession as any).commune_nom ?? 'Hors Zone')
+                  : ((activeTerrainSession as any).zones_prospection?.nom ?? 'Zone')}
                 {activeDateFr && ` · ${activeDateFr}`}
                 {activeDebutFr && ` · démarrée à ${activeDebutFr}`}
               </div>
@@ -220,21 +240,27 @@ export default async function DashboardPage() {
         {(mois.nbRealisees > 0 || mois.nbPlanifiees > 0) && (
           <div style={{ background:'#fff', borderRadius:12, border:'1px solid #f0efeb', padding:'18px 24px', marginBottom:20 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-              <h2 style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:'#1a1a18' }}>Synthèse {nomMois}</h2>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <h2 style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:'#1a1a18' }}>Synthèse {nomMois}</h2>
+                {mois.nbHorsZone > 0 && (
+                  <span style={{ fontSize:'0.68rem', fontWeight:600, padding:'2px 7px', borderRadius:10, background:'#fff7ed', color:'#ea580c', border:'1px solid #fed7aa' }}>
+                    🌐 {mois.nbHorsZone} hors zone
+                  </span>
+                )}
+              </div>
               <div style={{ display:'flex', gap:6 }}>
-                <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'2px 8px', borderRadius:20, background:'#d1fae5', color:'#065f46' }}>{mois.nbRealisees} réalisée{mois.nbRealisees>1?'s':''}</span>
+                {mois.nbRealisees > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'2px 8px', borderRadius:20, background:'#d1fae5', color:'#065f46' }}>{mois.nbRealisees} réalisée{mois.nbRealisees>1?'s':''}</span>}
                 {mois.nbPlanifiees > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'2px 8px', borderRadius:20, background:'#e0f2fe', color:'#0369a1' }}>{mois.nbPlanifiees} planifiée{mois.nbPlanifiees>1?'s':''}</span>}
                 <Link href="/planning" style={{ fontSize:'0.72rem', color:'#1D9E75', textDecoration:'none', padding:'2px 8px' }}>Voir planning →</Link>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:10 }}>
               {[
-                { label:'Adresses visitées', value:mois.total>0?`${mois.visitees}/${mois.total}`:'—', sub:mois.total>0?`${moisPct}%`:'', color:'#1D9E75', bg:'#f0fdf4' },
-                { label:'Contacts',   value:mois.contacts  ||'—', sub:'établis',    color:'#FF9800', bg:'#fff7ed' },
-                { label:'Maisons',    value:mois.maisons   ||'—', sub:'qualifiées', color:'#2196F3', bg:'#eff6ff' },
-                { label:'Immeubles',  value:mois.immeubles ||'—', sub:'qualifiés',  color:'#8b5cf6', bg:'#f5f3ff' },
-                { label:'Syndics',    value:mois.syndics   ||'—', sub:'identifiés', color:'#6b7280', bg:'#f9fafb' },
-                { label:'Couverture', value:mois.total>0?`${moisPct}%`:'—', sub:'du planning', color:moisPct>=80?'#065f46':moisPct>=50?'#92400e':'#dc2626', bg:moisPct>=80?'#f0fdf4':moisPct>=50?'#fffbeb':'#fef2f2' },
+                { label:'Adresses visitées', value:mois.visitees > 0 ? mois.visitees : '—',    sub:'total cumul',   color:'#1D9E75', bg:'#f0fdf4' },
+                { label:'Contacts',          value:mois.contacts  > 0 ? mois.contacts  : '—',  sub:'établis',       color:'#FF9800', bg:'#fff7ed' },
+                { label:'Maisons',           value:mois.maisons   > 0 ? mois.maisons   : '—',  sub:'qualifiées',    color:'#2196F3', bg:'#eff6ff' },
+                { label:'Immeubles',         value:mois.immeubles > 0 ? mois.immeubles : '—',  sub:'qualifiés',     color:'#8b5cf6', bg:'#f5f3ff' },
+                { label:'Sessions',          value:mois.nbRealisees,                            sub:'réalisées',     color:'#1D9E75', bg:'#f0fdf4' },
               ].map(k => (
                 <div key={k.label} style={{ background:k.bg, borderRadius:10, padding:'10px 12px', textAlign:'center' }}>
                   <div style={{ fontSize:'1.15rem', fontWeight:700, color:k.color, lineHeight:1, marginBottom:2 }}>{k.value}</div>
@@ -354,7 +380,7 @@ export default async function DashboardPage() {
               <h2 style={{ margin:'0 0 14px', fontSize:'0.9rem', fontWeight:600, color:'#1a1a18' }}>Actions rapides</h2>
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 {([
-                  { href:'/terrain',    label:'Démarrer une tournée', icon:'🚶', active:nbZones > 0 },
+                  { href:'/terrain',    label:'Démarrer une tournée', icon:'🚶', active:true },
                   { href:'/planning',   label:'Planning',             icon:'📅', active:true },
                   { href:'/contacts',   label:'Contacts',             icon:'🤝', active:true },
                   { href:'/courriers',  label:'Courriers DPE',        icon:'✉️', active:true },
@@ -362,17 +388,10 @@ export default async function DashboardPage() {
                   { href:'/onboarding', label:'Secteur',              icon:'🏘️', active:true },
                   ...(isManager ? [{ href:'/admin/users', label:'Équipe', icon:'👥', active:true }] : []),
                 ] as { href:string; label:string; icon:string; active:boolean }[]).map((action) => (
-                  action.active ? (
-                    <Link key={action.href} href={action.href} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, background:'#f8f7f4', textDecoration:'none', fontSize:'0.82rem', color:'#1a1a18' }}>
-                      <span style={{ fontSize:'14px' }}>{action.icon}</span>{action.label}
-                      <span style={{ marginLeft:'auto', color:'#9b9b96' }}>→</span>
-                    </Link>
-                  ) : (
-                    <div key={action.href} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, background:'#fafaf8', fontSize:'0.82rem', color:'#c9c8c2', cursor:'not-allowed' }}>
-                      <span style={{ fontSize:'14px', opacity:0.4 }}>{action.icon}</span>{action.label}
-                      <span style={{ marginLeft:'auto', fontSize:'0.68rem', color:'#d1d0c8' }}>bientôt</span>
-                    </div>
-                  )
+                  <Link key={action.href} href={action.href} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, background:'#f8f7f4', textDecoration:'none', fontSize:'0.82rem', color:'#1a1a18' }}>
+                    <span style={{ fontSize:'14px' }}>{action.icon}</span>{action.label}
+                    <span style={{ marginLeft:'auto', color:'#9b9b96' }}>→</span>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -380,45 +399,53 @@ export default async function DashboardPage() {
         </div>
       </main>
 
+      {/* Historique sessions */}
       <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 28px 20px' }}>
         {sessionsHistorique && sessionsHistorique.length > 0 && (
           <div style={{ background:'#fff', borderRadius:12, border:'1px solid #f0efeb', padding:'20px 24px' }}>
             <h2 style={{ margin:'0 0 16px', fontSize:'0.9rem', fontWeight:600, color:'#1a1a18' }}>Historique des sessions</h2>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {(sessionsHistorique as any[]).map((s) => {
-                const z = s.zones_prospection
+                const z       = s.zones_prospection
                 const rapport = s.rapport_json ?? {}
-                const dateFr = s.date_session
+                const isHz    = s.type_session === 'hors_zone'
+                const dateFr  = s.date_session
                   ? new Date(s.date_session + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'short', day:'numeric', month:'short' })
                   : '—'
-                const nbVisites  = rapport.nb_visites  ?? s.nb_portes ?? 0
+                const nbVisites  = rapport.nb_visites  ?? s.nb_portes          ?? 0
                 const nbContacts = rapport.nb_contacts ?? s.nb_contacts_saisis ?? 0
-                const nbFlyers   = rapport.nb_flyers   ?? s.nb_boites ?? 0
+                const nbFlyers   = rapport.nb_flyers   ?? s.nb_boites          ?? 0
                 const nbQualifs  = rapport.nb_qualifications ?? s.nb_qualifications ?? 0
                 const contacts   = rapport.contacts ?? []
                 return (
                   <details key={s.id} style={{ borderRadius:8, border:'1px solid #f0efeb', overflow:'hidden' }}>
                     <summary style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', cursor:'pointer', listStyle:'none', background:'#fafaf8' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:7, flex:1, minWidth:0 }}>
-                        {z && <div style={{ width:8, height:8, borderRadius:'50%', background:z.couleur, flexShrink:0 }}/>}
+                        {isHz
+                          ? <span style={{ fontSize:'0.9rem' }}>🌐</span>
+                          : z && <div style={{ width:8, height:8, borderRadius:'50%', background:z.couleur, flexShrink:0 }}/>
+                        }
                         <span style={{ fontWeight:600, fontSize:'0.82rem', color:'#1a1a18' }}>{dateFr}</span>
-                        <span style={{ fontSize:'0.78rem', color:'#6b7280' }}>{z?.nom ?? '—'}</span>
+                        <span style={{ fontSize:'0.78rem', color:'#6b7280' }}>
+                          {isHz ? (s.commune_nom ?? 'Hors Zone') : (z?.nom ?? '—')}
+                        </span>
+                        {isHz && <span style={{ fontSize:'0.68rem', fontWeight:600, padding:'1px 5px', borderRadius:8, background:'#fff7ed', color:'#ea580c' }}>Libre</span>}
                       </div>
                       <div style={{ display:'flex', gap:8, flexShrink:0 }}>
-                        {nbVisites > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#f0fdf4', color:'#065f46' }}>🚶 {nbVisites}</span>}
+                        {nbVisites  > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#f0fdf4', color:'#065f46' }}>🚶 {nbVisites}</span>}
                         {nbContacts > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#fff7ed', color:'#ea580c' }}>🤝 {nbContacts}</span>}
-                        {nbFlyers > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#f5f3ff', color:'#7c3aed' }}>📄 {nbFlyers}</span>}
-                        {nbQualifs > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8' }}>✓ {nbQualifs}</span>}
+                        {nbFlyers   > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#f5f3ff', color:'#7c3aed' }}>📄 {nbFlyers}</span>}
+                        {nbQualifs  > 0 && <span style={{ fontSize:'0.72rem', fontWeight:600, padding:'1px 6px', borderRadius:10, background:'#eff6ff', color:'#1d4ed8' }}>✓ {nbQualifs}</span>}
                       </div>
                       <span style={{ fontSize:'0.72rem', color:'#9b9b96', marginLeft:8 }}>▼</span>
                     </summary>
                     <div style={{ padding:'12px 14px', borderTop:'1px solid #f0efeb', background:'#fff' }}>
                       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12 }}>
                         {[
-                          { label:'Visites',      value:nbVisites,  color:'#1D9E75', bg:'#f0fdf4' },
-                          { label:'Contacts',     value:nbContacts, color:'#ea580c', bg:'#fff7ed' },
-                          { label:'Flyers',       value:nbFlyers,   color:'#7c3aed', bg:'#f5f3ff' },
-                          { label:'Qualifiées',   value:nbQualifs,  color:'#1d4ed8', bg:'#eff6ff' },
+                          { label:'Visites',    value:nbVisites,  color:'#1D9E75', bg:'#f0fdf4' },
+                          { label:'Contacts',   value:nbContacts, color:'#ea580c', bg:'#fff7ed' },
+                          { label:'Flyers',     value:nbFlyers,   color:'#7c3aed', bg:'#f5f3ff' },
+                          { label:'Qualifiées', value:nbQualifs,  color:'#1d4ed8', bg:'#eff6ff' },
                         ].map(k => (
                           <div key={k.label} style={{ background:k.bg, borderRadius:8, padding:'8px 10px', textAlign:'center' }}>
                             <div style={{ fontSize:'1.1rem', fontWeight:700, color:k.color }}>{k.value || '—'}</div>
@@ -426,12 +453,12 @@ export default async function DashboardPage() {
                           </div>
                         ))}
                       </div>
-                      {rapport.nb_maisons > 0 || rapport.nb_immeubles > 0 ? (
+                      {(rapport.nb_maisons > 0 || rapport.nb_immeubles > 0) && (
                         <div style={{ fontSize:'0.75rem', color:'#6b7280', marginBottom:contacts.length ? 10 : 0 }}>
-                          {rapport.nb_maisons > 0 && <span style={{ marginRight:12 }}>🏠 {rapport.nb_maisons} maison{rapport.nb_maisons>1?'s':''}</span>}
+                          {rapport.nb_maisons   > 0 && <span style={{ marginRight:12 }}>🏠 {rapport.nb_maisons} maison{rapport.nb_maisons>1?'s':''}</span>}
                           {rapport.nb_immeubles > 0 && <span>🏢 {rapport.nb_immeubles} immeuble{rapport.nb_immeubles>1?'s':''}</span>}
                         </div>
-                      ) : null}
+                      )}
                       {contacts.length > 0 && (
                         <div>
                           <div style={{ fontSize:'0.7rem', fontWeight:700, color:'#9b9b96', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.04em' }}>Contacts ({contacts.length})</div>
