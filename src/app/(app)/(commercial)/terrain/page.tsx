@@ -353,7 +353,7 @@ export default function TerrainPage() {
         <button onClick={handleEndSession} disabled={loading} style={{padding:'5px 10px',borderRadius:7,background:'#fef2f2',color:'#dc2626',border:'1px solid #fecaca',fontSize:'0.72rem',fontWeight:600,cursor:loading?'not-allowed':'pointer',flexShrink:0}}>Terminer</button>
       </div>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={prochaineAdresseId} onAdresseClick={handleAdresseClick} dpeFlags={activeDpeFlags}/>
+        <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={placingAddress?null:prochaineAdresseId} onAdresseClick={placingAddress?()=>{}:handleAdresseClick} dpeFlags={activeDpeFlags} placementMode={placingAddress} onPlacementClick={(lat,lon)=>setPlacementCoords({lat,lon})} placementCoords={placementCoords}/>
         <div style={{position:'absolute',bottom:sheetOpen?320:16,left:12,background:'rgba(255,255,255,0.95)',borderRadius:8,padding:'6px 10px',fontSize:'0.68rem',color:'#5F5E5A',border:'1px solid #e8e7e0',transition:'bottom 0.3s ease',pointerEvents:'none'}}>
           {[{color:'#ef4444',label:'À faire'},{color:'#3b82f6',label:'Boîté'},{color:'#22c55e',label:'Contact'},{color:'#9b9b96',label:'Autre'}].map(item=>(<div key={item.label} style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}><div style={{width:8,height:8,borderRadius:'50%',background:item.color,flexShrink:0}}/><span>{item.label}</span></div>))}
           {isHorsZone&&<div style={{marginTop:4,paddingTop:4,borderTop:'1px solid #f0efeb',color:'#ea580c',fontWeight:600}}>🌐 Prospection libre</div>}
@@ -373,49 +373,30 @@ export default function TerrainPage() {
           </div>
         )}
       </div>
-      {/* Overlay placement adresse manuelle */}
+      {/* Overlay placement adresse manuelle — tap sur la carte */}
       {isHorsZone&&placingAddress&&(
-        <div style={{position:'absolute',bottom:0,left:0,right:0,background:'#fff',borderRadius:'20px 20px 0 0',padding:'16px 20px 32px',boxShadow:'0 -4px 20px rgba(0,0,0,0.15)',zIndex:500}}>
-          <div style={{width:36,height:4,borderRadius:2,background:'#D4D2CC',margin:'0 auto 14px'}}/>
-          <div style={{fontWeight:700,fontSize:'0.95rem',color:'#1a1a18',marginBottom:4}}>📍 Placer l'adresse sur la carte</div>
-          <div style={{fontSize:'0.78rem',color:'#9b9b96',marginBottom:16}}>{pendingFormData?.numero?`${pendingFormData.numero} `:''}{ pendingFormData?.nom_voie}</div>
-          {/* Géolocalisation */}
-          <div style={{fontSize:'0.72rem',color:'#92400e',background:'#fef3c7',border:'1px solid #fde68a',borderRadius:8,padding:'8px 10px',marginBottom:10}}>
-            ⚠ Vérifiez que la position GPS correspond bien à la commune prospectée. Ajustez les coordonnées si nécessaire.
-          </div>
-          <button onClick={handleGeolocate} disabled={geolocating}
-            style={{width:'100%',padding:'12px',borderRadius:10,background:geolocating?'#e8e7e0':'#eff6ff',color:geolocating?'#9b9b96':'#1e40af',fontWeight:600,fontSize:'0.9rem',border:'1.5px solid #bfdbfe',cursor:geolocating?'not-allowed':'pointer',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-            {geolocating?'Localisation en cours...':'📡 Utiliser ma position GPS'}
-          </button>
-          {/* Coordonnées manuelles si pas de géoloc */}
-          {!placementCoords&&!geolocating&&(
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:'0.72rem',color:'#9b9b96',marginBottom:6,textAlign:'center'}}>ou saisir les coordonnées manuellement</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                <div><div style={{fontSize:'0.7rem',color:'#9b9b96',marginBottom:3}}>Latitude</div>
-                  <input type="number" step="0.000001" placeholder="48.123456"
-                    onChange={e=>setPlacementCoords(prev=>({lat:parseFloat(e.target.value)||0,lon:prev?.lon??0}))}
-                    style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1.5px solid #E8E6DF',fontSize:12,outline:'none',boxSizing:'border-box'}}/></div>
-                <div><div style={{fontSize:'0.7rem',color:'#9b9b96',marginBottom:3}}>Longitude</div>
-                  <input type="number" step="0.000001" placeholder="-2.123456"
-                    onChange={e=>setPlacementCoords(prev=>({lat:prev?.lat??0,lon:parseFloat(e.target.value)||0}))}
-                    style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1.5px solid #E8E6DF',fontSize:12,outline:'none',boxSizing:'border-box'}}/></div>
-              </div>
+        <div style={{position:'absolute',bottom:0,left:0,right:0,background:'#fff',borderRadius:'20px 20px 0 0',padding:'16px 20px 28px',boxShadow:'0 -4px 20px rgba(0,0,0,0.15)',zIndex:500}}>
+          <div style={{width:36,height:4,borderRadius:2,background:'#D4D2CC',margin:'0 auto 12px'}}/>
+          <div style={{fontWeight:700,fontSize:'0.9rem',color:'#1a1a18',marginBottom:2}}>📍 Placement de l'adresse</div>
+          <div style={{fontSize:'0.78rem',color:'#9b9b96',marginBottom:12}}>{pendingFormData?.numero?`${pendingFormData.numero} `:''}{pendingFormData?.nom_voie}</div>
+          {!placementCoords?(
+            <div style={{textAlign:'center',padding:'16px 0',marginBottom:12,background:'#fff7ed',borderRadius:10,border:'1px solid #fed7aa'}}>
+              <div style={{fontSize:'2rem',marginBottom:6}}>👆</div>
+              <div style={{fontSize:'0.88rem',color:'#ea580c',fontWeight:700,marginBottom:2}}>Tapez sur la carte pour placer l'adresse</div>
+              <div style={{fontSize:'0.74rem',color:'#9b9b96'}}>Vous pourrez repositionner en retapant une autre zone</div>
             </div>
-          )}
-          {/* Position trouvée */}
-          {placementCoords&&(
+          ):(
             <div style={{marginBottom:12,padding:'10px 14px',borderRadius:8,background:'#f0fdf4',border:'1px solid #bbf7d0',display:'flex',alignItems:'center',gap:10}}>
-              <span style={{fontSize:'1.2rem'}}>📍</span>
+              <span style={{fontSize:'1.2rem'}}>✅</span>
               <div style={{flex:1}}>
-                <div style={{fontSize:'0.82rem',fontWeight:600,color:'#065f46'}}>Position sélectionnée</div>
-                <div style={{fontSize:'0.72rem',color:'#6b7280'}}>{placementCoords.lat.toFixed(6)}, {placementCoords.lon.toFixed(6)}</div>
+                <div style={{fontSize:'0.82rem',fontWeight:600,color:'#065f46'}}>Position confirmée · Retapez pour déplacer</div>
+                <div style={{fontSize:'0.72rem',color:'#6b7280'}}>{placementCoords.lat.toFixed(5)}, {placementCoords.lon.toFixed(5)}</div>
               </div>
               <button onClick={()=>setPlacementCoords(null)} style={{background:'none',border:'none',color:'#9b9b96',cursor:'pointer',fontSize:'1rem'}}>✕</button>
             </div>
           )}
           <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>{setPlacingAddress(false);setShowAddressForm(true)}} style={{padding:'10px 16px',borderRadius:10,border:'1.5px solid #E8E6DF',background:'#fff',cursor:'pointer',fontSize:13}}>← Retour</button>
+            <button onClick={()=>{setPlacingAddress(false);setShowAddressForm(true)}} style={{padding:'10px 14px',borderRadius:10,border:'1.5px solid #E8E6DF',background:'#fff',cursor:'pointer',fontSize:13}}>← Retour</button>
             <button onClick={handleConfirmPlacement} disabled={!placementCoords||savingAddress}
               style={{flex:1,padding:'11px',borderRadius:10,fontWeight:700,fontSize:14,background:!placementCoords||savingAddress?'#E8E6DF':'#ea580c',color:'#fff',border:'none',cursor:!placementCoords||savingAddress?'not-allowed':'pointer'}}>
               {savingAddress?'Enregistrement...':'✓ Confirmer et qualifier →'}
@@ -423,6 +404,7 @@ export default function TerrainPage() {
           </div>
         </div>
       )}
+
       {selectedAdresse&&<BottomSheet open={sheetOpen} adresse={selectedAdresse} sessionId={session?.id??''} onClose={()=>{setSheetOpen(false);setSelectedAdresse(null)}} onQualification={handleQualification}/>}
     </div>
   )
