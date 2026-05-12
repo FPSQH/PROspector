@@ -380,6 +380,9 @@ export default function TerrainPage() {
           <div style={{fontWeight:700,fontSize:'0.95rem',color:'#1a1a18',marginBottom:4}}>📍 Placer l'adresse sur la carte</div>
           <div style={{fontSize:'0.78rem',color:'#9b9b96',marginBottom:16}}>{pendingFormData?.numero?`${pendingFormData.numero} `:''}{ pendingFormData?.nom_voie}</div>
           {/* Géolocalisation */}
+          <div style={{fontSize:'0.72rem',color:'#92400e',background:'#fef3c7',border:'1px solid #fde68a',borderRadius:8,padding:'8px 10px',marginBottom:10}}>
+            ⚠ Vérifiez que la position GPS correspond bien à la commune prospectée. Ajustez les coordonnées si nécessaire.
+          </div>
           <button onClick={handleGeolocate} disabled={geolocating}
             style={{width:'100%',padding:'12px',borderRadius:10,background:geolocating?'#e8e7e0':'#eff6ff',color:geolocating?'#9b9b96':'#1e40af',fontWeight:600,fontSize:'0.9rem',border:'1.5px solid #bfdbfe',cursor:geolocating?'not-allowed':'pointer',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
             {geolocating?'Localisation en cours...':'📡 Utiliser ma position GPS'}
