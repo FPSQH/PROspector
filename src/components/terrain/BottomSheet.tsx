@@ -144,9 +144,9 @@ export default function BottomSheet({
     }
     await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adresse_id: adresse.id, session_id: sessionId,
-        resultat: 'contact', action: 'rien',
+body: JSON.stringify({
+  adresse_id: adresse.id, session_id: sessionId,
+  resultat: 'contact_etabli', action: 'rien', 
         type_habitat_observe: typeHabitat || null,
         notes: note || null,
       })
