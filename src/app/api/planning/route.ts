@@ -11,17 +11,18 @@ async function getConfig(supabase: any, userId: string) {
   const { data } = await supabase
     .from('planning_config').select('*').eq('commercial_id', userId).maybeSingle()
   return {
-    jours:                 (data?.jours_semaine          ?? [2, 3, 5]) as number[],
-    debut:                 (data?.heure_debut             ?? '10:00')  as string,
-    duree:                 (data?.duree_minutes            ?? 120)      as number,
-    date_debut:            (data?.date_debut               ?? null)     as string | null,
-    deux_zones:            (data?.deux_zones_par_seance   ?? false)    as boolean,
+    jours:      (data?.jours_semaine   ?? [2, 3, 5]) as number[],
+    debut:      (data?.heure_debut     ?? '10:00')   as string,
+    duree:      (data?.duree_minutes   ?? 120)        as number,
+    date_debut: (data?.date_debut      ?? null)       as string | null,
+    debut_2:    (data?.heure_debut_2   ?? null)       as string | null,
+    jours_2:    (data?.jours_semaine_2 ?? [])         as number[],
   }
 }
 
-// Join standard pour toutes les requêtes sessions
 const SESSION_SELECT =
-  '*, zones_prospection:zone_id(id,nom,couleur,numero), zone2:zone_id_2(id,nom,couleur,numero)'
+  '*, zones_prospection:zone_id(id,nom,couleur,numero), ' +
+  'session_data:session_id(rapport_json,commune_nom,commune_code_insee,statut,heure_debut,heure_fin)'
 
 export async function GET(req: Request) {
   const supabase = await createClient()
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
 
   const cfg = await getConfig(supabase, user.id)
 
+  // Sessions planifiées du mois
   const { data: sessions } = await supabase
     .from('planning_sessions')
     .select(SESSION_SELECT)
@@ -42,26 +44,43 @@ export async function GET(req: Request) {
     .eq('mois', mois)
     .eq('annee', annee)
     .order('date_prevue', { ascending: true })
+    .order('heure_debut',  { ascending: true })
+
+  // Sessions libres finalisées du mois (sessions_prospection hors_zone)
+  const daysInMonth = new Date(annee, mois, 0).getDate()
+  const firstDay    = `${annee}-${String(mois).padStart(2, '0')}-01`
+  const lastDay     = `${annee}-${String(mois).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+
+  const { data: sessionsLibres } = await supabase
+    .from('sessions_prospection')
+    .select('id, date_session, commune_nom, commune_code_insee, rapport_json, statut, heure_debut, heure_fin')
+    .eq('commercial_id', user.id)
+    .eq('type_session',  'hors_zone')
+    .eq('statut',        'realisee')
+    .gte('date_session', firstDay)
+    .lte('date_session', lastDay)
+    .order('date_session', { ascending: true })
 
   const s = sessions ?? []
   const nbPlanifiees  = s.filter((x: any) => x.statut === 'planifiee').length
   const nbRealisees   = s.filter((x: any) => x.statut === 'realisee').length
   const nbAnnulees    = s.filter((x: any) => x.statut === 'annulee').length
-  const totalAdresses = s.reduce((acc: number, x: any) => acc + (x.nb_adresses_total    ?? 0), 0)
-  const visitees      = s.reduce((acc: number, x: any) => acc + (x.nb_adresses_visitees ?? 0), 0)
-  const totalContacts = s.reduce((acc: number, x: any) => acc + (x.nb_contacts          ?? 0), 0)
+  const totalAdresses = s.reduce((a: number, x: any) => a + (x.nb_adresses_total    ?? 0), 0)
+  const visitees      = s.reduce((a: number, x: any) => a + (x.nb_adresses_visitees ?? 0), 0)
+  const totalContacts = s.reduce((a: number, x: any) => a + (x.nb_contacts          ?? 0), 0)
   const pctRealise    = totalAdresses > 0 ? Math.round(visitees / totalAdresses * 100) : 0
 
   return NextResponse.json({
-    planning: s,
-    mois,
-    annee,
+    planning:        s,
+    sessions_libres: sessionsLibres ?? [],
+    mois, annee,
     config: {
-      jours_semaine:         cfg.jours,
-      heure_debut:           cfg.debut,
-      duree_minutes:         cfg.duree,
-      date_debut:            cfg.date_debut,
-      deux_zones_par_seance: cfg.deux_zones,
+      jours_semaine:   cfg.jours,
+      heure_debut:     cfg.debut,
+      duree_minutes:   cfg.duree,
+      date_debut:      cfg.date_debut,
+      heure_debut_2:   cfg.debut_2,
+      jours_semaine_2: cfg.jours_2,
     },
     kpis: { nbPlanifiees, nbRealisees, nbAnnulees, totalAdresses, visitees, totalContacts, pctRealise },
   })
@@ -79,7 +98,6 @@ export async function POST(req: Request) {
 
   const cfg = await getConfig(supabase, user.id)
 
-  // Vérifier qu'il n'existe pas déjà des sessions ce mois
   const { data: existing } = await supabase
     .from('planning_sessions').select('id')
     .eq('commercial_id', user.id).eq('mois', mois).eq('annee', annee)
@@ -89,63 +107,54 @@ export async function POST(req: Request) {
       { status: 409 }
     )
 
-  // Zones actives triées par numéro
   const { data: zones } = await supabase
     .from('zones_prospection').select('id, nom, numero, nb_adresses')
     .eq('commercial_id', user.id).eq('statut', 'active')
     .order('numero', { ascending: true })
   if (!zones?.length)
-    return NextResponse.json(
-      { error: 'Aucune zone active pour générer le planning' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'Aucune zone active' }, { status: 400 })
 
   // Compter les adresses par zone
   const { data: adressesCounts } = await supabase
     .from('adresses').select('zone_id')
     .in('zone_id', zones.map((z: any) => z.id))
   const countByZone = new Map<string, number>()
-  for (const a of (adressesCounts ?? [])) {
+  for (const a of (adressesCounts ?? []))
     countByZone.set(a.zone_id, (countByZone.get(a.zone_id) ?? 0) + 1)
-  }
 
-  // Jour de départ : respecter date_debut si elle est dans le mois demandé
-  const dateDebut  = cfg.date_debut ? new Date(cfg.date_debut + 'T12:00:00') : null
-  const startDay   = (dateDebut &&
+  // Jour de départ (date_debut si dans ce mois, sinon 1er)
+  const todayStr  = new Date().toISOString().split('T')[0]
+  const rawDebut  = cfg.date_debut && cfg.date_debut >= todayStr ? cfg.date_debut : null
+  const dateDebut = rawDebut ? new Date(rawDebut + 'T12:00:00') : null
+  const startDay  = (dateDebut &&
     dateDebut.getFullYear() === annee &&
     dateDebut.getMonth() + 1 === mois)
-    ? dateDebut.getDate()
-    : 1
+    ? dateDebut.getDate() : 1
 
   const daysInMonth = new Date(annee, mois, 0).getDate()
-  const heureFin    = addMinutes(cfg.debut, cfg.duree)
+  const heureFin1   = addMinutes(cfg.debut, cfg.duree)
+  const heureFin2   = cfg.debut_2 ? addMinutes(cfg.debut_2, cfg.duree) : null
   const toInsert: any[] = []
   let zoneIndex = 0
 
   for (let day = startDay; day <= daysInMonth; day++) {
     const jourSemaine = new Date(annee, mois - 1, day).getDay()
-    if (!cfg.jours.includes(jourSemaine)) continue
+    const dateStr     = `${annee}-${String(mois).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const base        = { commercial_id: user.id, date_prevue: dateStr, statut: 'planifiee', mois, annee, nb_adresses_visitees: 0, nb_contacts: 0 }
 
-    const dateStr = `${annee}-${String(mois).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    const zone1   = zones[zoneIndex % zones.length]
-    const zone2   = cfg.deux_zones ? zones[(zoneIndex + 1) % zones.length] : null
+    // Créneau 1
+    if (cfg.jours.includes(jourSemaine)) {
+      const zone = zones[zoneIndex % zones.length]
+      toInsert.push({ ...base, zone_id: zone.id, heure_debut: cfg.debut, heure_fin: heureFin1, nb_adresses_total: countByZone.get(zone.id) ?? 0 })
+      zoneIndex++
+    }
 
-    toInsert.push({
-      commercial_id:        user.id,
-      zone_id:              zone1.id,
-      zone_id_2:            zone2?.id ?? null,
-      date_prevue:          dateStr,
-      heure_debut:          cfg.debut,
-      heure_fin:            heureFin,
-      statut:               'planifiee',
-      mois,
-      annee,
-      nb_adresses_total:    countByZone.get(zone1.id) ?? 0,
-      nb_adresses_visitees: 0,
-      nb_contacts:          0,
-    })
-
-    zoneIndex += cfg.deux_zones ? 2 : 1
+    // Créneau 2 (jours indépendants)
+    if (cfg.debut_2 && heureFin2 && cfg.jours_2.includes(jourSemaine)) {
+      const zone = zones[zoneIndex % zones.length]
+      toInsert.push({ ...base, zone_id: zone.id, heure_debut: cfg.debut_2, heure_fin: heureFin2, nb_adresses_total: countByZone.get(zone.id) ?? 0 })
+      zoneIndex++
+    }
   }
 
   if (!toInsert.length)
@@ -157,22 +166,17 @@ export async function POST(req: Request) {
   const { error: insErr } = await supabase.from('planning_sessions').insert(toInsert)
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
 
-  // Re-fetch avec joins pour la réponse
   const { data: sessions } = await supabase
-    .from('planning_sessions')
-    .select(SESSION_SELECT)
+    .from('planning_sessions').select(SESSION_SELECT)
     .eq('commercial_id', user.id).eq('mois', mois).eq('annee', annee)
     .order('date_prevue', { ascending: true })
+    .order('heure_debut', { ascending: true })
 
-  const s          = sessions ?? []
-  const totalAdres = s.reduce((acc: number, x: any) => acc + (x.nb_adresses_total ?? 0), 0)
-
+  const s = sessions ?? []
   return NextResponse.json({
-    planning: s,
-    kpis: {
-      nbPlanifiees: s.length, nbRealisees: 0, nbAnnulees: 0,
-      totalAdresses: totalAdres, visitees: 0, totalContacts: 0, pctRealise: 0,
-    },
+    planning:        s,
+    sessions_libres: [],
+    kpis: { nbPlanifiees: s.length, nbRealisees: 0, nbAnnulees: 0, totalAdresses: s.reduce((a: number, x: any) => a + (x.nb_adresses_total ?? 0), 0), visitees: 0, totalContacts: 0, pctRealise: 0 },
   })
 }
 
@@ -180,17 +184,11 @@ export async function DELETE(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
-
   const { searchParams } = new URL(req.url)
-  const mois  = parseInt(searchParams.get('mois')  ?? '0')
-  const annee = parseInt(searchParams.get('annee') ?? '0')
-
-  await supabase.from('planning_sessions')
-    .delete()
+  await supabase.from('planning_sessions').delete()
     .eq('commercial_id', user.id)
-    .eq('mois', mois)
-    .eq('annee', annee)
+    .eq('mois',   parseInt(searchParams.get('mois')  ?? '0'))
+    .eq('annee',  parseInt(searchParams.get('annee') ?? '0'))
     .eq('statut', 'planifiee')
-
   return NextResponse.json({ ok: true })
 }
