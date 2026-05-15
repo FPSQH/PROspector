@@ -10,11 +10,12 @@ export async function GET() {
     .from('planning_config').select('*').eq('commercial_id', user.id).maybeSingle()
 
   return NextResponse.json({
-    jours_semaine:         data?.jours_semaine          ?? [2, 3, 5],
-    heure_debut:           data?.heure_debut             ?? '10:00',
-    duree_minutes:         data?.duree_minutes            ?? 120,
-    date_debut:            data?.date_debut               ?? null,
-    deux_zones_par_seance: data?.deux_zones_par_seance   ?? false,
+    jours_semaine:   data?.jours_semaine   ?? [2, 3, 5],
+    heure_debut:     data?.heure_debut     ?? '10:00',
+    duree_minutes:   data?.duree_minutes   ?? 120,
+    date_debut:      data?.date_debut      ?? null,
+    heure_debut_2:   data?.heure_debut_2   ?? null,
+    jours_semaine_2: data?.jours_semaine_2 ?? [],
   })
 }
 
@@ -24,18 +25,19 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { jours_semaine, heure_debut, duree_minutes, date_debut, deux_zones_par_seance } = body
+  const { jours_semaine, heure_debut, duree_minutes, date_debut, heure_debut_2, jours_semaine_2 } = body
 
   const { data, error } = await supabase
     .from('planning_config')
     .upsert({
-      commercial_id:         user.id,
+      commercial_id:   user.id,
       jours_semaine,
       heure_debut,
       duree_minutes,
-      date_debut:            date_debut || null,
-      deux_zones_par_seance: !!deux_zones_par_seance,
-      updated_at:            new Date().toISOString(),
+      date_debut:      date_debut    || null,
+      heure_debut_2:   heure_debut_2 || null,
+      jours_semaine_2: jours_semaine_2 ?? [],
+      updated_at:      new Date().toISOString(),
     }, { onConflict: 'commercial_id' })
     .select().single()
 
