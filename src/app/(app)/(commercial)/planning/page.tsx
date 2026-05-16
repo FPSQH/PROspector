@@ -389,4 +389,214 @@ export default function PlanningPage() {
         )}
 
         {/* Liste journées */}
-        <div style={{ flex: 1, overflowY: 'auto', borderTo
+        <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #E8E6DF' }}>
+          {loading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Chargement...</div>
+          ) : datesTriees.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>📅</div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>Aucune session ce mois</div>
+            </div>
+          ) : datesTriees.map(date => {
+            const dayData = byDate.get(date)!
+            const isSel   = selDate === date
+            const z1      = dayData.planned[0]?.zones_prospection
+            const hasUpcoming = dayData.planned.some(p => p.statut === 'planifiee' && p.date_prevue >= today)
+            return (
+              <div key={date} onClick={() => setSelDate(date === selDate ? null : date)}
+                style={{ padding: '8px 13px', cursor: 'pointer', borderBottom: '1px solid #F0EDE6', background: isSel ? '#f8fffe' : 'transparent', borderLeft: isSel ? '3px solid ' + (z1?.couleur ?? '#1D9E75') : '3px solid transparent' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                    {dayData.planned.map((p, idx) => <div key={idx} style={{ width: 8, height: 8, borderRadius: '50%', background: p.zones_prospection?.couleur ?? '#9ca3af', opacity: ['annulee','non_realisee'].includes(p.statut) ? 0.3 : 1 }} />)}
+                    {dayData.free.map((_, idx) => <div key={'f'+idx} style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B' }} />)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, textTransform: 'capitalize' }}>{fmtDate(date)}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>
+                      {dayData.planned.length > 0 && dayData.planned.map(p => p.zones_prospection ? `Z${p.zones_prospection.numero}` : '?').join(' + ')}
+                      {dayData.planned.length > 0 && dayData.free.length > 0 && ' · '}
+                      {dayData.free.length > 0 && <span style={{ color: '#92400e' }}>{dayData.free.length} libre{dayData.free.length > 1 ? 's' : ''}</span>}
+                    </div>
+                  </div>
+                  {hasUpcoming && <a href="/terrain" onClick={e => e.stopPropagation()} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#1D9E75', color: '#fff', textDecoration: 'none', flexShrink: 0 }}>Go→</a>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ══ Colonne droite : détail journée ══ */}
+      {selDate && selDayData && (
+        <div style={{ flex: 1, background: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '13px 16px', borderBottom: '1px solid #E8E6DF', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <button onClick={() => setSelDate(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#9ca3af', padding: 0 }}>←</button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, textTransform: 'capitalize' }}>{fmtDate(selDate)}</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>
+                {totalSessJour} session{totalSessJour > 1 ? 's' : ''}
+                {selDayData.free.length > 0 && <span style={{ color: '#F59E0B', marginLeft: 4 }}>· {selDayData.free.length} libre{selDayData.free.length > 1 ? 's' : ''}</span>}
+              </div>
+            </div>
+            {selDayData.planned.some(p => p.statut === 'planifiee' && p.date_prevue >= today) && (
+              <a href="/terrain" style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#1D9E75', color: '#fff', textDecoration: 'none' }}>Démarrer →</a>
+            )}
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
+
+            {/* Sessions planifiées */}
+            {selDayData.planned.map(s => {
+              const z   = s.zones_prospection
+              const st  = STATUT[s.statut as keyof typeof STATUT] ?? STATUT.planifiee
+              const rap = s.session_data?.rapport_json
+              const vis  = rap?.nb_visites   ?? s.nb_adresses_visitees ?? 0
+              const cont = rap?.nb_contacts  ?? s.nb_contacts          ?? 0
+              const mais = s.nb_maisons_qualifiees  ?? rap?.nb_maisons   ?? 0
+              const imm  = s.nb_immeubles_qualifies ?? rap?.nb_immeubles ?? 0
+              const synd = s.nb_syndics_qualifies   ?? rap?.nb_syndics   ?? 0
+              const supp = s.nb_adresses_supprimees ?? 0
+              const estPasse     = s.date_prevue < today
+              const estPlanifiee = s.statut === 'planifiee'
+              const estAnnulee   = s.statut === 'annulee'
+              const peutDemarrer = estPlanifiee && !estPasse
+              const aDesResultats = s.statut === 'realisee' || (estPasse && (vis > 0 || cont > 0))
+
+              return (
+                <div key={s.id} style={{ marginBottom: 14, padding: 12, borderRadius: 10, border: '1.5px solid ' + (estAnnulee ? '#fee2e2' : '#E8E6DF'), background: estAnnulee ? '#fff5f5' : '#FAFAF8' }}>
+                  {/* En-tête */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    {z && <div style={{ width: 10, height: 10, borderRadius: '50%', background: z.couleur, flexShrink: 0 }} />}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{z ? `Zone ${z.numero} — ${z.nom}` : 'Zone non assignée'}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280' }}>{s.heure_debut} – {s.heure_fin}</div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: st.bg, color: st.color }}>{st.label}</span>
+                  </div>
+
+                  {/* ✅ REPORT : boutons spécifiques aux sessions annulées */}
+                  {estAnnulee && (
+                    <div style={{ padding: '10px', borderRadius: 8, background: '#fff5f5', border: '1px dashed #fca5a5', marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginBottom: 8 }}>
+                        Session annulée — que faire ?
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => reporter(s.id)} disabled={reporting === s.id}
+                          style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: reporting === s.id ? 'not-allowed' : 'pointer', background: reporting === s.id ? '#E8E6DF' : '#1D9E75', color: '#fff', border: 'none' }}>
+                          {reporting === s.id ? '⏳ Report...' : '📅 Reporter la session'}
+                        </button>
+                        <button onClick={() => patch(s.id, { statut: 'non_realisee' })}
+                          style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb' }}>
+                          Ne pas reporter
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6 }}>
+                        Reporter décale toutes les sessions planifiées suivantes d'un créneau
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Changement de statut (planifiées à venir) */}
+                  {peutDemarrer && (
+                    <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
+                      {(['annulee', 'non_realisee'] as const).map(k => (
+                        <button key={k} onClick={() => patch(s.id, { statut: k })}
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, cursor: 'pointer', background: '#f3f4f6', color: '#9ca3af', border: '1.5px solid #e5e7eb' }}>
+                          → {STATUT[k].label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Zone selector */}
+                  {estPlanifiee && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>ZONE</div>
+                      <select value={s.zone_id} onChange={e => patchZone(s.id, e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E8E6DF', fontSize: 12, background: '#fff' }}>
+                        {zones.map(z => <option key={z.id} value={z.id}>Zone {z.numero} — {z.nom}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* ✅ STATS COMPLÈTES (lecture seule) */}
+                  {aDesResultats && (
+                    <>
+                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>RÉSULTATS</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, marginBottom: 4 }}>
+                        <StatBox label="Visites"   value={vis}  accent />
+                        <StatBox label="Contacts"  value={cont} />
+                        <StatBox label="Supprimées" value={supp} />
+                      </div>
+                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 4, marginTop: 6 }}>QUALIFICATIONS</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4 }}>
+                        <StatBox label="Maisons"   value={mais} />
+                        <StatBox label="Collectif" value={imm}  />
+                        <StatBox label="Syndics"   value={synd} />
+                      </div>
+                    </>
+                  )}
+
+                  {peutDemarrer && (
+                    <a href="/terrain" style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '7px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#1D9E75', color: '#fff', textDecoration: 'none' }}>
+                      Démarrer →
+                    </a>
+                  )}
+
+                  <a href={`/api/ics?session_id=${s.id}`} target="_blank" style={{ display: 'block', textAlign: 'center', marginTop: 6, padding: '5px', borderRadius: 7, fontSize: 11, color: '#9ca3af', textDecoration: 'none', border: '1px solid #E8E6DF', background: '#f9f9f9' }}>
+                    📅 Exporter ICS
+                  </a>
+                </div>
+              )
+            })}
+
+            {/* Sessions libres */}
+            {selDayData.free.map(s => {
+              const rap  = s.rapport_json
+              const vis  = rap?.nb_visites ?? 0; const cont = rap?.nb_contacts ?? 0
+              const mais = rap?.nb_maisons ?? 0; const imm  = rap?.nb_immeubles ?? 0
+              return (
+                <div key={s.id} style={{ marginBottom: 14, padding: 12, borderRadius: 10, border: '1.5px solid #fed7aa', background: '#fffbf5' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Prospection libre{s.commune_nom ? ` — ${s.commune_nom}` : ''}</div>
+                      {s.heure_debut && <div style={{ fontSize: 11, color: '#6b7280' }}>{s.heure_debut}{s.heure_fin ? ` – ${s.heure_fin}` : ''}</div>}
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: '#fef3c7', color: '#92400e' }}>Libre</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>RÉSULTATS</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, marginBottom: 4 }}>
+                    <StatBox label="Visites"  value={vis}  accent />
+                    <StatBox label="Contacts" value={cont} />
+                    <StatBox label="Maisons"  value={mais} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4 }}>
+                    <StatBox label="Collectif" value={imm} />
+                    <StatBox label="Syndics"   value={rap?.nb_syndics ?? 0} />
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Total journée */}
+            {totalSessJour > 1 && totalJour && (
+              <div style={{ padding: 12, borderRadius: 10, border: '2px solid #1D9E75', background: '#f0fdf4' }}>
+                <div style={{ fontSize: 11, color: '#065f46', fontWeight: 700, marginBottom: 8 }}>TOTAL JOURNÉE · {totalSessJour} sessions</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, marginBottom: 4 }}>
+                  <StatBox label="Visites"    value={totalJour.vis}  accent />
+                  <StatBox label="Contacts"   value={totalJour.cont} />
+                  <StatBox label="Supprimées" value={totalJour.supp} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4 }}>
+                  <StatBox label="Maisons"   value={totalJour.mais} />
+                  <StatBox label="Collectif" value={totalJour.imm}  />
+                  <StatBox label="Syndics"   value={totalJour.synd} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
