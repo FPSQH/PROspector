@@ -20,20 +20,14 @@ async function getConfig(supabase: any, userId: string) {
   }
 }
 
-// Join avec session_data via FK session_id → sessions_prospection
-const SESSION_SELECT_FULL =
+const SESSION_SELECT =
   '*, zones_prospection:zone_id(id,nom,couleur,numero), ' +
   'session_data:session_id(rapport_json,commune_nom,commune_code_insee,statut,heure_debut,heure_fin)'
 
-// Fallback sans session_data (si FK non déclarée)
-const SESSION_SELECT_BASIC =
-  '*, zones_prospection:zone_id(id,nom,couleur,numero)'
-
 async function fetchSessions(supabase: any, userId: string, mois: number, annee: number) {
-  // Essai avec join session_data
   const { data, error } = await supabase
     .from('planning_sessions')
-    .select(SESSION_SELECT_FULL)
+    .select(SESSION_SELECT)
     .eq('commercial_id', userId)
     .eq('mois', mois)
     .eq('annee', annee)
@@ -42,17 +36,16 @@ async function fetchSessions(supabase: any, userId: string, mois: number, annee:
 
   if (!error) return data ?? []
 
-  // Fallback sans join si la FK n'est pas déclarée
+  // Fallback sans join session_data (FK pas encore déclarée)
   console.warn('[Planning] Fallback sans session_data:', error.message)
   const { data: fallback } = await supabase
     .from('planning_sessions')
-    .select(SESSION_SELECT_BASIC)
+    .select('*, zones_prospection:zone_id(id,nom,couleur,numero)')
     .eq('commercial_id', userId)
     .eq('mois', mois)
     .eq('annee', annee)
     .order('date_prevue', { ascending: true })
     .order('heure_debut',  { ascending: true })
-
   return fallback ?? []
 }
 
@@ -69,20 +62,24 @@ export async function GET(req: Request) {
   const cfg = await getConfig(supabase, user.id)
   const s   = await fetchSessions(supabase, user.id, mois, annee)
 
-  // Sessions libres finalisées du mois
+  // Plage du mois
   const daysInMonth = new Date(annee, mois, 0).getDate()
   const firstDay    = `${annee}-${String(mois).padStart(2, '0')}-01`
   const lastDay     = `${annee}-${String(mois).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
 
-  const { data: sessionsLibres } = await supabase
+  // ✅ Toutes les sessions_prospection réalisées du mois (pas seulement hors_zone)
+  const { data: allSessProsp } = await supabase
     .from('sessions_prospection')
-    .select('id, date_session, commune_nom, commune_code_insee, rapport_json, statut, heure_debut, heure_fin')
+    .select('id, date_session, commune_nom, commune_code_insee, rapport_json, statut, heure_debut, heure_fin, zone_id, type_session')
     .eq('commercial_id', user.id)
-    .eq('type_session',  'hors_zone')
     .eq('statut',        'realisee')
     .gte('date_session', firstDay)
     .lte('date_session', lastDay)
     .order('date_session', { ascending: true })
+
+  // Exclure celles déjà liées à une planning_session
+  const linkedIds    = new Set(s.filter((x: any) => x.session_id).map((x: any) => x.session_id))
+  const sessionsLibres = (allSessProsp ?? []).filter((sp: any) => !linkedIds.has(sp.id))
 
   const nbPlanifiees  = s.filter((x: any) => x.statut === 'planifiee').length
   const nbRealisees   = s.filter((x: any) => x.statut === 'realisee').length
@@ -94,7 +91,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     planning:        s,
-    sessions_libres: sessionsLibres ?? [],
+    sessions_libres: sessionsLibres,
     mois, annee,
     config: {
       jours_semaine:   cfg.jours,
@@ -120,11 +117,10 @@ export async function POST(req: Request) {
 
   const cfg = await getConfig(supabase, user.id)
 
-  // Vérifie qu'il n'existe pas déjà des sessions PLANIFIÉES ce mois
+  // Vérifier sessions planifiées existantes
   const { data: existing } = await supabase
     .from('planning_sessions').select('id')
-    .eq('commercial_id', user.id).eq('mois', mois).eq('annee', annee)
-    .eq('statut', 'planifiee')
+    .eq('commercial_id', user.id).eq('mois', mois).eq('annee', annee).eq('statut', 'planifiee')
   if (existing && existing.length > 0)
     return NextResponse.json(
       { error: 'Des sessions planifiées existent déjà ce mois. Utilisez Reset pour les supprimer.', nb_sessions: existing.length },
@@ -148,9 +144,7 @@ export async function POST(req: Request) {
   const todayStr  = new Date().toISOString().split('T')[0]
   const rawDebut  = cfg.date_debut && cfg.date_debut >= todayStr ? cfg.date_debut : null
   const dateDebut = rawDebut ? new Date(rawDebut + 'T12:00:00') : null
-  const startDay  = (dateDebut &&
-    dateDebut.getFullYear() === annee &&
-    dateDebut.getMonth() + 1 === mois)
+  const startDay  = (dateDebut && dateDebut.getFullYear() === annee && dateDebut.getMonth() + 1 === mois)
     ? dateDebut.getDate() : 1
 
   const daysInMonth = new Date(annee, mois, 0).getDate()
@@ -178,17 +172,12 @@ export async function POST(req: Request) {
   }
 
   if (!toInsert.length)
-    return NextResponse.json(
-      { error: 'Aucune session à générer — vérifiez la date de début et les jours sélectionnés' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'Aucune session à générer — vérifiez la date de début et les jours sélectionnés' }, { status: 400 })
 
   const { error: insErr } = await supabase.from('planning_sessions').insert(toInsert)
   if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
 
   const s = await fetchSessions(supabase, user.id, mois, annee)
-  const totalAdres = s.reduce((a: number, x: any) => a + (x.nb_adresses_total ?? 0), 0)
-
   return NextResponse.json({
     planning:        s,
     sessions_libres: [],
@@ -196,7 +185,8 @@ export async function POST(req: Request) {
       nbPlanifiees: s.filter((x: any) => x.statut === 'planifiee').length,
       nbRealisees:  s.filter((x: any) => x.statut === 'realisee').length,
       nbAnnulees:   0,
-      totalAdresses: totalAdres, visitees: 0, totalContacts: 0, pctRealise: 0,
+      totalAdresses: s.reduce((a: number, x: any) => a + (x.nb_adresses_total ?? 0), 0),
+      visitees: 0, totalContacts: 0, pctRealise: 0,
     },
   })
 }
@@ -205,16 +195,11 @@ export async function DELETE(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
-
   const { searchParams } = new URL(req.url)
-  const mois  = parseInt(searchParams.get('mois')  ?? '0')
-  const annee = parseInt(searchParams.get('annee') ?? '0')
-
   await supabase.from('planning_sessions').delete()
     .eq('commercial_id', user.id)
-    .eq('mois',   mois)
-    .eq('annee',  annee)
+    .eq('mois',   parseInt(searchParams.get('mois')  ?? '0'))
+    .eq('annee',  parseInt(searchParams.get('annee') ?? '0'))
     .eq('statut', 'planifiee')
-
   return NextResponse.json({ ok: true })
 }
