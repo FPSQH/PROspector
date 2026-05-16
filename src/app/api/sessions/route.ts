@@ -15,7 +15,8 @@ export async function GET(req: Request) {
     .select(`
       id, zone_id, date_session, heure_debut, heure_fin,
       heure_debut_reel, heure_fin_reel, statut, origine,
-      nb_portes, nb_boites, notes, created_at,
+      nb_portes, nb_boites, notes, created_at, type_session,
+      commune_code_insee, commune_nom,
       zones_prospection (nom, couleur, numero)
     `)
     .eq('commercial_id', user.id)
@@ -36,65 +37,71 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { zone_id, date_session, heure_debut } = body
+  const { zone_id, date_session, heure_debut, type_session, commune_code_insee, commune_nom } = body
 
-  if (!zone_id) return NextResponse.json({ error: 'zone_id requis' }, { status: 400 })
+  // ✅ zone_id facultatif pour les sessions hors_zone
+  const isHorsZone = type_session === 'hors_zone' || (!zone_id && commune_code_insee)
 
-  const { data: zone } = await supabase
-    .from('zones_prospection')
-    .select('id, nom')
-    .eq('id', zone_id)
-    .eq('commercial_id', user.id)
-    .single()
-
-  if (!zone) return NextResponse.json({ error: 'Zone non trouvee' }, { status: 404 })
+  // Vérifier la zone si elle est fournie
+  if (zone_id) {
+    const { data: zone } = await supabase
+      .from('zones_prospection')
+      .select('id, nom')
+      .eq('id', zone_id)
+      .eq('commercial_id', user.id)
+      .single()
+    if (!zone) return NextResponse.json({ error: 'Zone non trouvee' }, { status: 404 })
+  }
 
   const now         = new Date()
-  const todayStr    = now.toISOString().split('T')[0]          // ← TOUJOURS la date du jour
-  const dateSession = date_session ?? todayStr                  // ← jamais de date future par défaut
+  const todayStr    = now.toISOString().split('T')[0]
+  const dateSession = date_session ?? todayStr
   const heureDebut  = heure_debut  ?? now.toTimeString().slice(0, 5)
+
+  const insertData: any = {
+    commercial_id: user.id,
+    date_session:  dateSession,
+    heure_debut:   heureDebut,
+    statut:        'en_cours',
+    origine:       'manuel',
+    type_session:  isHorsZone ? 'hors_zone' : 'libre',
+    hors_zone:     isHorsZone,
+  }
+
+  if (zone_id)            insertData.zone_id             = zone_id
+  if (commune_code_insee) insertData.commune_code_insee  = commune_code_insee
+  if (commune_nom)        insertData.commune_nom         = commune_nom
 
   const { data: session, error } = await supabase
     .from('sessions_prospection')
-    .insert({
-      commercial_id: user.id,
-      zone_id,
-      date_session:  dateSession,
-      heure_debut:   heureDebut,
-      statut:        'en_cours',
-      origine:       'manuel',
-      type_session:  'libre',   // ← session libre par défaut
-    })
+    .insert(insertData)
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ✅ CORRECTION : ne lier à planning_sessions QUE si la session est planifiée AUJOURD'HUI
-  // (évite de marquer une session du 19 mai comme réalisée quand on est le 16)
-  const { data: plannedToday } = await supabase
-    .from('planning_sessions')
-    .select('id')
-    .eq('commercial_id', user.id)
-    .eq('zone_id', zone_id)
-    .eq('date_prevue', todayStr)   // ← seulement si c'est prévu aujourd'hui
-    .eq('statut', 'planifiee')
-    .maybeSingle()
-
-  if (plannedToday) {
-    // La session était planifiée aujourd'hui → on la lie et marque réalisée
-    await supabase
+  // ✅ Lier à planning_sessions UNIQUEMENT si la zone est planifiée AUJOURD'HUI
+  if (zone_id && !isHorsZone) {
+    const { data: plannedToday } = await supabase
       .from('planning_sessions')
-      .update({ session_id: session.id, statut: 'realisee' })
-      .eq('id', plannedToday.id)
+      .select('id')
+      .eq('commercial_id', user.id)
+      .eq('zone_id', zone_id)
+      .eq('date_prevue', todayStr)
+      .eq('statut', 'planifiee')
+      .maybeSingle()
 
-    // Mise à jour du type_session pour indiquer qu'elle était planifiée
-    await supabase
-      .from('sessions_prospection')
-      .update({ type_session: 'zone' })
-      .eq('id', session.id)
+    if (plannedToday) {
+      await supabase
+        .from('planning_sessions')
+        .update({ session_id: session.id, statut: 'realisee' })
+        .eq('id', plannedToday.id)
+      await supabase
+        .from('sessions_prospection')
+        .update({ type_session: 'zone' })
+        .eq('id', session.id)
+    }
   }
-  // Sinon : la session reste 'libre' — elle apparaîtra dans le planning comme session libre du jour
 
   return NextResponse.json({ session })
 }
