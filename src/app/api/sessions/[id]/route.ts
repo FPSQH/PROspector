@@ -31,8 +31,8 @@ export async function GET(_req: Request, { params }: Params) {
 
   const buildQuery = () => {
     const base = supabase.from('adresses').select(ADRESSE_SELECT).not('lat', 'is', null)
-    if (s.zone_id)             return base.eq('zone_id', s.zone_id)
-    if (s.commune_code_insee)  return base.eq('code_insee', s.commune_code_insee)
+    if (s.zone_id)            return base.eq('zone_id', s.zone_id)
+    if (s.commune_code_insee) return base.eq('code_insee', s.commune_code_insee)
     return null
   }
 
@@ -80,7 +80,8 @@ export async function GET(_req: Request, { params }: Params) {
       !inter                                 ? 'a_faire'
       : inter.statut_adresse === 'supprimee' ? 'supprimee'
       : inter.resultat === 'contact_etabli'  ? 'contact'
-      : inter.action === 'flyer' || inter.action === 'courrier' ? 'boite'
+      : inter.resultat === 'contact'         ? 'contact'
+      : inter.action === 'flyer' || inter.action === 'boite' || inter.action === 'courrier' ? 'boite'
       : 'visite'
     return { ...a, statut_carte: statut, interaction: inter ?? null, ordre: itinMap.get(a.id) ?? 9999, score: 50, latest_dpe_date: dpeMap[a.id] ?? null }
   }).sort((a, b) => a.ordre - b.ordre)
@@ -124,44 +125,67 @@ export async function PATCH(req: Request, { params }: Params) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[PATCH sessions] update error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
-  // ── Clôture : calcul complet du rapport + mise à jour des deux tables ──────
   if (statut === 'realisee') {
     try {
-      const { data: ints } = await supabase
+      const { data: ints, error: intsErr } = await supabase
         .from('interactions')
-        .select('type_habitat, type_habitat_observe, statut_adresse, resultat, action, adresses!adresse_id(nom_syndic)')
+        .select('adresse_id, type_habitat, type_habitat_observe, statut_adresse, resultat, action')
         .eq('session_id', params.id)
 
-      const allInts            = ints ?? []
-      const nb_visites         = allInts.length
-      const nb_contacts_val    = allInts.filter((i: any) => i.resultat === 'contact').length
-      const nb_flyers          = allInts.filter((i: any) => i.action === 'flyer').length
-      const nb_maisons         = allInts.filter((i: any) => i.type_habitat === 'individuel' || i.type_habitat_observe === 'individuel').length
-      const nb_immeubles       = allInts.filter((i: any) => i.type_habitat === 'collectif'  || i.type_habitat_observe === 'collectif').length
-      const nb_syndics         = allInts.filter((i: any) => (i as any).adresses?.nom_syndic?.trim?.()).length
-      const nb_supprimees      = allInts.filter((i: any) => i.statut_adresse === 'supprimee').length
-      const nb_qualifications  = allInts.filter((i: any) => i.type_habitat && i.type_habitat !== 'inconnu').length
+      if (intsErr) console.warn('[PATCH] interactions error:', intsErr)
 
-      // ✅ rapport_json stocké dans sessions_prospection
-      const rapport_json = {
-        nb_visites, nb_contacts: nb_contacts_val, nb_flyers,
-        nb_maisons, nb_immeubles, nb_syndics,
-        nb_qualifications, nb_adresses_supprimees: nb_supprimees,
-        date_cloture: new Date().toISOString(),
-        contacts: [],
+      const allInts         = ints ?? []
+      const nb_vis          = allInts.length
+      const nb_contacts_val = allInts.filter((i: any) => i.resultat === 'contact').length
+      const nb_flyers       = allInts.filter((i: any) => i.action === 'flyer').length
+      const nb_maisons      = allInts.filter((i: any) =>
+        i.type_habitat === 'individuel' || i.type_habitat_observe === 'individuel').length
+      const nb_immeubles    = allInts.filter((i: any) =>
+        i.type_habitat === 'collectif' || i.type_habitat_observe === 'collectif').length
+      const nb_supprimees   = allInts.filter((i: any) => i.statut_adresse === 'supprimee').length
+      const nb_qualifs      = allInts.filter((i: any) =>
+        i.type_habitat && i.type_habitat !== 'inconnu').length
+
+      let nb_syndics = 0
+      const adresseIdsWithInt = allInts.map((i: any) => i.adresse_id).filter(Boolean)
+      if (adresseIdsWithInt.length > 0) {
+        const { data: adrsSync } = await supabase
+          .from('adresses').select('id')
+          .in('id', adresseIdsWithInt)
+          .not('nom_syndic', 'is', null)
+          .neq('nom_syndic', '')
+        nb_syndics = adrsSync?.length ?? 0
       }
 
-      await supabase.from('sessions_prospection')
-        .update({ rapport_json, nb_portes: nb_visites })
+      const rapport_json = {
+        nb_visites:             nb_vis,
+        nb_contacts:            nb_contacts_val,
+        nb_flyers,
+        nb_maisons,
+        nb_immeubles,
+        nb_syndics,
+        nb_qualifications:      nb_qualifs,
+        nb_adresses_supprimees: nb_supprimees,
+        date_cloture:           new Date().toISOString(),
+        contacts:               [],
+      }
+
+      const { error: rapportErr } = await supabase
+        .from('sessions_prospection')
+        .update({ rapport_json, nb_portes: nb_vis })
         .eq('id', params.id)
 
-      // Mise à jour planning_sessions si liée
+      if (rapportErr) console.warn('[PATCH] rapport_json error:', rapportErr)
+
       await supabase.from('planning_sessions')
         .update({
           statut:                 'realisee',
-          nb_adresses_visitees:   nb_visites,
+          nb_adresses_visitees:   nb_vis,
           nb_contacts:            nb_contacts_val,
           nb_maisons_qualifiees:  nb_maisons,
           nb_immeubles_qualifies: nb_immeubles,
@@ -172,11 +196,10 @@ export async function PATCH(req: Request, { params }: Params) {
         .eq('session_id', params.id)
 
     } catch (e) {
-      console.warn('[sessions] Erreur calcul rapport:', e)
+      console.warn('[PATCH] Erreur calcul rapport (non bloquant):', e)
     }
   }
 
-  // ✅ Re-fetch la session avec rapport_json pour la réponse
   const { data: sessionFinal } = await supabase
     .from('sessions_prospection')
     .select('*, zones_prospection:zone_id(id, nom, couleur, numero, nb_prospectables)')

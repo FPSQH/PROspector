@@ -64,6 +64,20 @@ const { data: sessionEnCoursArr } = await supabase
 
 const sessionEnCours = sessionEnCoursArr?.[0] ?? null
 
+  // ── Historique des 5 dernières sessions réalisées ─────────────────────────
+  const { data: historiqueRaw } = await supabase
+    .from('sessions_prospection')
+    .select(`
+      id, date_session, type_session, commune_nom, rapport_json, nb_portes,
+      zones_prospection:zone_id(nom, couleur, numero)
+    `)
+    .eq('commercial_id', commercial.id)
+    .eq('statut', 'realisee')
+    .order('date_session', { ascending: false })
+    .limit(5)
+
+  const historique = historiqueRaw ?? []
+
   // Calcul jours restants depuis la vraie date_prevue
   const joursRestants = prochaineSession
     ? Math.max(0, Math.round(
@@ -260,6 +274,61 @@ const sessionEnCours = sessionEnCoursArr?.[0] ?? null
 
             {/* Widget DPE */}
             <DpeAlertsWidget />
+
+            {/* Historique rapports de prospection */}
+            {historique.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0efeb', padding: '20px 24px' }}>
+                <h2 style={{ margin: '0 0 16px', fontSize: '0.9rem', fontWeight: 600, color: '#1a1a18' }}>
+                  Historique des sessions
+                </h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {historique.map((s: any) => {
+                    const z = s.zones_prospection
+                    const r = s.rapport_json ?? {}
+                    const dateLabel = new Date(s.date_session + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+                    const stats = [
+                      { label: 'Portes',    value: r.nb_visites,             color: '#1D9E75' },
+                      { label: 'Contacts',  value: r.nb_contacts,            color: '#3b82f6' },
+                      { label: 'Maisons',   value: r.nb_maisons,             color: '#f59e0b' },
+                      { label: 'Immeubles', value: r.nb_immeubles,           color: '#8b5cf6' },
+                      { label: 'Suppr.',    value: r.nb_adresses_supprimees, color: '#9b9b96' },
+                    ].filter(item => (item.value ?? 0) > 0)
+                    return (
+                      <div key={s.id} style={{ padding: '12px 14px', borderRadius: 10, background: '#f8f7f4', border: '1px solid #e8e7e0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: stats.length > 0 ? 8 : 0 }}>
+                          {z
+                            ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: z.couleur, flexShrink: 0 }} />
+                            : <span style={{ fontSize: '0.8rem' }}>🚶</span>
+                          }
+                          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1a1a18', flex: 1 }}>
+                            {z ? `Z${z.numero} — ${z.nom}` : (s.commune_nom ?? 'Session libre')}
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: '#9b9b96', flexShrink: 0, textTransform: 'capitalize' }}>
+                            {dateLabel}
+                          </span>
+                        </div>
+                        {stats.length > 0 ? (
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {stats.map(item => (
+                              <span key={item.label} style={{
+                                padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600,
+                                background: item.color + '22', color: item.color,
+                              }}>
+                                {item.value} {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.72rem', color: '#9b9b96', fontStyle: 'italic' }}>
+                            Aucune interaction enregistrée
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Colonne droite */}

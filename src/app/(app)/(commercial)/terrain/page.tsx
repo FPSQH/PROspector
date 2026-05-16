@@ -165,10 +165,18 @@ export default function TerrainPage() {
     if (!sessionActive) { cb(); return }
     setLoading(true)
     try {
-      await fetch(`/api/sessions/${sessionActive.id}`, {
+      const res = await fetch(`/api/sessions/${sessionActive.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut: 'realisee' }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error('[cloture] PATCH failed:', res.status, err)
+      }
+      setSessionActive(null)
+      cb()
+    } catch(e) {
+      console.error('[cloture] fetch error:', e)
       setSessionActive(null)
       cb()
     } finally { setLoading(false) }
@@ -218,7 +226,7 @@ export default function TerrainPage() {
       interactionData.statut_adresse === 'supprimee'  ? 'supprimee'
       : interactionData.resultat === 'contact_etabli' ? 'contact'
       : interactionData.resultat === 'contact'        ? 'contact'
-      : interactionData.action === 'flyer' || interactionData.action === 'courrier' ? 'boite'
+      : interactionData.action === 'flyer' || interactionData.action === 'boite' || interactionData.action === 'courrier' ? 'boite'
       : interactionData.resultat === 'exclusion'      ? 'visite'
       : 'visite'
 
