@@ -378,43 +378,53 @@ export default function TerrainPage() {
         </button>
       </div>
 
-      {/* Carte */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <TerrainMap
-          adresses={adresses}
-          zonePolygon={null}
-          prochaineAdresseId={prochaineAdresseId}
-          onAdresseClick={handleAdresseClick}
-          dpeFlags={activeDpeFlags}
-        />
+{/* Carte */}
+<div style={{
+  flex: 1,
+  position: 'relative',
+  overflow: 'hidden',
+  // ✅ La carte ne change pas de taille — la sheet overlay par dessus
+}}>
+  <TerrainMap
+    adresses={adresses}
+    zonePolygon={null}
+    prochaineAdresseId={prochaineAdresseId}
+    onAdresseClick={handleAdresseClick}
+    dpeFlags={activeDpeFlags}
+  />
 
-        {/* Légende couleurs */}
-        <div style={{ position: 'absolute', bottom: sheetOpen ? 320 : 16, left: 12, background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: '6px 10px', fontSize: '0.68rem', color: '#5F5E5A', border: '1px solid #e8e7e0', transition: 'bottom 0.3s ease', pointerEvents: 'none' }}>
-          {[
-            { color: '#ef4444', label: 'À faire' },
-            { color: '#3b82f6', label: 'Boîté' },
-            { color: '#22c55e', label: 'Contact' },
-            { color: '#9b9b96', label: 'Autre' },
-            { color: '#1a1a18', label: 'Supprimée' },
-          ].map(item => (
-            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }}/>
-              <span>{item.label}</span>
-            </div>
-          ))}
+
+     {/* Légende — remonte quand la sheet est ouverte */}
+  {!sheetOpen && (
+    <div style={{
+      position: 'absolute', bottom: 16, left: 12,
+      background: 'rgba(255,255,255,0.95)', borderRadius: 8,
+      padding: '6px 10px', fontSize: '0.68rem', color: '#5F5E5A',
+      border: '1px solid #e8e7e0', pointerEvents: 'none',
+    }}>
+      {[
+        { color: '#ef4444', label: 'À faire' },
+        { color: '#3b82f6', label: 'Boîté' },
+        { color: '#22c55e', label: 'Contact' },
+        { color: '#9b9b96', label: 'Autre' },
+        { color: '#1a1a18', label: 'Supprimée' },
+      ].map(item => (
+        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }}/>
+          <span>{item.label}</span>
         </div>
-      </div>
-
-      {/* BottomSheet */}
-      {selectedAdresse && (
-        <BottomSheet
-          open={sheetOpen}
-          adresse={selectedAdresse}
-          sessionId={session?.id ?? ''}
-          onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }}
-          onQualification={handleQualification}
-        />
-      )}
+      ))}
     </div>
-  )
-}
+  )}
+</div>
+
+{/* BottomSheet */}
+{selectedAdresse && (
+  <BottomSheet
+    open={sheetOpen}
+    adresse={selectedAdresse}
+    sessionId={session?.id ?? ''}
+    onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }}
+    onQualification={handleQualification}
+  />
+)}
