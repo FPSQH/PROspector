@@ -135,29 +135,39 @@ export default function TerrainPage() {
   }
 
   // ── Démarrer session libre (hors zone) ────────────────────────────────────
-  const handleStartSessionLibre = async () => {
-    if (!communeSelectee) return
-    setLoading(true)
+ const handleStartSessionLibre = async () => {
+  if (!communeSelectee) return
+  setLoading(true)
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        zone_id:            null,
+        type_session:       'hors_zone',
+        commune_code_insee: communeSelectee.code_insee,
+        commune_nom:        communeSelectee.nom,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.session) {
+      console.error('[terrain] erreur session libre:', data)
+      return
+    }
+    setSession(data.session)
+    // ✅ CORRECTION : charger les adresses de la commune via loadSessionData
+    // (le API route charge maintenant par code_insee quand zone_id est null)
     try {
-      const res = await fetch('/api/sessions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          zone_id:             null,
-          type_session:        'hors_zone',
-          commune_code_insee:  communeSelectee.code_insee,
-          commune_nom:         communeSelectee.nom,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.session) { console.error('[terrain] erreur session libre:', data); return }
-      setSession(data.session)
-      // Pas d'adresses pré-chargées pour une session hors zone
-      setAdresses([]); setNbTotal(0); setNbVisites(0); setPctCouvert(0)
-      setItineraire([]); setIdxCourant(0)
-      setAppState('en_cours')
-    } catch(e) { console.error(e) }
-    finally { setLoading(false) }
+      await loadSessionData(data.session.id)
+    } catch(e) {
+      console.error('[terrain] loadSessionData libre erreur:', e)
+    }
+    setAppState('en_cours')
+  } catch(e) {
+    console.error('[terrain] handleStartSessionLibre erreur:', e)
+  } finally {
+    setLoading(false)
   }
+}
 
   const loadSessionData = useCallback(async (sessionId: string) => {
     const res  = await fetch(`/api/sessions/${sessionId}`)
