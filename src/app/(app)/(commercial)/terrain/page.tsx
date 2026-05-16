@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import BottomSheet from '@/components/terrain/BottomSheet'
@@ -15,7 +15,6 @@ interface Adresse {
   id: string; lat: number; lon: number
   numero?: string; nom_voie?: string; code_postal?: string; commune?: string
   type_bien?: string; nb_bal?: number; prospectable?: boolean
-  // ✅ 'supprimee' ajouté au statut_carte
   statut_carte: 'a_faire' | 'contact' | 'boite' | 'visite' | 'supprimee'
   interaction?: any; ordre: number; score?: number
   latest_dpe_date?: string | null; dpe_etiquette?: string | null; has_audit?: boolean
@@ -143,7 +142,6 @@ export default function TerrainPage() {
     })
     if (!res.ok) return
 
-    // ✅ 'supprimee' géré dans le statut local
     const statut: Adresse['statut_carte'] =
       interactionData.statut_adresse === 'supprimee' ? 'supprimee'
       : interactionData.resultat === 'contact_etabli' ? 'contact'
@@ -361,7 +359,7 @@ export default function TerrainPage() {
             {session?.zones_prospection?.nom ?? 'Session en cours'}
           </div>
           <div style={{ fontSize: '0.72rem', color: '#9b9b96' }}>
-            {nbVisites}/{nbTotal} · {pctCouvert}%
+            {nbVisites}/{nbTotal} · {pctCouvert}% · {aFaireCnt} restantes
           </div>
         </div>
         <button onClick={allerAdresseSuivante}
@@ -378,54 +376,50 @@ export default function TerrainPage() {
         </button>
       </div>
 
-{/* Carte */}
-<div style={{
-  flex: 1,
-  position: 'relative',
-  overflow: 'hidden',
-  // ✅ La carte ne change pas de taille — la sheet overlay par dessus
-}}>
-  <TerrainMap
-    adresses={adresses}
-    zonePolygon={null}
-    prochaineAdresseId={prochaineAdresseId}
-    onAdresseClick={handleAdresseClick}
-    dpeFlags={activeDpeFlags}
-  />
+      {/* Carte */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <TerrainMap
+          adresses={adresses}
+          zonePolygon={null}
+          prochaineAdresseId={prochaineAdresseId}
+          onAdresseClick={handleAdresseClick}
+          dpeFlags={activeDpeFlags}
+        />
 
+        {/* Légende — masquée quand la sheet est ouverte */}
+        {!sheetOpen && (
+          <div style={{
+            position: 'absolute', bottom: 16, left: 12,
+            background: 'rgba(255,255,255,0.95)', borderRadius: 8,
+            padding: '6px 10px', fontSize: '0.68rem', color: '#5F5E5A',
+            border: '1px solid #e8e7e0', pointerEvents: 'none',
+          }}>
+            {[
+              { color: '#ef4444', label: 'À faire' },
+              { color: '#3b82f6', label: 'Boîté' },
+              { color: '#22c55e', label: 'Contact' },
+              { color: '#9b9b96', label: 'Autre' },
+              { color: '#1a1a18', label: 'Supprimée' },
+            ].map(item => (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }}/>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-     {/* Légende — remonte quand la sheet est ouverte */}
-  {!sheetOpen && (
-    <div style={{
-      position: 'absolute', bottom: 16, left: 12,
-      background: 'rgba(255,255,255,0.95)', borderRadius: 8,
-      padding: '6px 10px', fontSize: '0.68rem', color: '#5F5E5A',
-      border: '1px solid #e8e7e0', pointerEvents: 'none',
-    }}>
-      {[
-        { color: '#ef4444', label: 'À faire' },
-        { color: '#3b82f6', label: 'Boîté' },
-        { color: '#22c55e', label: 'Contact' },
-        { color: '#9b9b96', label: 'Autre' },
-        { color: '#1a1a18', label: 'Supprimée' },
-      ].map(item => (
-        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }}/>
-          <span>{item.label}</span>
-        </div>
-      ))}
+      {/* BottomSheet */}
+      {selectedAdresse && (
+        <BottomSheet
+          open={sheetOpen}
+          adresse={selectedAdresse}
+          sessionId={session?.id ?? ''}
+          onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }}
+          onQualification={handleQualification}
+        />
+      )}
     </div>
-  )}
-</div>
-
-{/* BottomSheet */}
-{selectedAdresse && (
-  <BottomSheet
-    open={sheetOpen}
-    adresse={selectedAdresse}
-    sessionId={session?.id ?? ''}
-    onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }}
-    onQualification={handleQualification}
-  />
-)}
-      
+  )
+}
