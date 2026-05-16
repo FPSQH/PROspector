@@ -53,6 +53,17 @@ export default async function DashboardPage() {
   const prochaineSession  = prochainsSessions?.[0] ?? null
   const hasPlanning       = (prochainsSessions?.length ?? 0) > 0
 
+  // ✅ Détection session en cours
+const { data: sessionEnCoursArr } = await supabase
+  .from('sessions_prospection')
+  .select('id, zone_id, date_session, heure_debut, type_session, commune_nom, zones_prospection:zone_id(nom, couleur, numero)')
+  .eq('commercial_id', commercial.id)
+  .eq('statut', 'en_cours')
+  .order('created_at', { ascending: false })
+  .limit(1)
+
+const sessionEnCours = sessionEnCoursArr?.[0] ?? null
+
   // Calcul jours restants depuis la vraie date_prevue
   const joursRestants = prochaineSession
     ? Math.max(0, Math.round(
@@ -117,6 +128,27 @@ export default async function DashboardPage() {
             </Link>
           </div>
         )}
+
+        {/* ✅ Bandeau session en cours */}
+{sessionEnCours && (
+  <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: 12, padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400e' }}>Session de prospection en cours</div>
+        <div style={{ fontSize: '0.8rem', color: '#78350f', marginTop: 2 }}>
+          {(sessionEnCours as any).zones_prospection
+            ? `Zone ${(sessionEnCours as any).zones_prospection.numero} — ${(sessionEnCours as any).zones_prospection.nom}`
+            : (sessionEnCours as any).commune_nom ?? 'Session libre'
+          } · démarrée le {new Date((sessionEnCours as any).date_session).toLocaleDateString('fr-FR')} à {(sessionEnCours as any).heure_debut?.slice(0,5)}
+        </div>
+      </div>
+    </div>
+    <Link href="/terrain" style={{ padding: '9px 16px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none', flexShrink: 0 }}>
+      ▶ Reprendre →
+    </Link>
+  </div>
+)}
 
         {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 24 }} className="dash-kpis">
