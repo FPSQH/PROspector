@@ -61,6 +61,16 @@ export async function POST(req: Request) {
   }
 
   const { data, error } = await supabase.from('contacts').insert(insert).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    // Si CHECK constraint, réessayer sans statut_pipeline
+    if (error.message.includes('violates check constraint')) {
+      console.warn('[contacts POST] CHECK constraint sur statut_pipeline, retry sans')
+      const { statut_pipeline, ...insertSafe } = insert
+      const { data: d2, error: e2 } = await supabase.from('contacts').insert(insertSafe).select().single()
+      if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
+      return NextResponse.json({ contact: d2 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json({ contact: data })
 }
