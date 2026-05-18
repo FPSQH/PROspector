@@ -64,13 +64,22 @@ export async function GET(_req: Request, { params }: Params) {
   const itinMap  = new Map(itineraire.map((i: any) => [i.adresse_id, i.ordre]))
 
   const adresseIds = allAdresses.map((a: any) => a.id)
-  const dpeMap: Record<string, string> = {}
+  // Map adresse_id → { date, etiquette } du DPE le plus récent
+  const dpeMap: Record<string, { date: string; etiquette: string | null }> = {}
   if (adresseIds.length > 0) {
     const { data: dpes } = await supabase
-      .from('dpe_logement').select('adresse_id, date_etablissement')
-      .in('adresse_id', adresseIds).order('date_etablissement', { ascending: false })
+      .from('dpe_logement')
+      .select('adresse_id, date_etablissement, etiquette_dpe')
+      .in('adresse_id', adresseIds)
+      .not('etiquette_dpe', 'is', null)
+      .order('date_etablissement', { ascending: false })
     for (const d of (dpes ?? [])) {
-      if (!dpeMap[d.adresse_id]) dpeMap[d.adresse_id] = d.date_etablissement
+      if (!dpeMap[d.adresse_id]) {
+        dpeMap[d.adresse_id] = {
+          date:      d.date_etablissement,
+          etiquette: (d.etiquette_dpe ?? '').toUpperCase() || null,
+        }
+      }
     }
   }
 
@@ -86,7 +95,8 @@ export async function GET(_req: Request, { params }: Params) {
     return {
       ...a, statut_carte: statut, interaction: inter ?? null,
       ordre: itinMap.get(a.id) ?? 9999, score: 50,
-      latest_dpe_date: dpeMap[a.id] ?? null,
+      latest_dpe_date: dpeMap[a.id]?.date      ?? null,
+      dpe_etiquette:   dpeMap[a.id]?.etiquette ?? null,
     }
   }).sort((a, b) => a.ordre - b.ordre)
 

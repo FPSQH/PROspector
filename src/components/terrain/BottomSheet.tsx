@@ -7,7 +7,7 @@ interface Adresse {
   type_bien?: string; nb_bal?: number; has_commerce?: boolean
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   interaction?: { resultat?: string; action?: string; type_habitat?: string }
-  score?: number; latest_dpe_date?: string | null; nom_syndic?: string
+  score?: number; latest_dpe_date?: string | null; dpe_etiquette?: string | null; nom_syndic?: string
 }
 
 export default function BottomSheet({
@@ -157,6 +157,30 @@ export default function BottomSheet({
             </div>
           )}
 
+          {/* Badge DPE si disponible */}
+          {adresse.latest_dpe_date && adresse.dpe_etiquette && (() => {
+            const etiq = adresse.dpe_etiquette.toUpperCase()
+            const dpeColors: Record<string, { bg: string; fg: string }> = {
+              A: { bg: '#007A3D', fg: '#fff' }, B: { bg: '#4CAF50', fg: '#fff' },
+              C: { bg: '#8BC34A', fg: '#fff' }, D: { bg: '#FFEB3B', fg: '#333' },
+              E: { bg: '#FF9800', fg: '#fff' }, F: { bg: '#F44336', fg: '#fff' },
+              G: { bg: '#B71C1C', fg: '#fff' },
+            }
+            const col = dpeColors[etiq] ?? { bg: '#9b9b96', fg: '#fff' }
+            const dateStr = new Date(adresse.latest_dpe_date).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+            return (
+              <div style={{ margin: '8px 16px 0', padding: '8px 12px', borderRadius: 8, background: '#f8f7f4', border: '1px solid #e8e7e0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 6, background: col.bg, color: col.fg, fontWeight: 900, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {etiq}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a18' }}>DPE {etiq} — Étiquette énergie</div>
+                  <div style={{ fontSize: 10, color: '#9b9b96' }}>Établi {dateStr}</div>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Type de logement */}
           <div style={{ padding: '12px 16px 8px' }}>
             <span style={sectionTitle}>Type de logement</span>
@@ -188,10 +212,10 @@ export default function BottomSheet({
             <span style={sectionTitle}>Action</span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
               {[
-                { id:'flyer',   emoji:'📄', label:'Flyer',   bg:'#eff6ff', fg:'#1d4ed8', action: () => submitAction('flyer') },
-                { id:'boite',   emoji:'📬', label:'Boîté',   bg:'#f5f3ff', fg:'#6d28d9', action: () => submitAction('boite') },
-                { id:'rien',    emoji:'—',  label:'Rien',    bg:'#f3f4f6', fg:'#374151', action: () => submitAction('rien') },
-                { id:'contact', emoji:'👤', label:'Contact', bg:'#1D9E75', fg:'#fff',    action: () => setStep('contact') },
+                { id:'rien',     emoji:'—',  label:'Rien',        bg:'#f3f4f6', fg:'#374151', action: () => submitAction('rien') },
+                { id:'courrier', emoji:'✉️', label:'Courrier DPE', bg:'#eff6ff', fg:'#1d4ed8', action: () => submitAction('flyer') },
+                { id:'boite',    emoji:'📬', label:'Boîté',        bg:'#f5f3ff', fg:'#6d28d9', action: () => submitAction('boite') },
+                { id:'contact',  emoji:'👤', label:'Contact',      bg:'#1D9E75', fg:'#fff',    action: () => setStep('contact') },
               ].map(({ id, emoji, label, bg, fg, action }) => (
                 <button key={id} onClick={action} disabled={saving}
                   style={{ padding: '11px 4px', borderRadius: 10, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', background: bg, color: fg, fontWeight: 700, fontSize: 12, textAlign: 'center' }}>
@@ -271,6 +295,35 @@ export default function BottomSheet({
               ))}
             </div>
           )}
+          {/* Envoi par mail (mailto) */}
+          {(contact.nom || contact.prenom || contact.tel1 || note) && (() => {
+            const adresseStr = [adresse.numero, adresse.nom_voie, adresse.code_postal, adresse.commune].filter(Boolean).join(' ')
+            const relanceStr = contact.date_relance ? '\nDate de relance : ' + new Date(contact.date_relance + 'T12:00:00').toLocaleDateString('fr-FR') : ''
+            const body = [
+              'Adresse : ' + adresseStr,
+              contact.nom || contact.prenom ? 'Contact : ' + [contact.prenom, contact.nom].filter(Boolean).join(' ') : '',
+              contact.tel1 ? 'Tél : ' + contact.tel1 : '',
+              contact.email1 ? 'Email : ' + contact.email1 : '',
+              profil ? 'Profil : ' + profil : '',
+              typeProjet.length ? 'Projet : ' + typeProjet.join(', ') : '',
+              note ? 'Note : ' + note : '',
+              relanceStr,
+            ].filter(Boolean).join('\n')
+            const relanceDateLabel = contact.date_relance
+              ? new Date(contact.date_relance + 'T12:00:00').toLocaleDateString('fr-FR')
+              : ''
+            const subject = contact.date_relance
+              ? 'Relance contact Prospector pour le ' + relanceDateLabel
+              : 'Contact Prospector — ' + adresseStr
+            const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+            return (
+              <a href={mailto}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: '#f0fdf4', color: '#1D9E75', border: '1.5px solid #bbf7d0', textDecoration: 'none', marginBottom: 8, boxSizing: 'border-box' }}>
+                ✉️ Envoyer par mail
+              </a>
+            )
+          })()}
+
           <button onClick={submitContact} disabled={saving}
             style={{ width: '100%', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: saving ? '#E8E6DF' : '#1D9E75', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? 'Enregistrement...' : 'Valider le contact'}

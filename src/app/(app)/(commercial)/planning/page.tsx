@@ -61,7 +61,13 @@ interface Kpis {
   totalAdresses: number; visitees: number; totalContacts: number; pctRealise: number
 }
 
-interface DayData { planned: Session[]; free: SessionLibre[] }
+interface Relance {
+  id: string; nom?: string; prenom?: string; tel1?: string; tel2?: string; email1?: string
+  type_contact?: string; notes?: string; date_relance: string
+  statut_pipeline?: string; horizon_vente?: string
+  adresses?: { id: string; numero?: string; nom_voie?: string; code_postal?: string; commune?: string }
+}
+interface DayData { planned: Session[]; free: SessionLibre[]; relances: Relance[] }
 
 const CFG_DEFAUT: Cfg = {
   jours_semaine: [2, 3, 5], heure_debut: '10:00', duree_minutes: 120,
@@ -102,6 +108,7 @@ export default function PlanningPage() {
   const [annee,          setAnnee]          = useState(now.getFullYear())
   const [sessions,       setSessions]       = useState<Session[]>([])
   const [sessionsLibres, setSessionsLibres] = useState<SessionLibre[]>([])
+  const [relances,       setRelances]       = useState<Relance[]>([])
   const [zones,          setZones]          = useState<Zone[]>([])
   const [kpis,           setKpis]           = useState<Kpis | null>(null)
   const [cfg,            setCfg]            = useState<Cfg>(CFG_DEFAUT)
@@ -122,6 +129,7 @@ export default function PlanningPage() {
       ])
       setSessions(pd.planning ?? [])
       setSessionsLibres(pd.sessions_libres ?? [])
+      setRelances(pd.relances ?? [])
       setKpis(pd.kpis ?? null)
       if (pd.config) setCfg({
         jours_semaine:   pd.config.jours_semaine   ?? [2, 3, 5],
@@ -212,12 +220,18 @@ export default function PlanningPage() {
 
   const byDate = new Map<string, DayData>()
   for (const s of sessions) {
-    const d = byDate.get(s.date_prevue) ?? { planned: [], free: [] }
+    const d = byDate.get(s.date_prevue) ?? { planned: [], free: [], relances: [] }
     d.planned.push(s); byDate.set(s.date_prevue, d)
   }
   for (const s of sessionsLibres) {
-    const d = byDate.get(s.date_session) ?? { planned: [], free: [] }
+    const d = byDate.get(s.date_session) ?? { planned: [], free: [], relances: [] }
     d.free.push(s); byDate.set(s.date_session, d)
+  }
+  for (const r of relances) {
+    if (!r.date_relance) continue
+    const d = byDate.get(r.date_relance) ?? { planned: [], free: [], relances: [] }
+    d.relances = d.relances ?? []
+    d.relances.push(r); byDate.set(r.date_relance, d)
   }
 
   const selDayData    = selDate ? (byDate.get(selDate) ?? { planned: [], free: [] }) : null
@@ -360,7 +374,7 @@ export default function PlanningPage() {
               const day = i + 1
               const ds  = `${annee}-${String(mois).padStart(2, '0')}-${String(day).padStart(2, '0')}`
               const dayData = byDate.get(ds)
-              const hasAny  = dayData && (dayData.planned.length > 0 || dayData.free.length > 0)
+              const hasAny  = dayData && (dayData.planned.length > 0 || dayData.free.length > 0 || (dayData.relances?.length ?? 0) > 0)
               const isTod   = ds === today; const isSel = selDate === ds
               const mainCol = dayData?.planned[0]?.zones_prospection?.couleur ?? '#9ca3af'
               return (
@@ -371,6 +385,7 @@ export default function PlanningPage() {
                     <div style={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap', marginTop: 2 }}>
                       {dayData.planned.map((p, idx) => <div key={idx} style={{ width: 6, height: 6, borderRadius: '50%', background: p.zones_prospection?.couleur ?? '#9ca3af', opacity: ['annulee','non_realisee'].includes(p.statut) ? 0.3 : 1 }} />)}
                       {dayData.free.map((_, idx) => <div key={'f'+idx} style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B' }} />)}
+                      {(dayData.relances?.length ?? 0) > 0 && <span style={{ fontSize: 8, lineHeight: 1 }}>📞</span>}
                     </div>
                   )}
                 </div>
@@ -444,6 +459,83 @@ export default function PlanningPage() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
+
+            {/* ── Relances contacts ── */}
+            {(selDayData.relances?.length ?? 0) > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#9b9b96', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                  📞 Relance{(selDayData.relances?.length ?? 0) > 1 ? 's' : ''} contact
+                </div>
+                {selDayData.relances?.map(r => {
+                  const typeLabels: Record<string, string> = {
+                    'interet_vente': 'Intérêt vente', 'projet_moyen': 'Projet moyen terme',
+                    'projet_long': 'Projet long terme', 'voisin_relais': 'Voisin relais',
+                    'recommandation': 'Recommandation', 'commercant': 'Commerçant', 'autre': 'Autre',
+                  }
+                  const horizonLabels: Record<string, string> = {
+                    'moins_6_mois': '< 6 mois', '6_12_mois': '6–12 mois',
+                    '1_2_ans': '1–2 ans', 'plus_2_ans': '> 2 ans',
+                  }
+                  const adr = r.adresses
+                  const adrStr = adr ? [adr.numero, adr.nom_voie, adr.code_postal, adr.commune].filter(Boolean).join(' ') : ''
+                  const nomStr = [r.prenom, r.nom].filter(Boolean).join(' ') || 'Contact sans nom'
+                  const mailBody = [
+                    'Contact : ' + nomStr,
+                    adrStr ? 'Adresse : ' + adrStr : '',
+                    r.tel1 ? 'Tél : ' + r.tel1 : '',
+                    r.email1 ? 'Email : ' + r.email1 : '',
+                    r.type_contact ? 'Type : ' + (typeLabels[r.type_contact] ?? r.type_contact) : '',
+                    r.horizon_vente ? 'Horizon : ' + (horizonLabels[r.horizon_vente] ?? r.horizon_vente) : '',
+                    r.notes ? 'Notes : ' + r.notes : '',
+                    'Relance prévue le : ' + new Date(r.date_relance + 'T12:00:00').toLocaleDateString('fr-FR'),
+                  ].filter(Boolean).join('\n')
+                  const mailSubject = 'Relance contact Prospector pour le ' + new Date(r.date_relance + 'T12:00:00').toLocaleDateString('fr-FR')
+                  const mailtoHref = `mailto:?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`
+                  return (
+                    <div key={r.id} style={{ marginBottom: 10, padding: '12px 14px', borderRadius: 10, background: '#fff7ed', border: '1.5px solid #fed7aa' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <span style={{ fontSize: 18 }}>📞</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#1a1a18' }}>{nomStr}</div>
+                          {adrStr && <div style={{ fontSize: 11, color: '#9b9b96' }}>{adrStr}</div>}
+                        </div>
+                        <a href={mailtoHref}
+                          style={{ padding: '4px 8px', borderRadius: 6, background: '#fff', border: '1px solid #fed7aa', fontSize: 11, color: '#c2410c', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}>
+                          ✉️
+                        </a>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {r.type_contact && (
+                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>
+                            {typeLabels[r.type_contact] ?? r.type_contact}
+                          </span>
+                        )}
+                        {r.horizon_vente && (
+                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#f0fdf4', color: '#166534' }}>
+                            {horizonLabels[r.horizon_vente] ?? r.horizon_vente}
+                          </span>
+                        )}
+                        {r.tel1 && (
+                          <a href={`tel:${r.tel1}`} style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#eff6ff', color: '#1d4ed8', textDecoration: 'none' }}>
+                            📱 {r.tel1}
+                          </a>
+                        )}
+                      </div>
+                      {r.notes && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: '#5F5E5A', fontStyle: 'italic', lineHeight: 1.4, background: '#fff', borderRadius: 6, padding: '6px 8px' }}>
+                          {r.notes}
+                        </div>
+                      )}
+                      {r.statut_pipeline && (
+                        <div style={{ marginTop: 6, fontSize: 10, color: '#9b9b96' }}>
+                          Pipeline : <strong>{r.statut_pipeline}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Sessions planifiées */}
             {selDayData.planned.map(s => {

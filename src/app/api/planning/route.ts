@@ -89,9 +89,26 @@ export async function GET(req: Request) {
   const totalContacts = s.reduce((a: number, x: any) => a + (x.nb_contacts          ?? 0), 0)
   const pctRealise    = totalAdresses > 0 ? Math.round(visitees / totalAdresses * 100) : 0
 
+  // ── Relances contacts du mois ──────────────────────────────────────────────
+  const { data: relancesRaw } = await supabase
+    .from('contacts')
+    .select(`
+      id, nom, prenom, tel1, tel2, email1,
+      type_contact, notes, date_relance, statut_pipeline, horizon_vente,
+      adresses ( id, numero, nom_voie, code_postal, commune )
+    `)
+    .eq('commercial_id', user.id)
+    .not('date_relance', 'is', null)
+    .gte('date_relance', firstDay)
+    .lte('date_relance', lastDay)
+    .order('date_relance', { ascending: true })
+
+  const relances = relancesRaw ?? []
+
   return NextResponse.json({
     planning:        s,
     sessions_libres: sessionsLibres,
+    relances,
     mois, annee,
     config: {
       jours_semaine:   cfg.jours,
