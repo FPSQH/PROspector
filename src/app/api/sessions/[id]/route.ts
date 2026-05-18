@@ -83,7 +83,11 @@ export async function GET(_req: Request, { params }: Params) {
       : inter.resultat === 'contact'         ? 'contact'
       : inter.action === 'flyer' || inter.action === 'boite' || inter.action === 'courrier' ? 'boite'
       : 'visite'
-    return { ...a, statut_carte: statut, interaction: inter ?? null, ordre: itinMap.get(a.id) ?? 9999, score: 50, latest_dpe_date: dpeMap[a.id] ?? null }
+    return {
+      ...a, statut_carte: statut, interaction: inter ?? null,
+      ordre: itinMap.get(a.id) ?? 9999, score: 50,
+      latest_dpe_date: dpeMap[a.id] ?? null,
+    }
   }).sort((a, b) => a.ordre - b.ordre)
 
   const nb_visites = adressesAvecStatut.filter(a => a.statut_carte !== 'a_faire').length
@@ -117,31 +121,31 @@ export async function PATCH(req: Request, { params }: Params) {
     updates.heure_fin_reel = new Date().toTimeString().slice(0, 5)
   }
 
-  const { data, error } = await supabase
+  // ✅ CORRECTION PRINCIPALE : update SANS .select().single() pour éviter PGRST116
+  // Le .select().single() après update échoue avec RLS même si l'update réussit
+  const { error: updateError } = await supabase
     .from('sessions_prospection')
     .update(updates)
     .eq('id', params.id)
     .eq('commercial_id', user.id)
-    .select()
-    .single()
 
-  if (error) {
-    console.error('[PATCH sessions] update error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (updateError) {
+    console.error('[PATCH sessions] update error:', updateError)
+    return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
+  // ── Clôture : calcul rapport complet ─────────────────────────────────────
   if (statut === 'realisee') {
     try {
-      const { data: ints, error: intsErr } = await supabase
+      // Interactions de la session
+      const { data: ints } = await supabase
         .from('interactions')
-        .select('adresse_id, type_habitat, type_habitat_observe, statut_adresse, resultat, action')
+        .select('adresse_id, type_habitat, type_habitat_observe, statut_adresse, resultat, action, contact_id')
         .eq('session_id', params.id)
-
-      if (intsErr) console.warn('[PATCH] interactions error:', intsErr)
 
       const allInts         = ints ?? []
       const nb_vis          = allInts.length
-      const nb_contacts_val = allInts.filter((i: any) => i.resultat === 'contact').length
+      const nb_contacts_int = allInts.filter((i: any) => i.resultat === 'contact').length
       const nb_flyers       = allInts.filter((i: any) => i.action === 'flyer').length
       const nb_maisons      = allInts.filter((i: any) =>
         i.type_habitat === 'individuel' || i.type_habitat_observe === 'individuel').length
@@ -151,20 +155,27 @@ export async function PATCH(req: Request, { params }: Params) {
       const nb_qualifs      = allInts.filter((i: any) =>
         i.type_habitat && i.type_habitat !== 'inconnu').length
 
+      // Syndics : requête séparée sur adresses
       let nb_syndics = 0
       const adresseIdsWithInt = allInts.map((i: any) => i.adresse_id).filter(Boolean)
       if (adresseIdsWithInt.length > 0) {
         const { data: adrsSync } = await supabase
           .from('adresses').select('id')
           .in('id', adresseIdsWithInt)
-          .not('nom_syndic', 'is', null)
-          .neq('nom_syndic', '')
+          .not('nom_syndic', 'is', null).neq('nom_syndic', '')
         nb_syndics = adrsSync?.length ?? 0
       }
+
+      // Contacts saisis : interactions avec contact_id non null (fiche contact créée)
+      const nb_fiches_contact = allInts.filter((i: any) => i.contact_id).length
+
+      // nb_contacts = interactions contact OU fiches créées (le plus grand)
+      const nb_contacts_val = Math.max(nb_contacts_int, nb_fiches_contact)
 
       const rapport_json = {
         nb_visites:             nb_vis,
         nb_contacts:            nb_contacts_val,
+        nb_fiches_contact,
         nb_flyers,
         nb_maisons,
         nb_immeubles,
@@ -172,16 +183,15 @@ export async function PATCH(req: Request, { params }: Params) {
         nb_qualifications:      nb_qualifs,
         nb_adresses_supprimees: nb_supprimees,
         date_cloture:           new Date().toISOString(),
-        contacts:               [],
       }
 
-      const { error: rapportErr } = await supabase
+      // ✅ Stockage rapport_json (update simple, sans select)
+      await supabase
         .from('sessions_prospection')
         .update({ rapport_json, nb_portes: nb_vis })
         .eq('id', params.id)
 
-      if (rapportErr) console.warn('[PATCH] rapport_json error:', rapportErr)
-
+      // Mise à jour planning_sessions si liée
       await supabase.from('planning_sessions')
         .update({
           statut:                 'realisee',
@@ -200,11 +210,12 @@ export async function PATCH(req: Request, { params }: Params) {
     }
   }
 
+  // ✅ Re-fetch séparé (lecture indépendante de l'update, pas de PGRST116)
   const { data: sessionFinal } = await supabase
     .from('sessions_prospection')
     .select('*, zones_prospection:zone_id(id, nom, couleur, numero, nb_prospectables)')
     .eq('id', params.id)
     .single()
 
-  return NextResponse.json({ session: sessionFinal ?? data })
+  return NextResponse.json({ session: sessionFinal ?? {} })
 }

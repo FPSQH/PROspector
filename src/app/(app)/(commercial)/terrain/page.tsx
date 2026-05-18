@@ -172,11 +172,17 @@ export default function TerrainPage() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         console.error('[cloture] PATCH failed:', res.status, err)
+        // ✅ NE PAS effacer sessionActive si le PATCH a échoué
+        alert('Erreur lors de la clôture de la session. Veuillez réessayer.')
+        setLoading(false)
+        return
       }
+      // ✅ Seulement si PATCH ok
       setSessionActive(null)
       cb()
     } catch(e) {
       console.error('[cloture] fetch error:', e)
+      alert('Erreur réseau lors de la clôture. Veuillez réessayer.')
       setSessionActive(null)
       cb()
     } finally { setLoading(false) }
