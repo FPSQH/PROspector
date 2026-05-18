@@ -7,11 +7,11 @@ const TYPE_LABELS: Record<string,string> = {
   voisin_relais:'Voisin relais',recommandation:'Recommandation',commercant:'Commercant',autre:'Autre',
 }
 const STATUT: Record<string,{label:string;color:string;bg:string}> = {
-  prospect:{label:'Prospect',color:'#0369a1',bg:'#e0f2fe'},
-  qualification:{label:'Qualification',color:'#92400e',bg:'#fef3c7'},
-  estimation:{label:'Estimation',color:'#7c3aed',bg:'#ede9fe'},
-  mandat:{label:'Mandat',color:'#065f46',bg:'#d1fae5'},
-  perdu:{label:'Perdu',color:'#6b7280',bg:'#f3f4f6'},
+  prospect:      {label:'Prospect',    color:'#6b7280',bg:'#f3f4f6'},
+  qualification: {label:'Découverte',  color:'#1d4ed8',bg:'#dbeafe'},
+  estimation:    {label:'Estimation',  color:'#92400e',bg:'#fef3c7'},
+  mandat:        {label:'Mandat',      color:'#065f46',bg:'#d1fae5'},
+  perdu:         {label:'Perdu',       color:'#b91c1c',bg:'#fee2e2'},
 }
 
 // ── Génération mailto fiche contact ────────────────────────────────────
@@ -194,6 +194,34 @@ export default function ContactsPage() {
             <span style={{fontSize:11,fontWeight:600,padding:'3px 8px',borderRadius:20,background:st(selected.statut_pipeline).bg,color:st(selected.statut_pipeline).color}}>{st(selected.statut_pipeline).label}</span>
           </div>
           <div style={{flex:1,overflowY:'auto',padding:'16px 20px',display:'flex',flexDirection:'column',gap:12}}>
+            {/* ── Bouton mail permanent ── */}
+            {(() => {
+              const nom = [selected.prenom, selected.nom].filter(Boolean).join(' ') || 'Contact'
+              const adrStr = addr(selected.adresses)
+              const relanceDateLabel = selected.date_relance
+                ? new Date(selected.date_relance + 'T12:00:00').toLocaleDateString('fr-FR')
+                : ''
+              const subject = selected.date_relance
+                ? 'Relance contact Prospector pour le ' + relanceDateLabel
+                : 'Fiche contact – ' + nom
+              const body = [
+                'Contact : ' + nom,
+                adrStr ? 'Adresse : ' + adrStr : '',
+                selected.tel1    ? 'Tél : '    + selected.tel1 : '',
+                selected.email1  ? 'Email : '  + selected.email1 : '',
+                selected.type_contact ? 'Type : ' + (STATUT[selected.type_contact]?.label ?? selected.type_contact) : '',
+                selected.statut_pipeline ? 'Statut : ' + (STATUT[selected.statut_pipeline]?.label ?? selected.statut_pipeline) : '',
+                selected.notes   ? 'Notes : '  + selected.notes : '',
+                relanceDateLabel ? 'Relance prévue le : ' + relanceDateLabel : '',
+              ].filter(Boolean).join('\n')
+              const mailtoHref = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body)
+              return (
+                <a href={mailtoHref}
+                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'9px',borderRadius:9,fontWeight:600,fontSize:13,background:'#f0fdf4',color:'#1D9E75',border:'1.5px solid #bbf7d0',textDecoration:'none'}}>
+                  ✉️ Envoyer par mail
+                </a>
+              )
+            })()}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
               <div><div style={{fontSize:11,color:'#9ca3af',fontWeight:600,marginBottom:4}}>PRENOM</div><input style={inp} value={form.prenom??''} onChange={e=>setForm((f:any)=>({...f,prenom:e.target.value}))}/></div>
               <div><div style={{fontSize:11,color:'#9ca3af',fontWeight:600,marginBottom:4}}>NOM</div><input style={inp} value={form.nom??''} onChange={e=>setForm((f:any)=>({...f,nom:e.target.value}))}/></div>

@@ -27,7 +27,7 @@ export default function BottomSheet({
   const [profil,           setProfil]           = useState('')
   const [typeProjet,       setTypeProjet]       = useState<string[]>([])
   const [note,             setNote]             = useState('')
-  const [contact,          setContact]          = useState({ nom:'', prenom:'', tel1:'', email1:'' })
+  const [contact,          setContact]          = useState({ nom:'', prenom:'', tel1:'', email1:'', date_relance:'' })
   const [showContactForm,  setShowContactForm]  = useState(false)
   const [motifExclusion,   setMotifExclusion]   = useState('')
   const [motifSuppression, setMotifSuppression] = useState('')
@@ -74,7 +74,7 @@ export default function BottomSheet({
     await postInteraction({
       adresse_id: adresse.id, session_id: sessionId,
       resultat: 'pas_de_reponse', action,
-      type_habitat_observe: typeHabitat || null,
+      type_habitat: typeHabitat || null,
       observations_terrain: courrierCible ? { courrier_possible: true } : {},
     })
     setSaving(false)
@@ -88,18 +88,25 @@ export default function BottomSheet({
     await postInteraction({
       adresse_id: adresse.id, session_id: sessionId,
       resultat: 'contact', action: 'rien',
-      type_habitat_observe: typeHabitat || null,
+      type_habitat: typeHabitat || null,
       notes: note || null,
     })
     if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
       await fetch('/api/contacts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          adresse_id: adresse.id,
-          nom: contact.nom || null, prenom: contact.prenom || null,
-          tel1: contact.tel1 || null, email1: contact.email1 || null,
-          profil_interlocuteur: profil || null,
-          type_contact: typeProjet.includes('vente') ? 'interet_vente' : typeProjet.length ? 'contact_general' : null,
+          adresse_id:   adresse.id,
+          nom:          contact.nom         || null,
+          prenom:       contact.prenom      || null,
+          tel1:         contact.tel1        || null,
+          email1:       contact.email1      || null,
+          date_relance: contact.date_relance || null,
+          notes:        note                || null,
+          type_contact: typeProjet.includes('vente')       ? 'interet_vente'
+                      : typeProjet.includes('location')    ? 'projet_moyen'
+                      : typeProjet.includes('reflexion')   ? 'projet_long'
+                      : null,
+          statut_pipeline: 'prospect',
         }),
       })
     }
@@ -293,37 +300,15 @@ export default function BottomSheet({
                   onChange={e => setContact(c => ({ ...c, [k]: e.target.value }))}
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #E8E6DF', fontSize: 13, marginBottom: 6, boxSizing: 'border-box' }} />
               ))}
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Date de relance</div>
+                <input type="date" value={contact.date_relance}
+                  onChange={e => setContact(c => ({ ...c, date_relance: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #E8E6DF', fontSize: 13, boxSizing: 'border-box' }} />
+              </div>
             </div>
           )}
-          {/* Envoi par mail (mailto) */}
-          {(contact.nom || contact.prenom || contact.tel1 || note) && (() => {
-            const adresseStr = [adresse.numero, adresse.nom_voie, adresse.code_postal, adresse.commune].filter(Boolean).join(' ')
-            const relanceStr = contact.date_relance ? '\nDate de relance : ' + new Date(contact.date_relance + 'T12:00:00').toLocaleDateString('fr-FR') : ''
-            const body = [
-              'Adresse : ' + adresseStr,
-              contact.nom || contact.prenom ? 'Contact : ' + [contact.prenom, contact.nom].filter(Boolean).join(' ') : '',
-              contact.tel1 ? 'Tél : ' + contact.tel1 : '',
-              contact.email1 ? 'Email : ' + contact.email1 : '',
-              profil ? 'Profil : ' + profil : '',
-              typeProjet.length ? 'Projet : ' + typeProjet.join(', ') : '',
-              note ? 'Note : ' + note : '',
-              relanceStr,
-            ].filter(Boolean).join('\n')
-            const relanceDateLabel = contact.date_relance
-              ? new Date(contact.date_relance + 'T12:00:00').toLocaleDateString('fr-FR')
-              : ''
-            const subject = contact.date_relance
-              ? 'Relance contact Prospector pour le ' + relanceDateLabel
-              : 'Contact Prospector — ' + adresseStr
-            const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-            return (
-              <a href={mailto}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px', borderRadius: 10, fontWeight: 600, fontSize: 13, background: '#f0fdf4', color: '#1D9E75', border: '1.5px solid #bbf7d0', textDecoration: 'none', marginBottom: 8, boxSizing: 'border-box' }}>
-                ✉️ Envoyer par mail
-              </a>
-            )
-          })()}
-
+  
           <button onClick={submitContact} disabled={saving}
             style={{ width: '100%', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: saving ? '#E8E6DF' : '#1D9E75', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? 'Enregistrement...' : 'Valider le contact'}

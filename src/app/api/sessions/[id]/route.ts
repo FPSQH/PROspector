@@ -150,17 +150,17 @@ export async function PATCH(req: Request, { params }: Params) {
       // Interactions de la session
       const { data: ints } = await supabase
         .from('interactions')
-        .select('adresse_id, type_habitat, type_habitat_observe, statut_adresse, resultat, action, contact_id')
+        .select('adresse_id, type_habitat, statut_adresse, resultat, action, contact_id')
         .eq('session_id', params.id)
 
       const allInts         = ints ?? []
       const nb_vis          = allInts.length
       const nb_contacts_int = allInts.filter((i: any) => i.resultat === 'contact').length
-      const nb_flyers       = allInts.filter((i: any) => i.action === 'flyer').length
-      const nb_maisons      = allInts.filter((i: any) =>
-        i.type_habitat === 'individuel' || i.type_habitat_observe === 'individuel').length
-      const nb_immeubles    = allInts.filter((i: any) =>
-        i.type_habitat === 'collectif' || i.type_habitat_observe === 'collectif').length
+      // flyer_depose (courrier DPE) + courrier_depose (boîté)
+      const nb_flyers = allInts.filter((i: any) =>
+        i.action === 'flyer_depose' || i.action === 'courrier_depose').length
+      const nb_maisons      = allInts.filter((i: any) => i.type_habitat === 'individuel').length
+      const nb_immeubles    = allInts.filter((i: any) => i.type_habitat === 'collectif').length
       const nb_supprimees   = allInts.filter((i: any) => i.statut_adresse === 'supprimee').length
       const nb_qualifs      = allInts.filter((i: any) =>
         i.type_habitat && i.type_habitat !== 'inconnu').length

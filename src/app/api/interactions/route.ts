@@ -22,9 +22,10 @@ export async function POST(req: Request) {
 
   // Normaliser les valeurs action vers les valeurs acceptées par la contrainte DB
   const actionMap: Record<string, string> = {
-    'flyer':   'flyer_depose',
-    'courrier':'courrier_depose',
-    'rien':    'rien',
+    'flyer':           'flyer_depose',
+    'courrier':        'courrier_depose',
+    'boite':           'courrier_depose',  // boîtage = dépôt courrier
+    'rien':            'rien',
     'flyer_depose':    'flyer_depose',
     'courrier_depose': 'courrier_depose',
   }
