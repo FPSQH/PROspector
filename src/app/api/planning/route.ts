@@ -141,11 +141,20 @@ export async function POST(req: Request) {
   for (const a of (adressesCounts ?? []))
     countByZone.set(a.zone_id, (countByZone.get(a.zone_id) ?? 0) + 1)
 
-  const todayStr  = new Date().toISOString().split('T')[0]
-  const rawDebut  = cfg.date_debut && cfg.date_debut >= todayStr ? cfg.date_debut : null
-  const dateDebut = rawDebut ? new Date(rawDebut + 'T12:00:00') : null
-  const startDay  = (dateDebut && dateDebut.getFullYear() === annee && dateDebut.getMonth() + 1 === mois)
+  const todayStr   = new Date().toISOString().split('T')[0]
+  const todayDay   = now.getDate()
+
+  // Date de début configurée — ignorée si dans le passé
+  const rawDebut   = cfg.date_debut && cfg.date_debut >= todayStr ? cfg.date_debut : null
+  const dateDebut  = rawDebut ? new Date(rawDebut + 'T12:00:00') : null
+  const configDay  = (dateDebut && dateDebut.getFullYear() === annee && dateDebut.getMonth() + 1 === mois)
     ? dateDebut.getDate() : 1
+
+  // ✅ CORRECTION : ne jamais planifier avant aujourd'hui pour le mois en cours
+  const isCurrentMonth = (annee === now.getFullYear() && mois === (now.getMonth() + 1))
+  const startDay = isCurrentMonth
+    ? Math.max(configDay, todayDay)   // jamais antérieur à la date du jour
+    : configDay                        // mois futur → date de début ou 1er du mois
 
   const daysInMonth = new Date(annee, mois, 0).getDate()
   const heureFin1   = addMinutes(cfg.debut, cfg.duree)
