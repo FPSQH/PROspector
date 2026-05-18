@@ -23,10 +23,20 @@ function daysAgo(n: number) {
 type SortField = 'date' | 'ville' | 'type'
 
 export default function CourriersPage() {
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileView, setMobileView] = useState<'list'|'map'|'detail'>('list')
   const mapRef    = useRef<HTMLDivElement>(null)
   const mapInst   = useRef<maplibregl.Map | null>(null)
   const markers   = useRef<maplibregl.Marker[]>([])
   const [mapReady, setMapReady] = useState(false)
+
+  // Détection mobile
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const [dateDebut, setDateDebut] = useState(daysAgo(90))
   const [dateFin,   setDateFin]   = useState(today())
@@ -167,11 +177,28 @@ export default function CourriersPage() {
   const types   = [...new Set(adresses.map(a => a.type_bien).filter(Boolean))] as string[]
 
   // ── Rendu ─────────────────────────────────────────────────────────────────────
+  // ── Barre de navigation mobile ──────────────────────────────────────────
+  const mobileNavBar = isMobile ? (
+    <div style={{ display:'flex', background:'#fff', borderTop:'1px solid #E8E6DF', flexShrink:0 }}>
+      {[
+        { key:'list',   label:'📋 Liste',  },
+        { key:'map',    label:'🗺 Carte',  },
+        { key:'detail', label:'📄 Détail', disabled: !selected },
+      ].map(tab => (
+        <button key={tab.key} onClick={() => { if(!tab.disabled) setMobileView(tab.key as any) }}
+          disabled={tab.disabled}
+          style={{ flex:1, padding:'10px 4px', border:'none', background:'transparent', fontSize:12, fontWeight:600, cursor:tab.disabled?'not-allowed':'pointer', color:mobileView===tab.key?'#1D9E75':tab.disabled?'#ccc':'#6b7280', borderTop:mobileView===tab.key?'2px solid #1D9E75':'2px solid transparent' }}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  ) : null
+
   return (
-    <div style={{ display:'flex', height:'100dvh', overflow:'hidden', background:'#f8f7f4' }}>
+    <div style={{ display:'flex', flexDirection: isMobile ? 'column' : 'row', height:'100dvh', overflow:'hidden', background:'#f8f7f4' }}>
 
       {/* ── Panel gauche ───────────────────────────────────────────────── */}
-      <div style={{ width:340, flexShrink:0, display:'flex', flexDirection:'column', borderRight:'1px solid #E8E6DF', background:'#fff', height:'100%', overflow:'hidden' }}>
+      <div style={{ width: isMobile ? '100%' : 340, flexShrink:0, display: isMobile && mobileView !== 'list' ? 'none' : 'flex', flexDirection:'column', borderRight:'1px solid #E8E6DF', background:'#fff', height: isMobile ? 'calc(100dvh - 44px)' : '100%', overflow:'hidden' }}>
 
         {/* Header */}
         <div style={{ padding:'16px 16px 0', borderBottom:'1px solid #E8E6DF', paddingBottom:12 }}>
@@ -288,7 +315,7 @@ export default function CourriersPage() {
                   onClick={e => e.stopPropagation()}
                   style={{ marginTop:4, flexShrink:0 }} />
                 <div style={{ flex:1, minWidth:0 }} onClick={() => {
-                setSelected(a)
+                setSelected(a); if(isMobile) setMobileView('detail')
                 const map = mapInst.current
                 if (map && a.lat && a.lon) {
                   map.flyTo({ center: [a.lon, a.lat], zoom: 16, duration: 600 })
@@ -325,7 +352,7 @@ export default function CourriersPage() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
         {/* Carte */}
-        <div ref={mapRef} style={{ flex:'0 0 40%', position:'relative' }}>
+        <div ref={mapRef} style={{ flex: isMobile ? '1' : '0 0 40%', position:'relative', display: isMobile && mobileView !== 'map' ? 'none' : undefined }}>
           {adresses.length === 0 && !loading && (
             <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'#f0ede8', zIndex:1 }}>
               <span style={{ color:'#9b9b96', fontSize:'0.85rem' }}>Lancez une recherche pour afficher les DPE sur la carte</span>
@@ -403,6 +430,7 @@ export default function CourriersPage() {
           )}
         </div>
       </div>
+      {mobileNavBar}
     </div>
   )
 }
