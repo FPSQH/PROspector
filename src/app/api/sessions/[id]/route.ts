@@ -110,7 +110,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const updates: any = {}
   if (statut)                  updates.statut         = statut
   if (heure_fin)               updates.heure_fin      = heure_fin
-  if (heure_fin)               updates.heure_fin_reel = heure_fin
+  if (heure_fin)               updates.heure_fin_reel = new Date().toISOString()  // TIMESTAMPTZ
   if (nb_portes !== undefined) updates.nb_portes      = nb_portes
   if (nb_boites !== undefined) updates.nb_boites      = nb_boites
   if (notes     !== undefined) updates.notes          = notes
@@ -118,7 +118,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (zone_id)                 updates.zone_id        = zone_id
 
   if (statut === 'realisee' && !heure_fin) {
-    updates.heure_fin_reel = new Date().toTimeString().slice(0, 5)
+    updates.heure_fin_reel = new Date().toISOString()  // TIMESTAMPTZ
   }
 
   // ✅ CORRECTION PRINCIPALE : update SANS .select().single() pour éviter PGRST116
