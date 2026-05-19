@@ -16,7 +16,8 @@ interface Adresse {
   type_bien?: string; nb_bal?: number; prospectable?: boolean
   statut_carte: 'a_faire' | 'contact' | 'boite' | 'visite' | 'supprimee'
   interaction?: any; ordre: number; score?: number
-  latest_dpe_date?: string | null; dpe_etiquette?: string | null; has_audit?: boolean
+  latest_dpe_date?: string | null; dpe_etiquette?: string | null
+  has_audit?: boolean; audit_n?: string | null
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   nom_syndic?: string; nb_acces_observe?: number
   courrier_cible_possible?: boolean; commentaire_adresse?: string
@@ -64,7 +65,7 @@ export default function TerrainPage() {
   const [communes,         setCommunes]          = useState<Commune[]>([])
   const [communeSelectee,  setCommuneSelectee]   = useState<Commune | null>(null)
   const [session,          setSession]           = useState<any>(null)
-  const [sessionActive,    setSessionActive]     = useState<any>(null) // session en cours détectée au chargement
+  const [sessionActive,    setSessionActive]     = useState<any>(null)
   const [preZone,          setPreZone]           = useState<Zone | null>(null)
   const [adresses,         setAdresses]          = useState<Adresse[]>([])
   const [preAdresses,      setPreAdresses]       = useState<any[]>([])
@@ -129,11 +130,10 @@ export default function TerrainPage() {
       setZones(zonesData)
       setCommunes(communesRes.communes ?? [])
 
-      // ✅ Détection session en cours
       const sessEnCours = sessRes.sessions?.[0] ?? null
       if (sessEnCours) {
         setSessionActive(sessEnCours)
-        setAppState('choix_zone') // on reste sur choix_zone mais on affiche le bandeau
+        setAppState('choix_zone')
         return
       }
 
@@ -172,12 +172,10 @@ export default function TerrainPage() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         console.error('[cloture] PATCH failed:', res.status, err)
-        // ✅ NE PAS effacer sessionActive si le PATCH a échoué
         alert('Erreur lors de la clôture de la session. Veuillez réessayer.')
         setLoading(false)
         return
       }
-      // ✅ Seulement si PATCH ok
       setSessionActive(null)
       cb()
     } catch(e) {
@@ -224,7 +222,6 @@ export default function TerrainPage() {
     setSelectedAdresse(adresse); setSheetOpen(true)
   }
 
-  // ✅ CORRECTION : BottomSheet gère déjà les appels API — on met à jour uniquement l'état local
   const handleQualification = (interactionData: any) => {
     if (!selectedAdresse) return
 
@@ -266,7 +263,6 @@ export default function TerrainPage() {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${adr.lat},${adr.lon}&travelmode=walking`, '_blank')
   }
 
-  // ✅ Clôture : récupère le rapport depuis la réponse PATCH
   const handleEndSession = async () => {
     if (!session || !confirm('Terminer cette session de prospection ?')) return
     setLoading(true)
@@ -276,7 +272,7 @@ export default function TerrainPage() {
     })
     const data = await res.json()
     setLoading(false)
-    if (data.session) setSession(data.session) // ← contient rapport_json
+    if (data.session) setSession(data.session)
     setAppState('terminee')
   }
 
@@ -298,7 +294,7 @@ export default function TerrainPage() {
   const isHorsZone         = !session?.zone_id
   const adressesFiltrees   = adresseFilter === 'all' ? adresses : adresses.filter(a => a.statut_carte === adresseFilter)
 
-  // ── Bannière session en cours (réutilisable) ──────────────────────────────
+  // ── Bannière session en cours ──────────────────────────────────────────────
   const BanniereSessionActive = sessionActive ? (
     <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
       <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>⚠️</span>
@@ -325,7 +321,7 @@ export default function TerrainPage() {
   ) : null
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── INIT ──────────────────────────────────────────────────────────────────
+  // ── INIT
   // ══════════════════════════════════════════════════════════════════════════
   if (appState === 'init') {
     return (
@@ -336,7 +332,7 @@ export default function TerrainPage() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── CHOIX DE ZONE ─────────────────────────────────────────────────────────
+  // ── CHOIX DE ZONE
   // ══════════════════════════════════════════════════════════════════════════
   if (appState === 'choix_zone') {
     return (
@@ -347,10 +343,8 @@ export default function TerrainPage() {
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', maxWidth: 600, width: '100%', margin: '0 auto' }}>
 
-          {/* Bannière session en cours */}
           {BanniereSessionActive}
 
-          {/* Liste zones (désactivée si session active) */}
           <p style={{ fontSize: '0.82rem', color: '#9b9b96', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Zones de prospection
           </p>
@@ -370,10 +364,7 @@ export default function TerrainPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28, opacity: sessionActive ? 0.4 : 1 }}>
               {zones.map(zone => (
                 <button key={zone.id}
-                  onClick={() => sessionActive
-                    ? undefined
-                    : handleZonePreview(zone)
-                  }
+                  onClick={() => sessionActive ? undefined : handleZonePreview(zone)}
                   disabled={!!sessionActive || loading}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e8e7e0', borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%' }}>
                   <div style={{ width: 12, height: 12, borderRadius: '50%', background: zone.couleur, flexShrink: 0 }} />
@@ -387,7 +378,6 @@ export default function TerrainPage() {
             </div>
           )}
 
-          {/* Prospection libre */}
           <div style={{ borderTop: '1px solid #e8e7e0', paddingTop: 24 }}>
             <p style={{ fontSize: '0.82rem', color: '#9b9b96', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Prospection libre
@@ -410,7 +400,7 @@ export default function TerrainPage() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── PRÉ-SESSION LIBRE ─────────────────────────────────────────────────────
+  // ── PRÉ-SESSION LIBRE
   // ══════════════════════════════════════════════════════════════════════════
   if (appState === 'pre_libre') {
     return (
@@ -449,7 +439,7 @@ export default function TerrainPage() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── PRÉ-SESSION ZONE ──────────────────────────────────────────────────────
+  // ── PRÉ-SESSION ZONE
   // ══════════════════════════════════════════════════════════════════════════
   if (appState === 'pre_session' && preZone) {
     const applyFilter = (from: string, to: string) => { setDpeFrom(from); setDpeTo(to); setPendingFrom(from); setPendingTo(to) }
@@ -503,7 +493,7 @@ export default function TerrainPage() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── TERMINÉE — Rapport de prospection ─────────────────────────────────────
+  // ── TERMINÉE
   // ══════════════════════════════════════════════════════════════════════════
   if (appState === 'terminee') {
     const rapport = session?.rapport_json ?? {}
@@ -517,18 +507,16 @@ export default function TerrainPage() {
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1a1a18', marginBottom: 4 }}>Session terminée !</h2>
             <div style={{ fontSize: '0.82rem', color: '#9b9b96' }}>{zoneName}</div>
           </div>
-
-          {/* Rapport */}
           <div style={{ background: '#f8f7f4', borderRadius: 10, padding: '16px', marginBottom: 20 }}>
             <div style={{ fontSize: '0.72rem', color: '#9b9b96', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Rapport de prospection</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {[
-                { label: 'Portes', value: rapport.nb_visites ?? nbVisites,          accent: true },
-                { label: 'Contacts', value: rapport.nb_contacts ?? 0,               accent: false },
-                { label: 'Flyers', value: rapport.nb_flyers ?? 0,                   accent: false },
-                { label: 'Maisons', value: rapport.nb_maisons ?? 0,                 accent: false },
-                { label: 'Collectif', value: rapport.nb_immeubles ?? 0,             accent: false },
-                { label: 'Supprimées', value: rapport.nb_adresses_supprimees ?? 0,  accent: false },
+                { label: 'Portes',     value: rapport.nb_visites ?? nbVisites,         accent: true },
+                { label: 'Contacts',   value: rapport.nb_contacts ?? 0,                accent: false },
+                { label: 'Flyers',     value: rapport.nb_flyers ?? 0,                  accent: false },
+                { label: 'Maisons',    value: rapport.nb_maisons ?? 0,                 accent: false },
+                { label: 'Collectif',  value: rapport.nb_immeubles ?? 0,               accent: false },
+                { label: 'Supprimées', value: rapport.nb_adresses_supprimees ?? 0,     accent: false },
               ].map(({ label, value, accent }) => (
                 <div key={label} style={{ textAlign: 'center', padding: '10px 6px', borderRadius: 8, background: accent ? '#f0fdf4' : '#fff', border: '1px solid ' + (accent ? '#bbf7d0' : '#E8E6DF') }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 700, color: accent ? '#1D9E75' : '#1a1a18', lineHeight: 1 }}>{value}</div>
@@ -542,7 +530,6 @@ export default function TerrainPage() {
               </div>
             )}
           </div>
-
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => router.push('/planning')}
               style={{ flex: 1, padding: '11px', borderRadius: 10, background: '#f3f4f6', color: '#374151', fontWeight: 600, fontSize: '0.875rem', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
@@ -558,7 +545,7 @@ export default function TerrainPage() {
     )
   }
 
-  // ── Header session en cours (commun desktop/mobile) ───────────────────────
+  // ── Header session en cours ───────────────────────────────────────────────
   const sessionHeader = (
     <div style={{ height: 52, background: '#fff', borderBottom: '1px solid #e8e7e0', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
@@ -597,7 +584,7 @@ export default function TerrainPage() {
   )
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── EN COURS DESKTOP ──────────────────────────────────────────────────────
+  // ── EN COURS DESKTOP
   // ══════════════════════════════════════════════════════════════════════════
   if (isDesktop && appState === 'en_cours') {
     return (
@@ -673,7 +660,7 @@ export default function TerrainPage() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ── EN COURS MOBILE ───────────────────────────────────────────────────────
+  // ── EN COURS MOBILE
   // ══════════════════════════════════════════════════════════════════════════
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#1a1a18' }}>
