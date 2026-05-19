@@ -7,7 +7,8 @@ interface Adresse {
   type_bien?: string; nb_bal?: number; has_commerce?: boolean
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   interaction?: { resultat?: string; action?: string; type_habitat?: string }
-  score?: number; latest_dpe_date?: string | null; dpe_etiquette?: string | null; nom_syndic?: string
+  score?: number; latest_dpe_date?: string | null; dpe_etiquette?: string | null;
+  has_audit?: boolean; audit_n?: string | null; nom_syndic?: string
 }
 
 export default function BottomSheet({
@@ -41,7 +42,7 @@ export default function BottomSheet({
       setNomSyndic(adresse.nom_syndic ?? '')
       setCourrierCible(false)
       setProfil(''); setTypeProjet([]); setNote('')
-      setContact({ nom:'', prenom:'', tel1:'', email1:'' })
+      setContact({ nom:'', prenom:'', tel1:'', email1:'', date_relance:'' })
       setShowContactForm(false)
       setMotifExclusion(''); setMotifSuppression('')
     }
@@ -147,6 +148,14 @@ export default function BottomSheet({
     border: active ? 'none' : '1.5px solid #e5e7eb',
   })
 
+  // ── Couleurs DPE ──────────────────────────────────────────────────────────
+  const dpeColors: Record<string, { bg: string; fg: string }> = {
+    A: { bg: '#007A3D', fg: '#fff' }, B: { bg: '#4CAF50', fg: '#fff' },
+    C: { bg: '#8BC34A', fg: '#fff' }, D: { bg: '#FFEB3B', fg: '#333' },
+    E: { bg: '#FF9800', fg: '#fff' }, F: { bg: '#F44336', fg: '#fff' },
+    G: { bg: '#B71C1C', fg: '#fff' },
+  }
+
   // ── Contenu des étapes (partagé mobile + desktop) ─────────────────────────
   const stepContent = (
     <>
@@ -167,23 +176,28 @@ export default function BottomSheet({
           {/* Badge DPE si disponible */}
           {adresse.latest_dpe_date && adresse.dpe_etiquette && (() => {
             const etiq = adresse.dpe_etiquette.toUpperCase()
-            const dpeColors: Record<string, { bg: string; fg: string }> = {
-              A: { bg: '#007A3D', fg: '#fff' }, B: { bg: '#4CAF50', fg: '#fff' },
-              C: { bg: '#8BC34A', fg: '#fff' }, D: { bg: '#FFEB3B', fg: '#333' },
-              E: { bg: '#FF9800', fg: '#fff' }, F: { bg: '#F44336', fg: '#fff' },
-              G: { bg: '#B71C1C', fg: '#fff' },
-            }
             const col = dpeColors[etiq] ?? { bg: '#9b9b96', fg: '#fff' }
-            const dateStr = new Date(adresse.latest_dpe_date).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+            const dateStr = new Date(adresse.latest_dpe_date).toLocaleDateString('fr-FR', {
+              day: 'numeric', month: 'long', year: 'numeric'
+            })
+            const showAudit = ['E', 'F', 'G'].includes(etiq) && adresse.has_audit
             return (
-              <div style={{ margin: '8px 16px 0', padding: '8px 12px', borderRadius: 8, background: '#f8f7f4', border: '1px solid #e8e7e0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 6, background: col.bg, color: col.fg, fontWeight: 900, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {etiq}
+              <div style={{ margin: '8px 16px 0' }}>
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: '#f8f7f4', border: '1px solid #e8e7e0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 6, background: col.bg, color: col.fg, fontWeight: 900, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {etiq}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a18' }}>DPE {etiq} — Étiquette énergie</div>
+                    <div style={{ fontSize: 10, color: '#9b9b96' }}>Établi le {dateStr}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a18' }}>DPE {etiq} — Étiquette énergie</div>
-                  <div style={{ fontSize: 10, color: '#9b9b96' }}>Établi {dateStr}</div>
-                </div>
+                {showAudit && (
+                  <div style={{ marginTop: 4, padding: '5px 10px', borderRadius: 6, background: '#FFF3CD', border: '1px solid #FBBF24', fontSize: 11, fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🔍 Audit énergétique disponible
+                    {adresse.audit_n && <span style={{ fontWeight: 400, fontSize: 10 }}>· n° {adresse.audit_n}</span>}
+                  </div>
+                )}
               </div>
             )
           })()}
@@ -308,7 +322,7 @@ export default function BottomSheet({
               </div>
             </div>
           )}
-  
+
           <button onClick={submitContact} disabled={saving}
             style={{ width: '100%', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, background: saving ? '#E8E6DF' : '#1D9E75', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? 'Enregistrement...' : 'Valider le contact'}
