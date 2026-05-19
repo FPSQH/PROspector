@@ -405,6 +405,7 @@ export default function ZonesMap({
           <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
             <div><span style={{color:'#22c55e'}}>●</span> &lt;1 mois</div>
             <div><span style={{color:'#86efac'}}>●</span> 1–12 mois</div>
+            <div><span style={{color:'#fb923c'}}>●</span> &gt;12 mois</div>
           </div>
         )}
       </div>
