@@ -23,10 +23,14 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+
+  /* Design system Pro */
+  --gold:       #D97706;
+  --gold-light: #F59E0B;
 }
 
 html {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-outfit, 'Outfit'), -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
 }
@@ -58,8 +62,6 @@ button {
   min-height: 44px;
   min-width: 44px;
 }
-
-/* À AJOUTER à la fin de src/app/globals.css */
 
 /* ─── Mobile responsive — PROspector ─────────────────────────── */
 
@@ -133,7 +135,7 @@ button {
   }
 
   .mobile-tab-item.mobile-tab-active {
-    color: #1D9E75;
+    color: #D97706;
   }
 
   .mobile-tab-icon {
@@ -157,7 +159,7 @@ button {
     white-space: nowrap;
   }
 
-  /* Ajouter du padding en bas du contenu principal pour ne pas être masqué par la tab bar */
+  /* Ajouter du padding en bas du contenu principal */
   main {
     padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
   }
