@@ -1,5 +1,13 @@
 import type { Metadata, Viewport } from 'next'
+import { Outfit } from 'next/font/google'
 import './globals.css'
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-outfit',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'PROspector',
@@ -17,14 +25,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,   // Pas de zoom sur mobile (UX terrain)
+  maximumScale: 1,
   userScalable: false,
-  themeColor: '#1D9E75',
+  themeColor: '#D97706',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
+    <html lang="fr" className={outfit.variable}>
       <body>{children}</body>
     </html>
   )
