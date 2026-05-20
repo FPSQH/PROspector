@@ -371,7 +371,7 @@ export default async function DashboardPage() {
           supabase.from('dpe_logement')
             .select('id', { count: 'exact', head: true })
             .in('code_insee', communesInsee)
-            .eq('classe_energie', letter)
+            .eq('etiquette_dpe', letter)
         )
       )
     : DPE_LETTERS.map(() => ({ count: 0 }))
@@ -392,7 +392,7 @@ export default async function DashboardPage() {
     upcomingRes, sessionEnCoursRes, nbAdressesRes,
   ] = await Promise.all([
     supabase.from('zones_prospection')
-      .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, statut')
+      .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
       .eq('commercial_id', uid).order('numero'),
 
     supabase.from('sessions_prospection')
@@ -495,26 +495,31 @@ export default async function DashboardPage() {
     if (s.zone_id && !nextByZone[s.zone_id]) nextByZone[s.zone_id] = s.date_prevue
   }
 
-  // FIX : toutes les zones, pas de slice(0,6)
   const zonesDisplay = zones.map((z, i) => {
-    const total     = z.nb_adresses ?? 0
-    const remaining = z.nb_prospectables ?? 0
-    const visited   = Math.max(0, total - remaining)
-    const pct       = total > 0 ? Math.round((visited / total) * 100) : 0
+    const nbProspectables = z.nb_prospectables ?? 0
+    const nbAdresses      = z.nb_adresses ?? 0
+    const nbExclus        = (z as any).nb_logements_sociaux ?? 0
+    // visited = adresses initialement prospectables moins celles restantes
+    const visited   = Math.max(0, nbAdresses - nbProspectables)
+    const remaining = nbProspectables
+    const excluded  = nbExclus
+    // total de la barre = tout ce qu'il y a dans la zone
+    const barTotal  = Math.max(nbAdresses + nbExclus, 1)
+    const pct       = nbAdresses > 0 ? Math.round((visited / nbAdresses) * 100) : 0
     const pctColor  = pct >= 60 ? C.success : pct >= 40 ? C.gold : C.danger
     const color     = ZONE_COLORS[i % ZONE_COLORS.length]!
     const lastD     = lastByZone[z.id]
     const nextD     = nextByZone[z.id]
     return {
-      ...z, color, visited, remaining, excluded: 0,
-      total: Math.max(total, 1), pct, pctColor,
+      ...z, color, visited, remaining, excluded,
+      total: barTotal, pct, pctColor,
       lastLabel: lastD ? new Date(lastD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
       nextLabel: nextD ? new Date(nextD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
     }
   })
 
-  // Carte couverture : max 8 zones (densité visuelle)
-  const zonesCarteMax = zonesDisplay.slice(0, 8)
+  // Toutes les zones — la card couverture scrolle
+  const zonesCarteMax = zonesDisplay
 
   const monthLabel = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   const monthBadge = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
@@ -664,7 +669,7 @@ export default async function DashboardPage() {
         {/* ═══ 4 & 5. COUVERTURE + DPE ═══ */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <Card>
-            <SectionTitle title="Couverture territoriale" action="Voir toutes les zones" actionHref="/zones" />
+            <SectionTitle title="Couverture territoriale" badge={`${zones.length} zones`} />
             <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
               {[
                 { label: 'Visitées',  color: C.success },
@@ -683,7 +688,7 @@ export default async function DashboardPage() {
                 <span style={{ fontSize: 13 }}>Aucune zone configurée</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 320 }}>
                 {zonesCarteMax.map((z, i) => (
                   <div key={z.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '7px 4px',
@@ -705,13 +710,6 @@ export default async function DashboardPage() {
                     </div>
                   </div>
                 ))}
-                {zones.length > 8 && (
-                  <div style={{ paddingTop: 10, textAlign: 'center' }}>
-                    <Link href="/zones" style={{ fontSize: 11, color: C.gold, textDecoration: 'none', fontWeight: 600 }}>
-                      +{zones.length - 8} autres zones →
-                    </Link>
-                  </div>
-                )}
               </div>
             )}
           </Card>
