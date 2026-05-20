@@ -1,11 +1,324 @@
-import DpeAlertsWidget from '@/components/dashboard/DpeAlertsWidget'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
+// ── Design tokens ─────────────────────────────────────────────────────────
+const C = {
+  bg:         '#0C0C0E',
+  card:       '#141416',
+  border:     'rgba(255,255,255,0.06)',
+  borderL:    'rgba(255,255,255,0.10)',
+  borderSub:  'rgba(255,255,255,0.03)',
+  text:       '#F0F0F2',
+  mid:        '#9A9AA8',
+  muted:      '#6B6B7B',
+  dim:        '#4A4A58',
+  gold:       '#D97706',
+  goldLight:  '#F59E0B',
+  success:    '#22C55E',
+  danger:     '#EF4444',
+  info:       '#3B82F6',
+  purple:     '#8B5CF6',
+  orange:     '#F97316',
+  teal:       '#14B8A6',
+}
+
+const ZONE_COLORS = ['#22C55E','#3B82F6','#F59E0B','#EF4444','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1']
+
+const DPE_COLORS: Record<string, string> = {
+  A: '#059669', B: '#22C55E', C: '#84CC16',
+  D: '#EAB308', E: '#F97316', F: '#EF4444', G: '#DC2626',
+}
+
+const FONT = "var(--font-outfit, 'Outfit'), -apple-system, sans-serif"
+
+type RapportJson = {
+  nb_visites?: number
+  nb_contacts?: number
+  nb_flyers?: number
+  nb_flyers_deposes?: number
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────
+
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (!data || data.length < 2) return null
+  const max = Math.max(...data, 1)
+  const W = 100; const H = 36
+  const pts = data.map((v, i) => ({
+    x: (i / (data.length - 1)) * W,
+    y: H - 4 - ((v / max) * (H - 14)),
+  }))
+  const line = pts.map(p => `${p.x},${p.y}`).join(' ')
+  const area = line + ` ${W},${H} 0,${H}`
+  const gid  = `g${color.replace('#', '')}`
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.2"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${gid})`}/>
+      <polyline points={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function TrendBadge({ trend }: { trend: string }) {
+  const up = trend.startsWith('+')
+  const col = up ? C.success : C.danger
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '2px 7px', borderRadius: 12,
+      background: col + '12', border: `1px solid ${col}20`,
+      fontSize: 10, fontWeight: 600, color: col,
+    }}>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d={up ? 'M1.5 7.5L4 4.5L6 6.5L8.5 2.5' : 'M1.5 2.5L4 5.5L6 3.5L8.5 7.5'} stroke={col} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      {trend}
+    </span>
+  )
+}
+
+function KpiCard({ label, value, sub, trend, color, variant = 'default', sparkData }: {
+  label: string; value: string; sub?: string; trend?: string;
+  color: string; variant?: 'hero' | 'accent' | 'default'; sparkData?: number[]
+}) {
+  const isHero   = variant === 'hero'
+  const isAccent = variant === 'accent'
+  return (
+    <div style={{
+      background: isHero ? `linear-gradient(135deg, ${C.card}, rgba(217,119,6,0.06))` : C.card,
+      border: `1px solid ${isHero ? 'rgba(217,119,6,0.2)' : C.border}`,
+      borderTop: isAccent ? `2px solid ${color}` : isHero ? '2px solid rgba(217,119,6,0.5)' : undefined,
+      borderRadius: 12, padding: 16,
+      boxShadow: isHero ? '0 0 24px rgba(217,119,6,0.1), 0 2px 8px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.3)',
+      display: 'flex', flexDirection: 'column', gap: 5, fontFamily: FONT,
+    }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        {label}
+      </span>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: isHero ? 32 : 26, fontWeight: 700, color, lineHeight: 1.1 }}>{value}</span>
+        {trend && <TrendBadge trend={trend} />}
+      </div>
+      {sub && <span style={{ fontSize: 11, color: C.dim }}>{sub}</span>}
+      {sparkData && sparkData.length >= 2 && (
+        <div style={{ marginTop: 4 }}><Sparkline data={sparkData} color={color} /></div>
+      )}
+    </div>
+  )
+}
+
+function HBar({ fill, color, h = 6, w = '100%' }: { fill: number; color: string; h?: number; w?: string | number }) {
+  return (
+    <div style={{ width: w, height: h, borderRadius: h, background: 'rgba(255,255,255,0.04)', overflow: 'hidden', flexShrink: 0 }}>
+      <div style={{
+        width: `${Math.max(Math.min(fill * 100, 100), 2)}%`, height: '100%', borderRadius: h,
+        background: `linear-gradient(90deg, ${color}cc, ${color})`,
+      }} />
+    </div>
+  )
+}
+
+function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, boxShadow: '0 1px 2px rgba(0,0,0,0.3)', ...style }}>
+      {children}
+    </div>
+  )
+}
+
+function SectionTitle({ title, badge, action, actionHref }: {
+  title: string; badge?: string; action?: string; actionHref?: string
+}) {
+  const chevron = <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1.5L7 5L3 8.5" stroke={C.gold} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>{title}</span>
+        {badge && (
+          <span style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, fontSize: 10, fontWeight: 500, color: C.dim }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      {action && (
+        actionHref
+          ? <Link href={actionHref} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: C.gold, fontWeight: 600 }}>{action}</span>{chevron}
+            </Link>
+          : <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: C.gold, fontWeight: 600 }}>{action}</span>{chevron}
+            </div>
+      )}
+    </div>
+  )
+}
+
+function WeeklyHistogram({ weeks }: { weeks: { label: string; sessions: number; portes: number; flyers: number }[] }) {
+  const maxP = Math.max(...weeks.map(w => w.portes), 1)
+  const maxS = Math.max(...weeks.map(w => w.sessions), 1)
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
+        {[['Sessions', C.gold], ['Portes frappées', C.info], ['Flyers déposés', C.purple]].map(([lbl, col]) => (
+          <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: col, opacity: 0.85 }} />
+            <span style={{ fontSize: 10, color: C.dim, fontWeight: 500 }}>{lbl}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ position: 'relative', height: 100, marginBottom: 4 }}>
+        <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
+          {[0, 0.33, 0.66, 1].map((p, i) => (
+            <line key={i} x1="0" y1={`${p * 100}%`} x2="100%" y2={`${p * 100}%`} stroke={C.border} strokeWidth="0.5"/>
+          ))}
+        </svg>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', height: '100%', position: 'relative', zIndex: 1, padding: '0 4px' }}>
+          {weeks.map((w, wi) => (
+            <div key={wi} style={{ flex: 1, display: 'flex', gap: 2, alignItems: 'flex-end', height: '100%' }}>
+              {[
+                { val: w.sessions, max: maxS, color: C.gold },
+                { val: w.portes,   max: maxP, color: C.info },
+                { val: w.flyers,   max: maxP, color: C.purple },
+              ].map((bar, bi) => (
+                <div key={bi} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                  <span style={{ fontSize: 8, color: C.dim, fontWeight: 600, marginBottom: 2 }}>{bar.val}</span>
+                  <div style={{
+                    width: '100%', maxWidth: 18,
+                    height: bar.val === 0 ? 3 : `${Math.max((bar.val / bar.max) * 78, 4)}%`,
+                    borderRadius: '3px 3px 1px 1px',
+                    background: `linear-gradient(180deg, ${bar.color}, ${bar.color}99)`,
+                    opacity: bar.val === 0 ? 0.15 : 1,
+                  }} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 12, padding: '0 4px' }}>
+        {weeks.map((w, i) => (
+          <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+            <span style={{ fontSize: 10, color: C.muted, fontWeight: 500 }}>{w.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ConversionFunnel({ steps }: { steps: { label: string; value: number; color: string }[] }) {
+  const maxVal = Math.max(steps[0]?.value ?? 1, 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {steps.map((step, i) => {
+        const widthPct = Math.max((step.value / maxVal) * 100, 14)
+        const prevPct  = i > 0 && steps[i-1].value > 0 ? Math.round((step.value / steps[i-1].value) * 100) : null
+        return (
+          <div key={i}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 11, color: C.muted, fontWeight: 500, width: 72, textAlign: 'right', flexShrink: 0 }}>{step.label}</span>
+              <div style={{ flex: 1, position: 'relative', height: 28 }}>
+                <div style={{
+                  width: `${widthPct}%`, height: '100%',
+                  background: `linear-gradient(90deg, ${step.color}20, ${step.color}10)`,
+                  border: `1px solid ${step.color}30`, borderRadius: 6,
+                  display: 'flex', alignItems: 'center', paddingLeft: 10,
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: step.color }}>{step.value}</span>
+                </div>
+              </div>
+              <div style={{ width: 36, flexShrink: 0, textAlign: 'right' }}>
+                {prevPct !== null && <span style={{ fontSize: 10, color: C.dim, fontWeight: 500 }}>{prevPct}%</span>}
+              </div>
+            </div>
+            {i < steps.length - 1 && (
+              <div style={{ marginLeft: 82, height: 4 }}>
+                <div style={{ width: 1, height: 4, background: C.border, marginLeft: 8 }} />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DPEHistogram({ distribution }: { distribution: { letter: string; count: number; color: string }[] }) {
+  const maxCount = Math.max(...distribution.map(d => d.count), 1)
+  return (
+    <div>
+      <div style={{ position: 'relative', height: 100 }}>
+        <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
+          {[0, 0.33, 0.66, 1].map((p, i) => (
+            <line key={i} x1="0" y1={`${p * 100}%`} x2="100%" y2={`${p * 100}%`} stroke={C.border} strokeWidth="0.5"/>
+          ))}
+        </svg>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: '100%', position: 'relative', zIndex: 1 }}>
+          {distribution.map((d, i) => (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+              <span style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginBottom: 2 }}>{d.count}</span>
+              <div style={{
+                width: '100%', maxWidth: 30,
+                height: d.count === 0 ? 3 : `${(d.count / maxCount) * 82}%`, minHeight: 4,
+                borderRadius: '4px 4px 1px 1px',
+                background: `linear-gradient(180deg, ${d.color}, ${d.color}88)`,
+                opacity: d.count === 0 ? 0.15 : 1,
+              }} />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        {distribution.map((d, i) => (
+          <div key={i} style={{ flex: 1, textAlign: 'center', background: d.color + '15', borderRadius: 4, padding: '3px 0', border: `1px solid ${d.color}20` }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: d.color }}>{d.letter}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ZoneStackedBar({ visited, remaining, excluded, total }: { visited: number; remaining: number; excluded: number; total: number }) {
+  const t = Math.max(total, 1)
+  return (
+    <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: 'rgba(255,255,255,0.03)' }}>
+      {visited   > 0 && <div style={{ width: `${(visited   / t) * 100}%`, background: `linear-gradient(90deg, ${C.success}cc, ${C.success})` }} />}
+      {remaining > 0 && <div style={{ width: `${(remaining / t) * 100}%`, background: C.info + '35' }} />}
+      {excluded  > 0 && <div style={{ width: `${(excluded  / t) * 100}%`, background: 'rgba(255,255,255,0.06)' }} />}
+    </div>
+  )
+}
+
+function MiniKPI({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block' }}>{label}</span>
+      <span style={{ fontSize: 20, fontWeight: 700, color, marginTop: 5, display: 'block' }}>{value}</span>
+    </div>
+  )
+}
+
+function RatioTile({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', borderLeft: `3px solid ${color}` }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block' }}>{label}</span>
+      <span style={{ fontSize: 18, fontWeight: 700, color, marginTop: 5, display: 'block' }}>{value}</span>
+    </div>
+  )
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
+
 export default async function DashboardPage() {
   const supabase = await createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -20,350 +333,449 @@ export default async function DashboardPage() {
   if (!communes || communes.length === 0) redirect('/onboarding')
 
   const communesInsee = communes.map((c: any) => c.code_insee)
+  const uid = user.id
 
-  const { count: nbAdresses } = await supabase
-    .from('adresses').select('id', { count: 'exact', head: true })
-    .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+  // ── Dates ──
+  const now        = new Date()
+  const month      = now.getMonth()
+  const year       = now.getFullYear()
+  const monthStart = new Date(year, month, 1).toISOString().split('T')[0]
+  const monthEnd   = new Date(year, month + 1, 0).toISOString().split('T')[0]
+  const todayStr   = now.toISOString().split('T')[0]
+  const sunDate    = new Date(now)
+  sunDate.setDate(now.getDate() + (now.getDay() === 0 ? 0 : 7 - now.getDay()))
+  const sundayStr  = sunDate.toISOString().split('T')[0]
 
-  const { data: zones } = await supabase
-    .from('zones_prospection')
-    .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, capacite_theorique, statut')
-    .eq('commercial_id', commercial.id)
-    .order('numero')
+  // ── Parallel fetch ──
+  const [
+    zonesRes, sessionsMonthRes, planningMonthRes,
+    contactsRes, dpeRes, allSessZoneRes,
+    upcomingRes, sessionEnCoursRes, nbAdressesRes,
+  ] = await Promise.all([
+    supabase.from('zones_prospection')
+      .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, statut')
+      .eq('commercial_id', uid).order('numero'),
 
-  const nbZones            = zones?.length ?? 0
-  const totalAdressesZones = (zones ?? []).reduce((s: number, z: any) => s + (z.nb_prospectables ?? 0), 0)
+    supabase.from('sessions_prospection')
+      .select('id, date_session, rapport_json, zone_id')
+      .eq('commercial_id', uid).eq('statut', 'realisee')
+      .gte('date_session', monthStart).lte('date_session', monthEnd),
 
-  // ✅ CORRECTION : lire les vraies sessions planifiées au lieu d'un calcul hardcodé
-  const now      = new Date()
-  const todayStr = now.toISOString().split('T')[0]
+    supabase.from('planning_sessions')
+      .select('id')
+      .eq('commercial_id', uid)
+      .gte('date_prevue', monthStart).lte('date_prevue', monthEnd),
 
-  const { data: prochainsSessions } = await supabase
-    .from('planning_sessions')
-    .select(`
-      id, date_prevue, heure_debut, heure_fin, statut,
-      zones_prospection:zone_id(id, nom, couleur, numero)
-    `)
-    .eq('commercial_id', commercial.id)
-    .eq('statut', 'planifiee')
-    .gte('date_prevue', todayStr)
-    .order('date_prevue', { ascending: true })
-    .limit(5)
+    supabase.from('contacts')
+      .select('id, statut_pipeline, date_relance')
+      .eq('commercial_id', uid),
 
-  const prochaineSession  = prochainsSessions?.[0] ?? null
-  const hasPlanning       = (prochainsSessions?.length ?? 0) > 0
+    communesInsee.length > 0
+      ? supabase.from('dpe_logement').select('classe_energie')
+          .in('code_insee', communesInsee).not('classe_energie', 'is', null)
+      : Promise.resolve({ data: [] as { classe_energie: string }[], error: null }),
 
-  // ✅ Détection session en cours
-const { data: sessionEnCoursArr } = await supabase
-  .from('sessions_prospection')
-  .select('id, zone_id, date_session, heure_debut, type_session, commune_nom, zones_prospection:zone_id(nom, couleur, numero)')
-  .eq('commercial_id', commercial.id)
-  .eq('statut', 'en_cours')
-  .order('created_at', { ascending: false })
-  .limit(1)
+    supabase.from('sessions_prospection')
+      .select('zone_id, date_session')
+      .eq('commercial_id', uid).eq('statut', 'realisee')
+      .not('zone_id', 'is', null)
+      .order('date_session', { ascending: false }).limit(300),
 
-const sessionEnCours = sessionEnCoursArr?.[0] ?? null
+    supabase.from('planning_sessions')
+      .select('zone_id, date_prevue')
+      .eq('commercial_id', uid).eq('statut', 'planifiee')
+      .gte('date_prevue', todayStr)
+      .order('date_prevue', { ascending: true }),
 
-  // ── Historique des 5 dernières sessions réalisées ─────────────────────────
-  const { data: historiqueRaw } = await supabase
-    .from('sessions_prospection')
-    .select(`
-      id, date_session, type_session, commune_nom, rapport_json, nb_portes,
-      zones_prospection:zone_id(nom, couleur, numero)
-    `)
-    .eq('commercial_id', commercial.id)
-    .eq('statut', 'realisee')
-    .order('date_session', { ascending: false })
-    .limit(5)
+    supabase.from('sessions_prospection')
+      .select('id, zone_id, date_session, heure_debut, zones_prospection:zone_id(nom, couleur, numero)')
+      .eq('commercial_id', uid).eq('statut', 'en_cours')
+      .order('created_at', { ascending: false }).limit(1),
 
-  const historique = historiqueRaw ?? []
+    supabase.from('adresses')
+      .select('id', { count: 'exact', head: true })
+      .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__']),
+  ])
 
-  // Calcul jours restants depuis la vraie date_prevue
-  const joursRestants = prochaineSession
-    ? Math.max(0, Math.round(
-        (new Date(prochaineSession.date_prevue + 'T12:00:00').getTime() - now.getTime()) / 86400000
-      ))
-    : null
+  // ── Computed ──
+  const zones         = zonesRes.data ?? []
+  const sessionsMonth = sessionsMonthRes.data ?? []
+  const nbPlanned     = planningMonthRes.data?.length ?? 0
+  const contacts      = contactsRes.data ?? []
+  const dpeAll        = (dpeRes as any).data ?? [] as { classe_energie: string }[]
+  const allZoneSess   = allSessZoneRes.data ?? []
+  const upcoming      = upcomingRes.data ?? []
+  const sessionEC     = (sessionEnCoursRes.data ?? [])[0] ?? null
+  const nbAdresses    = nbAdressesRes.count ?? 0
 
-  const nomJours = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
-  const prochainJourLabel = prochaineSession
-    ? new Date(prochaineSession.date_prevue + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-    : null
+  function getWeek(d: string): number {
+    return Math.min(Math.ceil(parseInt(d.split('-')[2] ?? '1', 10) / 7), 4)
+  }
 
-  const prochaineZone = prochaineSession?.zones_prospection as any
+  const weeklyData = [1,2,3,4].map(wk => {
+    const ws = sessionsMonth.filter(s => getWeek(s.date_session) === wk)
+    return {
+      label:    `Sem. ${wk}`,
+      sessions: ws.length,
+      portes:   ws.reduce((s, x) => s + ((x.rapport_json as RapportJson)?.nb_visites ?? 0), 0),
+      flyers:   ws.reduce((s, x) => s + ((x.rapport_json as RapportJson)?.nb_flyers ?? (x.rapport_json as RapportJson)?.nb_flyers_deposes ?? 0), 0),
+      contacts: ws.reduce((s, x) => s + ((x.rapport_json as RapportJson)?.nb_contacts ?? 0), 0),
+    }
+  })
 
-  const etape     = nbZones === 0 ? 'setup_zones' : 'pret'
-  const isManager = commercial.role === 'manager'
+  const nbSessionsReal = sessionsMonth.length
+  const nbSessionsTot  = Math.max(nbPlanned, nbSessionsReal)
+  const nbPortes       = weeklyData.reduce((s, w) => s + w.portes, 0)
+  const nbContactsSess = weeklyData.reduce((s, w) => s + w.contacts, 0)
+  const nbFlyers       = weeklyData.reduce((s, w) => s + w.flyers, 0)
+  const tauxContact    = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
+  const avgPortes      = nbSessionsReal > 0 ? (nbPortes / nbSessionsReal).toFixed(1) : '—'
 
+  const nbContactsTotal = contacts.filter(c => c.statut_pipeline !== 'perdu').length
+  const nbQualifies     = contacts.filter(c => ['qualification','estimation','mandat'].includes(c.statut_pipeline ?? '')).length
+  const nbEstimations   = contacts.filter(c => ['estimation','mandat'].includes(c.statut_pipeline ?? '')).length
+  const nbMandats       = contacts.filter(c => c.statut_pipeline === 'mandat').length
+
+  const nbRelRetard   = contacts.filter(c => c.date_relance && c.date_relance < todayStr).length
+  const nbRelMois     = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= monthEnd).length
+  const nbRelSemaine  = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= sundayStr).length
+
+  const dpeLetters = ['A','B','C','D','E','F','G']
+  const dpeDistrib = dpeLetters.map(l => ({
+    letter: l,
+    count: (dpeAll as {classe_energie:string}[]).filter(d => d.classe_energie === l).length,
+    color: DPE_COLORS[l] ?? '#9b9b96',
+  }))
+  const dpeFG    = (dpeAll as {classe_energie:string}[]).filter(d => ['F','G'].includes(d.classe_energie)).length
+  const dpeDE    = (dpeAll as {classe_energie:string}[]).filter(d => ['D','E'].includes(d.classe_energie)).length
+  const dpeTotal = dpeAll.length
+  const dpePct   = nbAdresses > 0 ? (dpeTotal / nbAdresses * 100).toFixed(1) : '0.0'
+
+  const lastByZone: Record<string, string> = {}
+  for (const s of allZoneSess) {
+    if (s.zone_id && !lastByZone[s.zone_id]) lastByZone[s.zone_id] = s.date_session
+  }
+  const nextByZone: Record<string, string> = {}
+  for (const s of upcoming) {
+    if (s.zone_id && !nextByZone[s.zone_id]) nextByZone[s.zone_id] = s.date_prevue
+  }
+
+  const zonesDisplay = zones.slice(0, 6).map((z, i) => {
+    const total     = z.nb_adresses ?? 0
+    const remaining = z.nb_prospectables ?? 0
+    const visited   = Math.max(0, total - remaining)
+    const pct       = total > 0 ? Math.round((visited / total) * 100) : 0
+    const pctColor  = pct >= 60 ? C.success : pct >= 40 ? C.gold : C.danger
+    const color     = ZONE_COLORS[i] ?? '#9b9b96'
+    const lastD     = lastByZone[z.id]
+    const nextD     = nextByZone[z.id]
+    return {
+      ...z, color, visited, remaining, excluded: 0, total: Math.max(total, 1), pct, pctColor,
+      lastLabel: lastD ? new Date(lastD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
+      nextLabel: nextD ? new Date(nextD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
+    }
+  })
+
+  const monthLabel = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  const monthBadge = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
+  const isManager  = commercial.role === 'manager'
+
+  // ── Render ──
   return (
-    <div style={{ minHeight: '100dvh', background: '#f8f7f4' }}>
+    <div style={{ background: C.bg, minHeight: '100%', fontFamily: FONT }}>
 
       {/* Header */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '0 28px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} className="dash-header">
-        <div>
-          <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1a1a18' }}>Bonjour {commercial?.prenom} 👋</span>
-          <span style={{ marginLeft: 12, fontSize: '0.8rem', color: '#9b9b96' }} className="dash-header-date">
-            {now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </span>
+      <div style={{
+        height: 54, padding: '0 24px',
+        background: C.card, borderBottom: `1px solid ${C.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>Dashboard mensuel</span>
+          <div style={{ width: 1, height: 18, background: C.border }} />
+          <span style={{ fontSize: 12, color: C.dim, fontWeight: 500 }}>{monthBadge}</span>
         </div>
-        <form action="/auth/signout" method="post">
-          <button style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #e8e7e0', background: 'transparent', fontSize: '0.78rem', color: '#9b9b96', cursor: 'pointer' }}>
-            Déconnexion
-          </button>
-        </form>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.mid }}>Ce mois ▾</span>
+          </div>
+          <Link href="/terrain" style={{
+            textDecoration: 'none', padding: '6px 14px', borderRadius: 8,
+            background: `linear-gradient(135deg, ${C.gold}, ${C.goldLight})`,
+            boxShadow: '0 2px 8px rgba(217,119,6,0.4)',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Démarrer terrain →</span>
+          </Link>
+        </div>
       </div>
 
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 28px' }} className="dash-main">
+      {/* Content */}
+      <div style={{ padding: '20px 22px' }}>
 
         {/* Bannière manager */}
         {isManager && (
-          <div style={{ background: '#fff', border: '1.5px solid #d1fae5', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a1a18', marginBottom: 3 }}>👥 Espace manager</div>
-              <div style={{ fontSize: '0.8rem', color: '#5F5E5A' }}>Gérez les comptes et les accès de votre équipe commerciale.</div>
+              <span style={{ fontWeight: 600, fontSize: 13, color: C.text }}>👥 Espace manager</span>
+              <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>Gérez les comptes et les accès de votre équipe commerciale.</div>
             </div>
-            <Link href="/admin/users" style={{ padding: '9px 18px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', flexShrink: 0, marginLeft: 20 }}>
+            <Link href="/admin/users" style={{ padding: '7px 16px', borderRadius: 8, background: C.success, color: '#fff', fontWeight: 600, fontSize: 12, textDecoration: 'none', flexShrink: 0, marginLeft: 20 }}>
               Gérer l&apos;équipe →
             </Link>
           </div>
         )}
 
-        {/* Bannière setup zones */}
-        {etape === 'setup_zones' && (
-          <div style={{ background: '#fff', border: '1.5px solid #bbf7d0', borderRadius: 12, padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#1a1a18', marginBottom: 4 }}>Configurez vos zones de prospection</div>
-              <div style={{ fontSize: '0.82rem', color: '#5F5E5A' }}>
-                {(nbAdresses ?? 0).toLocaleString('fr-FR')} adresses chargées sur {communes.length} commune{communes.length > 1 ? 's' : ''} — prêtes à être découpées en zones.
+        {/* Session en cours */}
+        {sessionEC && (
+          <div style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 12, padding: '14px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.gold, boxShadow: `0 0 8px ${C.gold}`, flexShrink: 0 }} />
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 13, color: C.text }}>Session de prospection en cours</span>
+                <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
+                  {(sessionEC as any).zones_prospection
+                    ? `Zone ${(sessionEC as any).zones_prospection.numero} — ${(sessionEC as any).zones_prospection.nom}`
+                    : 'Session libre'
+                  }
+                </div>
               </div>
             </div>
-            <Link href="/zones" style={{ padding: '9px 18px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', flexShrink: 0, marginLeft: 20 }}>
-              Générer les zones →
+            <Link href="/terrain" style={{ padding: '7px 14px', borderRadius: 8, background: `linear-gradient(135deg, ${C.gold}, ${C.goldLight})`, color: '#fff', fontWeight: 700, fontSize: 12, textDecoration: 'none', flexShrink: 0 }}>
+              ▶ Reprendre →
             </Link>
           </div>
         )}
 
-        {/* ✅ Bandeau session en cours */}
-{sessionEnCours && (
-  <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: 12, padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span style={{ fontSize: '1.5rem' }}>⚠️</span>
-      <div>
-        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400e' }}>Session de prospection en cours</div>
-        <div style={{ fontSize: '0.8rem', color: '#78350f', marginTop: 2 }}>
-          {(sessionEnCours as any).zones_prospection
-            ? `Zone ${(sessionEnCours as any).zones_prospection.numero} — ${(sessionEnCours as any).zones_prospection.nom}`
-            : (sessionEnCours as any).commune_nom ?? 'Session libre'
-          } · démarrée le {new Date((sessionEnCours as any).date_session).toLocaleDateString('fr-FR')} à {(sessionEnCours as any).heure_debut?.slice(0,5)}
+        {/* ═══ 1. KPI STRIP ═══ */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 10 }}>
+          <KpiCard label="Sessions réalisées" value={String(nbSessionsReal)}
+            sub={`sur ${nbSessionsTot} planifiées`} color={C.gold} variant="hero"
+            sparkData={weeklyData.map(w => w.sessions)} />
+          <KpiCard label="Portes frappées" value={String(nbPortes)}
+            color={C.info} variant="accent" sparkData={weeklyData.map(w => w.portes)} />
+          <KpiCard label="Contacts obtenus" value={String(nbContactsSess)}
+            color={C.success} variant="accent" sparkData={weeklyData.map(w => w.contacts)} />
+          <KpiCard label="Taux de contact"
+            value={tauxContact > 0 ? tauxContact.toFixed(1) + '%' : '—'}
+            sub="portes → contacts" color={C.teal} />
         </div>
-      </div>
-    </div>
-    <Link href="/terrain" style={{ padding: '9px 16px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none', flexShrink: 0 }}>
-      ▶ Reprendre →
-    </Link>
-  </div>
-)}
-
-        {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 24 }} className="dash-kpis">
-          {[
-            { label: 'Communes',  value: communes.length,                                          sub: 'dans le secteur',  href: '/onboarding', color: '#2196F3' },
-            { label: 'Adresses',  value: (nbAdresses ?? 0).toLocaleString('fr-FR'),               sub: 'chargées BAN',     href: null,          color: '#9b9b96' },
-            { label: 'Zones',     value: nbZones,                                                  sub: nbZones === 0 ? 'à configurer' : `${totalAdressesZones.toLocaleString('fr-FR')} adresses`, href: '/zones', color: '#1D9E75', empty: nbZones === 0 },
-            {
-              label: 'Prochaine session',
-              // ✅ Affiche la vraie date depuis planning_sessions
-              value: !hasPlanning
-                ? 'Non planifiée'
-                : joursRestants === 0
-                  ? "Aujourd'hui !"
-                  : joursRestants === 1
-                    ? 'Demain'
-                    : `Dans ${joursRestants}j`,
-              sub: hasPlanning && prochaineZone
-                ? `${prochainJourLabel} — Z${prochaineZone.numero} ${prochaineZone.nom}`
-                : hasPlanning
-                  ? prochainJourLabel ?? ''
-                  : 'Générer un planning →',
-              href: !hasPlanning ? '/planning' : null,
-              color: '#FF9800',
-              empty: !hasPlanning,
-            },
-          ].map((kpi: any) => (
-            <div key={kpi.label} style={{ background: kpi.empty ? '#fafaf8' : '#fff', border: `1px solid ${kpi.empty ? '#e8e7e0' : '#f0efeb'}`, borderRadius: 12, padding: '16px 18px' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 500, color: '#9b9b96', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{kpi.label}</div>
-              <div style={{ fontSize: kpi.empty ? '1rem' : '1.5rem', fontWeight: 700, color: kpi.empty ? '#c9c8c2' : '#1a1a18', lineHeight: 1, marginBottom: 4 }}>{kpi.value}</div>
-              <div style={{ fontSize: '0.75rem', color: '#9b9b96' }}>{kpi.sub}</div>
-              {kpi.href && (
-                <Link href={kpi.href} style={{ display: 'inline-block', marginTop: 8, fontSize: '0.72rem', color: kpi.color, textDecoration: 'none', fontWeight: 500 }}>
-                  {kpi.empty ? 'Configurer →' : 'Voir →'}
-                </Link>
-              )}
-            </div>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
+          <KpiCard label="Contacts CRM" value={String(nbContactsTotal)} sub="dans le pipeline" color={C.purple} />
+          <KpiCard label="Estimations" value={String(nbEstimations)} color={C.info} />
+          <KpiCard label="Mandats signés" value={String(nbMandats)} color={C.gold} variant="accent" />
+          <KpiCard label="Flyers / courriers" value={String(nbFlyers)} sub="déposés ce mois" color={C.orange} />
         </div>
 
-        {/* Grille principale */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }} className="dash-grid">
+        {/* ═══ 2 & 3. ACTIVITÉ + PERFORMANCE ═══ */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
 
-          {/* Colonne gauche */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            {/* ✅ Prochaine tournée — depuis planning_sessions réelles */}
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0efeb', padding: '20px 24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1a1a18' }}>Prochaine tournée</h2>
-                {hasPlanning && prochainJourLabel && (
-                  <span style={{ background: '#f0fdf4', color: '#0F6E56', fontSize: '0.72rem', fontWeight: 600, padding: '3px 8px', borderRadius: 6, textTransform: 'capitalize' }}>
-                    {prochainJourLabel}
-                  </span>
-                )}
+          {/* Activité terrain */}
+          <Card>
+            <SectionTitle title="Activité terrain" badge={monthBadge} />
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: C.mid, fontWeight: 500 }}>Sessions réalisées / planifiées</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.gold }}>{nbSessionsReal} / {nbSessionsTot}</span>
               </div>
-
-              {nbZones === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: '#9b9b96' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: 8 }}>🗺️</div>
-                  <p style={{ fontSize: '0.875rem', marginBottom: 12 }}>Configurez vos zones pour commencer à prospecter</p>
-                  <Link href="/zones" style={{ padding: '8px 16px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
-                    Configurer les zones →
-                  </Link>
-                </div>
-              ) : !hasPlanning ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: '#9b9b96' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: 8 }}>📅</div>
-                  <p style={{ fontSize: '0.875rem', marginBottom: 12 }}>Aucune session planifiée à venir</p>
-                  <Link href="/planning" style={{ padding: '8px 16px', borderRadius: 8, background: '#FF9800', color: '#fff', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
-                    Générer le planning →
-                  </Link>
-                </div>
-              ) : (
-                <div>
-                  {/* Sessions à venir */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                    {prochainsSessions?.slice(0, 3).map((s: any, idx: number) => {
-                      const z   = s.zones_prospection
-                      const dateLabel = new Date(s.date_prevue + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-                      const jrs = Math.max(0, Math.round((new Date(s.date_prevue + 'T12:00:00').getTime() - now.getTime()) / 86400000))
-                      return (
-                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, background: idx === 0 ? '#f0fdf4' : '#f8f7f4', border: `1px solid ${idx === 0 ? '#bbf7d0' : '#e8e7e0'}` }}>
-                          {z && <div style={{ width: 10, height: 10, borderRadius: '50%', background: z.couleur, flexShrink: 0 }} />}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1a1a18', textTransform: 'capitalize' }}>{dateLabel}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#9b9b96' }}>
-                              {z ? `Zone ${z.numero} — ${z.nom}` : 'Zone non assignée'} · {s.heure_debut}–{s.heure_fin}
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: idx === 0 ? '#0F6E56' : '#9b9b96', flexShrink: 0 }}>
-                            {jrs === 0 ? "Aujourd'hui" : jrs === 1 ? 'Demain' : `J+${jrs}`}
-                          </span>
-                          {idx === 0 && z && (
-                            <Link href={`/terrain?zone_id=${z.id}`} style={{ padding: '5px 10px', borderRadius: 6, background: '#1D9E75', color: '#fff', fontSize: '0.75rem', fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-                              Démarrer →
-                            </Link>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <Link href="/planning" style={{ fontSize: '0.78rem', color: '#1D9E75', textDecoration: 'none', fontWeight: 500 }}>
-                    Voir le planning complet →
-                  </Link>
+              <HBar fill={nbSessionsTot > 0 ? nbSessionsReal / nbSessionsTot : 0} color={C.gold} h={8} />
+              {nbSessionsTot > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: C.success }}>
+                    {Math.round((nbSessionsReal / nbSessionsTot) * 100)}% du planning
+                  </span>
                 </div>
               )}
             </div>
+            <WeeklyHistogram weeks={weeklyData} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 18 }}>
+              <MiniKPI label="Moy. portes/session" value={avgPortes} color={C.info} />
+              <MiniKPI label="Sessions ce mois" value={String(nbSessionsReal)} color={C.gold} />
+              <MiniKPI label="Flyers déposés" value={String(nbFlyers)} color={C.purple} />
+            </div>
+          </Card>
 
-            {/* Widget DPE */}
-            <DpeAlertsWidget />
+          {/* Performance commerciale */}
+          <Card>
+            <SectionTitle title="Performance commerciale" badge="Pipeline" />
+            <ConversionFunnel steps={[
+              { label: 'Contacts',    value: nbContactsTotal, color: C.success },
+              { label: 'Qualifiés',  value: nbQualifies,     color: C.teal },
+              { label: 'Estimations', value: nbEstimations,  color: C.purple },
+              { label: 'Mandats',    value: nbMandats,       color: C.gold },
+            ]} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 18 }}>
+              <RatioTile label="Taux de contact" value={tauxContact > 0 ? tauxContact.toFixed(1) + '%' : '—'} color={C.success} />
+              <RatioTile label="Qualif. / contact" value={nbContactsTotal > 0 ? Math.round(nbQualifies / nbContactsTotal * 100) + '%' : '—'} color={C.teal} />
+              <RatioTile label="Mandats / estim." value={nbEstimations > 0 ? Math.round(nbMandats / nbEstimations * 100) + '%' : '—'} color={C.gold} />
+              <RatioTile label="Mandats signés" value={String(nbMandats)} color={C.purple} />
+            </div>
+            <div style={{ marginTop: 18 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.mid, marginBottom: 10, display: 'block' }}>Relances</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { label: 'Cette semaine', value: nbRelSemaine, max: Math.max(nbContactsTotal, 1), color: C.info },
+                  { label: 'Ce mois',       value: nbRelMois,    max: Math.max(nbContactsTotal, 1), color: C.gold },
+                  { label: 'En retard',     value: nbRelRetard,  max: Math.max(nbContactsTotal, 1), color: C.danger },
+                ].map((r, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 11, color: C.muted, fontWeight: 500, width: 95, flexShrink: 0 }}>{r.label}</span>
+                    <div style={{ flex: 1 }}><HBar fill={r.max > 0 ? r.value / r.max : 0} color={r.color} h={5} /></div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: r.color, width: 22, textAlign: 'right' }}>{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
 
-            {/* Historique rapports de prospection */}
-            {historique.length > 0 && (
-              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0efeb', padding: '20px 24px' }}>
-                <h2 style={{ margin: '0 0 16px', fontSize: '0.9rem', fontWeight: 600, color: '#1a1a18' }}>
-                  Historique des sessions
-                </h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {historique.map((s: any) => {
-                    const z = s.zones_prospection
-                    const r = s.rapport_json ?? {}
-                    const dateLabel = new Date(s.date_session + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
-                    const stats = [
-                      { label: 'Portes',    value: r.nb_visites,             color: '#1D9E75' },
-                      { label: 'Contacts',  value: r.nb_contacts,            color: '#3b82f6' },
-                      { label: 'Maisons',   value: r.nb_maisons,             color: '#f59e0b' },
-                      { label: 'Immeubles', value: r.nb_immeubles,           color: '#8b5cf6' },
-                      { label: 'Suppr.',    value: r.nb_adresses_supprimees, color: '#9b9b96' },
-                    ].filter(item => (item.value ?? 0) > 0)
-                    return (
-                      <div key={s.id} style={{ padding: '12px 14px', borderRadius: 10, background: '#f8f7f4', border: '1px solid #e8e7e0' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: stats.length > 0 ? 8 : 0 }}>
-                          {z
-                            ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: z.couleur, flexShrink: 0 }} />
-                            : <span style={{ fontSize: '0.8rem' }}>🚶</span>
-                          }
-                          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1a1a18', flex: 1 }}>
-                            {z ? `Z${z.numero} — ${z.nom}` : (s.commune_nom ?? 'Session libre')}
-                          </div>
-                          <span style={{ fontSize: '0.72rem', color: '#9b9b96', flexShrink: 0, textTransform: 'capitalize' }}>
-                            {dateLabel}
-                          </span>
-                        </div>
-                        {stats.length > 0 ? (
-                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                            {stats.map(item => (
-                              <span key={item.label} style={{
-                                padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600,
-                                background: item.color + '22', color: item.color,
-                              }}>
-                                {item.value} {item.label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '0.72rem', color: '#9b9b96', fontStyle: 'italic' }}>
-                            Aucune interaction enregistrée
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })}
+        {/* ═══ 4 & 5. COUVERTURE + DPE ═══ */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+
+          {/* Couverture territoriale */}
+          <Card>
+            <SectionTitle title="Couverture territoriale" action="Voir toutes les zones" actionHref="/zones" />
+            <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
+              {[
+                { label: 'Visitées',  color: C.success },
+                { label: 'Restantes', color: C.info + '50' },
+                { label: 'Exclues',   color: 'rgba(255,255,255,0.08)' },
+              ].map(l => (
+                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: l.color }} />
+                  <span style={{ fontSize: 10, color: C.dim, fontWeight: 500 }}>{l.label}</span>
                 </div>
+              ))}
+            </div>
+            {zonesDisplay.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted }}>
+                <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.4 }}>🗺️</div>
+                <span style={{ fontSize: 13 }}>Aucune zone configurée</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {zonesDisplay.map((z, i) => (
+                  <div key={z.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px',
+                    borderBottom: i < zonesDisplay.length - 1 ? `1px solid ${C.borderSub}` : 'none',
+                  }}>
+                    <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: z.color + '15', border: `1.5px solid ${z.color}35`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: z.color }}>{z.numero}</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.nom}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: z.pctColor, flexShrink: 0, marginLeft: 8 }}>{z.pct}%</span>
+                      </div>
+                      <ZoneStackedBar visited={z.visited} remaining={z.remaining} excluded={z.excluded} total={z.total} />
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, width: 70 }}>
+                      <span style={{ fontSize: 10, color: C.muted, display: 'block' }}>{z.remaining} rest.</span>
+                      <span style={{ fontSize: 9, color: C.dim }}>↻ {z.nextLabel}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-          </div>
+          </Card>
 
-          {/* Colonne droite */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            {/* Zones */}
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0efeb', padding: '20px 24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#1a1a18' }}>Mes zones</h2>
-                <Link href="/zones" style={{ fontSize: '0.75rem', color: '#1D9E75', textDecoration: 'none', fontWeight: 500 }}>Gérer →</Link>
-              </div>
-              {nbZones === 0 ? (
-                <p style={{ fontSize: '0.82rem', color: '#9b9b96', textAlign: 'center', padding: '16px 0' }}>Aucune zone configurée</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(zones ?? []).slice(0, 6).map((z: any) => (
-                    <div key={z.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: z.couleur, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1a1a18', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.nom}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#9b9b96' }}>{z.nb_prospectables ?? 0} adresses</div>
-                      </div>
-                      <Link href={`/terrain?zone_id=${z.id}`} style={{ fontSize: '0.7rem', color: '#1D9E75', textDecoration: 'none', fontWeight: 500, flexShrink: 0 }}>
-                        →
-                      </Link>
-                    </div>
-                  ))}
-                  {nbZones > 6 && <p style={{ fontSize: '0.75rem', color: '#9b9b96', marginTop: 4 }}>+{nbZones - 6} autres zones</p>}
-                </div>
-              )}
+          {/* Intelligence DPE */}
+          <Card>
+            <SectionTitle title="Intelligence DPE" badge="Secteur" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
+              <MiniKPI label="DPE total" value={String(dpeTotal)} color={C.gold} />
+              <MiniKPI label="Opp. F/G" value={String(dpeFG)} color={C.danger} />
+              <MiniKPI label="% DPE connu" value={dpePct + '%'} color={C.success} />
             </div>
-
-          </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.mid, marginBottom: 10, display: 'block' }}>Répartition par étiquette</span>
+            <DPEHistogram distribution={dpeDistrib} />
+            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {[
+                { label: 'DPE F/G — Opportunités vente',  value: String(dpeFG),   color: C.danger },
+                { label: 'DPE D/E — À surveiller',        value: String(dpeDE),   color: C.orange },
+                { label: 'DPE identifiés sur le secteur', value: String(dpeTotal), color: C.info },
+              ].map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: a.color + '08', border: `1px solid ${a.color}15` }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: a.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, color: a.color, fontWeight: 500, flex: 1 }}>{a.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: a.color }}>{a.value}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
-      </main>
+
+        {/* ═══ 6. TABLEAU DE PILOTAGE ═══ */}
+        <Card style={{ padding: 20 }}>
+          <SectionTitle title="Tableau de pilotage — Zones prioritaires" action="Exporter" />
+          {zones.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted }}>
+              <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.4 }}>📊</div>
+              <span style={{ fontSize: 13 }}>Configurez vos zones pour voir le tableau de pilotage</span>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: FONT, fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    {['Zone', '% couverture', 'Adr. restantes', 'Dernier passage', 'Retour prévu', 'Contacts', 'Mandats'].map((h, i) => (
+                      <th key={i} style={{
+                        padding: '10px', textAlign: i === 0 ? 'left' : 'center',
+                        borderBottom: `1px solid ${C.borderL}`,
+                        color: C.dim, fontWeight: 600, fontSize: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em',
+                        whiteSpace: 'nowrap', background: 'rgba(255,255,255,0.015)',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {zonesDisplay.map((z) => (
+                    <tr key={z.id}>
+                      <td style={{ padding: '10px', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, background: z.color + '15', border: `1.5px solid ${z.color}35`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: z.color }}>{z.numero}</span>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: C.text, whiteSpace: 'nowrap' }}>{z.nom}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                          <HBar w={48} h={4} fill={z.pct / 100} color={z.pctColor} />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: z.pctColor }}>{z.pct}%</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: C.mid }}>{z.remaining}</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <span style={{ fontSize: 11, color: C.muted }}>{z.lastLabel}</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        {z.nextLabel !== '—' ? (
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', color: C.info }}>
+                            {z.nextLabel}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: C.dim }}>—</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.dim }}>—</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+      </div>
     </div>
   )
 }
