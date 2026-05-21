@@ -137,12 +137,19 @@ export default function TerrainPage() {
         return
       }
 
-      setAppState('choix_zone')
+setAppState('choix_zone')
 
-      const zoneIdParam = searchParams.get('zone_id')
+      const zoneIdParam    = searchParams.get('zone_id')
+      const autostartParam = searchParams.get('autostart')
       if (zoneIdParam) {
         const zone = zonesData.find((z: Zone) => z.id === zoneIdParam)
-        if (zone) handleZonePreviewInner(zone, zonesData)
+        if (zone) {
+          if (autostartParam === '1' && !sessEnCours) {
+            await handleStartSession(zone)
+          } else {
+            handleZonePreviewInner(zone, zodesData)
+          }
+        }
       }
     }
     init()
