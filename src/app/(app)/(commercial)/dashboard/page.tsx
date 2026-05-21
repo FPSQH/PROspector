@@ -1,7 +1,8 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import PeriodeSelector from './PeriodeSelector'
+import PeriodeSelector    from './PeriodeSelector'
+import DpePeriodeSelector from './DpePeriodeSelector'
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const C = {
@@ -261,7 +262,7 @@ function DPEHistogram({ distribution }: { distribution: { letter: string; count:
   const maxCount = Math.max(...distribution.map(d => d.count), 1)
   return (
     <div>
-      <div style={{ position: 'relative', height: 100 }}>
+      <div style={{ position: 'relative', height: 90 }}>
         <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
           {[0, 0.33, 0.66, 1].map((p, i) => (
             <line key={i} x1="0" y1={`${p * 100}%`} x2="100%" y2={`${p * 100}%`} stroke={C.border} strokeWidth="0.5"/>
@@ -273,7 +274,7 @@ function DPEHistogram({ distribution }: { distribution: { letter: string; count:
               <span style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginBottom: 2 }}>{d.count}</span>
               <div style={{
                 width: '100%', maxWidth: 30,
-                height: d.count === 0 ? 3 : `${(d.count / maxCount) * 82}%`, minHeight: 4,
+                height: d.count === 0 ? 3 : `${(d.count / maxCount) * 78}%`, minHeight: 4,
                 borderRadius: '4px 4px 1px 1px',
                 background: `linear-gradient(180deg, ${d.color}, ${d.color}88)`,
                 opacity: d.count === 0 ? 0.15 : 1,
@@ -293,6 +294,29 @@ function DPEHistogram({ distribution }: { distribution: { letter: string; count:
   )
 }
 
+// ── DPE detail row : label + maison/appart/total inline ────────────────────
+function DpeDetailRow({ label, maison, appart, total, color }: {
+  label: string; maison: number; appart: number; total: number; color: string
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: color + '08', border: `1px solid ${color}15` }}>
+      <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, color, fontWeight: 500, flex: 1, minWidth: 0 }}>{label}</span>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: 10, color: C.muted }}>
+          🏠 <span style={{ fontWeight: 600, color }}>{maison}</span>
+        </span>
+        <span style={{ fontSize: 10, color: C.dim }}>·</span>
+        <span style={{ fontSize: 10, color: C.muted }}>
+          🏢 <span style={{ fontWeight: 600, color }}>{appart}</span>
+        </span>
+        <span style={{ fontSize: 10, color: C.dim }}>·</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color }}>{total}</span>
+      </div>
+    </div>
+  )
+}
+
 function ZoneStackedBar({ visited, remaining, excluded, total }: {
   visited: number; remaining: number; excluded: number; total: number
 }) {
@@ -306,11 +330,12 @@ function ZoneStackedBar({ visited, remaining, excluded, total }: {
   )
 }
 
-function MiniKPI({ label, value, color }: { label: string; value: string; color: string }) {
+function MiniKPI({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
       <span style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block' }}>{label}</span>
       <span style={{ fontSize: 20, fontWeight: 700, color, marginTop: 5, display: 'block' }}>{value}</span>
+      {sub && <span style={{ fontSize: 9, color: C.dim, display: 'block', marginTop: 2 }}>{sub}</span>}
     </div>
   )
 }
@@ -325,11 +350,10 @@ function RatioTile({ label, value, color, sub }: { label: string; value: string;
   )
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 function getWeek(d: string): number {
   return Math.min(Math.ceil(parseInt(d.split('-')[2] ?? '1', 10) / 7), 4)
 }
-
 function fmtPct(n: number, d: number): string {
   if (d === 0) return '0 %'
   return (n / d * 100).toFixed(2) + ' %'
@@ -339,7 +363,7 @@ function fmtPct(n: number, d: number): string {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { periode?: string }
+  searchParams: { periode?: string; dpe_periode?: string }
 }) {
   const supabase = await createClient()
   const adminDb  = createAdminClient()
@@ -359,12 +383,15 @@ export default async function DashboardPage({
   const communesInsee = communes.map((c: any) => String(c.code_insee))
   const uid = user.id
 
-  // ── Période sélecteur ──────────────────────────────────────────────────
-  // Valeur par défaut : 'mois'
+  // ── Sélecteur période CRM ──────────────────────────────────────────────
   const PERIODES_VALIDES = ['mois', 'annee', 'tout']
   const periode = PERIODES_VALIDES.includes(searchParams.periode ?? '')
-    ? (searchParams.periode as string)
-    : 'mois'
+    ? (searchParams.periode as string) : 'mois'
+
+  // ── Sélecteur période DPE ──────────────────────────────────────────────
+  const DPE_PERIODES_VALIDES = ['mois', '2mois', 'annee', 'tout']
+  const dpePeriode = DPE_PERIODES_VALIDES.includes(searchParams.dpe_periode ?? '')
+    ? (searchParams.dpe_periode as string) : 'tout'
 
   // ── Dates ──────────────────────────────────────────────────────────────
   const now        = new Date()
@@ -378,10 +405,31 @@ export default async function DashboardPage({
   sunDate.setDate(now.getDate() + (now.getDay() === 0 ? 0 : 7 - now.getDay()))
   const sundayStr  = sunDate.toISOString().split('T')[0]
 
+  // Date -2 semaines pour le KPI "DPE récents"
+  const twoWeeksAgo = new Date(now)
+  twoWeeksAgo.setDate(now.getDate() - 14)
+  const twoWeeksAgoStr = twoWeeksAgo.toISOString().split('T')[0]
+
+  // Date filtre pour dpe_periode
+  const twoMonthsAgo = new Date(now)
+  twoMonthsAgo.setMonth(now.getMonth() - 2)
+  const twoMonthsAgoStr = twoMonthsAgo.toISOString().split('T')[0]
+
+  const dpeDateDebut: string | null =
+    dpePeriode === 'mois'  ? monthStart :
+    dpePeriode === '2mois' ? twoMonthsAgoStr :
+    dpePeriode === 'annee' ? yearStart : null
+
+  // Labels
   const monthLabel = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   const monthBadge = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
 
-  // Filtre date_created pour les contacts CRM selon la période sélectionnée
+  const dpePeriodeLabel =
+    dpePeriode === 'mois'  ? monthBadge :
+    dpePeriode === '2mois' ? 'Moins de 2 mois' :
+    dpePeriode === 'annee' ? String(year) :
+    'Depuis toujours'
+
   const crmDateDebut: string | null =
     periode === 'mois'  ? monthStart :
     periode === 'annee' ? yearStart  : null
@@ -395,18 +443,12 @@ export default async function DashboardPage({
   // DONNÉES STRUCTURELLES
   // ══════════════════════════════════════════════════════════════════════════
 
-  // Contacts CRM avec filtre période (created_at)
   let contactsQuery = supabase
     .from('contacts')
     .select('id, statut_pipeline, date_relance, created_at')
     .eq('commercial_id', uid)
-
-  if (crmDateDebut) {
-    contactsQuery = contactsQuery.gte('created_at', crmDateDebut)
-  }
-  if (periode === 'mois') {
-    contactsQuery = contactsQuery.lte('created_at', monthEnd + 'T23:59:59')
-  }
+  if (crmDateDebut) contactsQuery = contactsQuery.gte('created_at', crmDateDebut)
+  if (periode === 'mois') contactsQuery = contactsQuery.lte('created_at', monthEnd + 'T23:59:59')
 
   const [
     zonesRes,
@@ -422,7 +464,6 @@ export default async function DashboardPage({
       .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
       .eq('commercial_id', uid).order('numero'),
 
-    // Terrain : toujours ce mois
     supabase.from('sessions_prospection')
       .select('id, date_session, zone_id')
       .eq('commercial_id', uid).eq('statut', 'realisee')
@@ -467,7 +508,7 @@ export default async function DashboardPage({
   const nbAdresses       = nbAdressesRes.count ?? 0
 
   // ══════════════════════════════════════════════════════════════════════════
-  // INTERACTIONS VIA adminDb (bypass RLS)
+  // INTERACTIONS VIA adminDb
   // ══════════════════════════════════════════════════════════════════════════
 
   const monthSessionIds    = sessionsMonth.map(s => s.id)
@@ -486,52 +527,150 @@ export default async function DashboardPage({
     : { data: [] as { adresse_id: string; session_id: string }[] }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // DPE (7 COUNT par lettre)
+  // DPE — REQUÊTES PARALLÈLES
   // ══════════════════════════════════════════════════════════════════════════
 
-  const dpeCountsPerLetter = communesInsee.length > 0
-    ? await Promise.all(
-        DPE_LETTERS.map(letter =>
-          supabase.from('dpe_logement')
-            .select('id', { count: 'exact', head: true })
-            .in('code_insee', communesInsee)
-            .eq('etiquette_dpe', letter)
-        )
-      )
-    : DPE_LETTERS.map(() => ({ count: 0 }))
+  // Helper pour appliquer le filtre période DPE sur une query
+  const applyDpeFilter = (q: any) => dpeDateDebut ? q.gte('date_etablissement', dpeDateDebut) : q
+
+  const zoneIds = zones.map(z => z.id)
+
+  // ── Toutes requêtes DPE en parallèle ──────────────────────────────────
+  const [
+    // 1. DPE récents < 2 semaines (JAMAIS filtré par dpe_periode)
+    dpeRecentsRes,
+
+    // 2-8. Histogramme A→G (filtré par dpe_periode)
+    ...dpeLetterResults
+  ] = await Promise.all([
+    // DPE récents — filtre fixe 14 jours
+    (() => {
+      const q = supabase.from('dpe_logement')
+        .select('id', { count: 'exact', head: true })
+        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+        .gte('date_etablissement', twoWeeksAgoStr)
+      return communesInsee.length > 0 ? q : Promise.resolve({ count: 0 })
+    })(),
+
+    // 7 lettres A→G avec filtre dpe_periode
+    ...DPE_LETTERS.map(letter => {
+      const q = supabase.from('dpe_logement')
+        .select('id', { count: 'exact', head: true })
+        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+        .eq('etiquette_dpe', letter)
+      return communesInsee.length > 0 ? applyDpeFilter(q) : Promise.resolve({ count: 0 })
+    }),
+  ])
+
+  const dpeRecents = (dpeRecentsRes as any)?.count ?? 0
 
   const dpeDistrib = DPE_LETTERS.map((letter, i) => ({
     letter,
-    count: (dpeCountsPerLetter[i] as any)?.count ?? 0,
+    count: (dpeLetterResults[i] as any)?.count ?? 0,
     color: DPE_COLORS[letter]!,
   }))
   const dpeTotal = dpeDistrib.reduce((s, d) => s + d.count, 0)
-  const dpeFG    = dpeDistrib.filter(d => d.letter === 'F' || d.letter === 'G').reduce((s, d) => s + d.count, 0)
-  const dpeDE    = dpeDistrib.filter(d => d.letter === 'D' || d.letter === 'E').reduce((s, d) => s + d.count, 0)
   const dpePct   = nbAdresses > 0 ? (dpeTotal / nbAdresses * 100).toFixed(1) : '0.0'
 
+  // ── DPE par type (maison / appartement) — pour "identifiés sur le secteur" ──
+  const [dpeMaisonTotalRes, dpeAppartTotalRes] = await Promise.all([
+    (() => {
+      const q = supabase.from('dpe_logement')
+        .select('id', { count: 'exact', head: true })
+        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+        .eq('type_batiment', 'maison')
+      return communesInsee.length > 0 ? applyDpeFilter(q) : Promise.resolve({ count: 0 })
+    })(),
+    (() => {
+      const q = supabase.from('dpe_logement')
+        .select('id', { count: 'exact', head: true })
+        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+        .neq('type_batiment', 'maison')
+        .not('type_batiment', 'is', null)
+      return communesInsee.length > 0 ? applyDpeFilter(q) : Promise.resolve({ count: 0 })
+    })(),
+  ])
+  const dpeMaisonTotal  = (dpeMaisonTotalRes as any)?.count ?? 0
+  const dpeAppartTotal  = (dpeAppartTotalRes as any)?.count ?? 0
+
+  // ── DPE matchés (avec adresse_id) → pour zone / hors zone / boîtés ──────
+  // On récupère les lignes légères : adresse_id + type_batiment
+  let dpeMatchedQuery = adminDb
+    .from('dpe_logement')
+    .select('adresse_id, type_batiment')
+    .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+    .not('adresse_id', 'is', null)
+  if (dpeDateDebut) {
+    dpeMatchedQuery = dpeMatchedQuery.gte('date_etablissement', dpeDateDebut) as any
+  }
+  const { data: dpeMatchedRows } = await dpeMatchedQuery.limit(5000)
+
+  // ── Adresse IDs dans les zones du commercial ────────────────────────────
+  const { data: zoneAdresseRows } = zoneIds.length > 0
+    ? await supabase.from('adresses').select('id').in('zone_id', zoneIds).limit(5000)
+    : { data: [] as { id: string }[] }
+
+  const zoneAdresseSet = new Set((zoneAdresseRows ?? []).map(r => r.id))
+
+  // ── Calcul zone / hors zone (client-side sur dpeMatchedRows) ────────────
+  const dpeMatched      = dpeMatchedRows ?? []
+  const dpeInZoneRows   = dpeMatched.filter(d => zoneAdresseSet.has(d.adresse_id))
+  const dpeHorsZoneRows = dpeMatched.filter(d => !zoneAdresseSet.has(d.adresse_id))
+
+  const dpeInZoneMaison  = dpeInZoneRows.filter(d => d.type_batiment === 'maison').length
+  const dpeInZoneAppart  = dpeInZoneRows.filter(d => d.type_batiment !== 'maison').length
+  const dpeInZoneTotal   = dpeInZoneRows.length
+
+  const dpeHorsZoneMaison = dpeHorsZoneRows.filter(d => d.type_batiment === 'maison').length
+  const dpeHorsZoneAppart = dpeHorsZoneRows.filter(d => d.type_batiment !== 'maison').length
+  const dpeHorsZoneTotal  = dpeHorsZoneRows.length
+
+  // ── DPE boîtés ────────────────────────────────────────────────────────────
+  // Adresses avec DPE qui ont reçu un courrier DPE ou un flyer lors d'une visite.
+  // Action visée : 'courrier_depose', 'courrier', 'boite', 'flyer_depose'
+  // On intersecte :
+  //   – allZonedSessionIds (toutes sessions réalisées du commercial)
+  //   – interactions avec action boitage
+  //   – adresse_id présent dans le set des DPE matchés
+  const dpeAdresseIdSet = new Set(dpeMatched.map(d => d.adresse_id))
+
+  const BOITAGE_ACTIONS = ['courrier_depose', 'courrier', 'boite', 'flyer_depose']
+
+  let dpeBoites = 0
+  if (allZonedSessionIds.length > 0 && dpeAdresseIdSet.size > 0) {
+    // Filtre période sur created_at des interactions (même dpe_periode)
+    let boitageQuery = adminDb
+      .from('interactions')
+      .select('adresse_id')
+      .in('session_id', allZonedSessionIds)
+      .in('action', BOITAGE_ACTIONS)
+    if (dpeDateDebut) {
+      boitageQuery = boitageQuery.gte('created_at', dpeDateDebut) as any
+    }
+    const { data: boitageInts } = await boitageQuery.limit(5000)
+
+    // Compter les adresses DISTINCTES boîtées qui ont un DPE
+    const boitedWithDpe = new Set(
+      (boitageInts ?? [])
+        .map(i => i.adresse_id)
+        .filter(id => id && dpeAdresseIdSet.has(id))
+    )
+    dpeBoites = boitedWithDpe.size
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
-  // KPIs TERRAIN — toujours ce mois (interactions)
+  // KPIs TERRAIN — ce mois
   // ══════════════════════════════════════════════════════════════════════════
 
   const allMonthInts   = monthInts ?? []
   const nbPortes       = allMonthInts.length
-  const nbContactsSess = allMonthInts.filter(i =>
-    i.resultat === 'contact' || i.resultat === 'contact_etabli'
-  ).length
-  const nbFlyers = allMonthInts.filter(i =>
-    i.action === 'flyer_depose' || i.action === 'courrier_depose'
-  ).length
+  const nbContactsSess = allMonthInts.filter(i => i.resultat === 'contact' || i.resultat === 'contact_etabli').length
+  const nbFlyers       = allMonthInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length
+  const tauxContact    = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
+  const tauxLabel      = tauxContact > 0 ? tauxContact.toFixed(2) + ' %' : '0 %'
 
-  const tauxContact = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
-  // FIX : toujours afficher un %, 2 décimales, "0 %" si aucun contact
-  const tauxLabel   = tauxContact > 0 ? tauxContact.toFixed(2) + ' %' : '0 %'
-
-  // Histogramme hebdomadaire (ce mois)
   const weeklyData = [1, 2, 3, 4].map(wk => {
-    const weekSessIds = sessionsMonth
-      .filter(s => getWeek(s.date_session) === wk)
-      .map(s => s.id)
+    const weekSessIds = sessionsMonth.filter(s => getWeek(s.date_session) === wk).map(s => s.id)
     const weekInts = allMonthInts.filter(i => weekSessIds.includes(i.session_id))
     return {
       label:    `Sem. ${wk}`,
@@ -547,21 +686,19 @@ export default async function DashboardPage({
   const avgPortes      = nbSessionsReal > 0 ? (nbPortes / nbSessionsReal).toFixed(1) : '—'
 
   // ══════════════════════════════════════════════════════════════════════════
-  // COUVERTURE PAR ZONE (toutes sessions historiques)
+  // COUVERTURE PAR ZONE
   // ══════════════════════════════════════════════════════════════════════════
 
-  const sessZoneMap      = new Map(allZonedSessions.map(s => [s.id, s.zone_id]))
-  const zoneAdresseSets  = new Map<string, Set<string>>()
+  const sessZoneMap     = new Map(allZonedSessions.map(s => [s.id, s.zone_id]))
+  const zoneAdressSets  = new Map<string, Set<string>>()
   for (const int of (coverageInts ?? [])) {
     const zoneId = sessZoneMap.get(int.session_id)
     if (!zoneId) continue
-    if (!zoneAdresseSets.has(zoneId)) zoneAdresseSets.set(zoneId, new Set())
-    zoneAdresseSets.get(zoneId)!.add(int.adresse_id)
+    if (!zoneAdressSets.has(zoneId)) zoneAdressSets.set(zoneId, new Set())
+    zoneAdressSets.get(zoneId)!.add(int.adresse_id)
   }
   const visitedCountByZone = new Map<string, number>()
-  for (const [zoneId, set] of zoneAdresseSets) {
-    visitedCountByZone.set(zoneId, set.size)
-  }
+  for (const [zid, set] of zoneAdressSets) visitedCountByZone.set(zid, set.size)
 
   const lastByZone: Record<string, string> = {}
   for (const s of allZonedSessions) {
@@ -591,21 +728,13 @@ export default async function DashboardPage({
   })
 
   // ══════════════════════════════════════════════════════════════════════════
-  // KPIs CRM — filtrés par période sélectionnée
-  // statut pipeline : prospect → decouverte → estimation → mandat → perdu
+  // KPIs CRM — filtrés par sélecteur période
   // ══════════════════════════════════════════════════════════════════════════
 
   const nbContactsTotal = contacts.filter(c => c.statut_pipeline !== 'perdu').length
-  // FIX : 'decouverte' remplace 'qualification'
-  const nbDecouvertes   = contacts.filter(c =>
-    ['decouverte', 'estimation', 'mandat'].includes(c.statut_pipeline ?? '')
-  ).length
-  const nbEstimations   = contacts.filter(c =>
-    ['estimation', 'mandat'].includes(c.statut_pipeline ?? '')
-  ).length
+  const nbDecouvertes   = contacts.filter(c => ['decouverte','estimation','mandat'].includes(c.statut_pipeline ?? '')).length
+  const nbEstimations   = contacts.filter(c => ['estimation','mandat'].includes(c.statut_pipeline ?? '')).length
   const nbMandats       = contacts.filter(c => c.statut_pipeline === 'mandat').length
-
-  // Relances — filtrées sur les contacts de la période sélectionnée
   const nbRelRetard  = contacts.filter(c => c.date_relance && c.date_relance < todayStr).length
   const nbRelMois    = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= monthEnd).length
   const nbRelSemaine = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= sundayStr).length
@@ -627,19 +756,16 @@ export default async function DashboardPage({
           <div style={{ width: 1, height: 18, background: C.border }} />
           <span style={{ fontSize: 12, color: C.dim, fontWeight: 500 }}>{monthBadge}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Link href="/terrain" style={{
-            textDecoration: 'none', padding: '6px 14px', borderRadius: 8,
-            background: `linear-gradient(135deg, ${C.gold}, ${C.goldLight})`,
-            boxShadow: '0 2px 8px rgba(217,119,6,0.4)',
-            display: 'flex', alignItems: 'center', gap: 5,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Démarrer terrain →</span>
-          </Link>
-        </div>
+        <Link href="/terrain" style={{
+          textDecoration: 'none', padding: '6px 14px', borderRadius: 8,
+          background: `linear-gradient(135deg, ${C.gold}, ${C.goldLight})`,
+          boxShadow: '0 2px 8px rgba(217,119,6,0.4)',
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Démarrer terrain →</span>
+        </Link>
       </div>
 
-      {/* Content */}
       <div style={{ padding: '20px 22px' }}>
 
         {/* Bannière manager */}
@@ -675,49 +801,35 @@ export default async function DashboardPage({
           </div>
         )}
 
-        {/* ═══ 1. KPI STRIP TERRAIN (toujours ce mois) ═══ */}
+        {/* ═══ 1. KPI STRIP ═══ */}
         <div style={{ marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Activité terrain</span>
             <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.dim }}>{monthBadge}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 10 }}>
-            <KpiCard
-              label="Sessions réalisées" value={String(nbSessionsReal)}
-              sub={`sur ${nbSessionsTot} planifiées`}
-              color={C.gold} variant="hero"
-              sparkData={weeklyData.map(w => w.sessions)}
-            />
-            <KpiCard
-              label="Portes frappées" value={String(nbPortes)}
-              sub="interactions terrain"
-              color={C.info} variant="accent"
-              sparkData={weeklyData.map(w => w.portes)}
-            />
-            <KpiCard
-              label="Contacts terrain" value={String(nbContactsSess)}
-              sub="ce mois"
-              color={C.success} variant="accent"
-              sparkData={weeklyData.map(w => w.contacts)}
-            />
-            <KpiCard
-              label="Taux de contact" value={tauxLabel}
-              sub="portes → contacts"
-              color={C.teal}
-            />
+            <KpiCard label="Sessions réalisées" value={String(nbSessionsReal)}
+              sub={`sur ${nbSessionsTot} planifiées`} color={C.gold} variant="hero"
+              sparkData={weeklyData.map(w => w.sessions)} />
+            <KpiCard label="Portes frappées" value={String(nbPortes)}
+              sub="interactions terrain" color={C.info} variant="accent"
+              sparkData={weeklyData.map(w => w.portes)} />
+            <KpiCard label="Contacts terrain" value={String(nbContactsSess)}
+              sub="ce mois" color={C.success} variant="accent"
+              sparkData={weeklyData.map(w => w.contacts)} />
+            <KpiCard label="Taux de contact" value={tauxLabel} sub="portes → contacts" color={C.teal} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
             <KpiCard label="Contacts CRM" value={String(nbContactsTotal)} sub={periodeLabel} color={C.purple} />
-            <KpiCard label="Estimations"  value={String(nbEstimations)}   sub={periodeLabel} color={C.info} />
-            <KpiCard label="Mandats signés" value={String(nbMandats)}     sub={periodeLabel} color={C.gold} variant="accent" />
-            <KpiCard label="Flyers / courriers" value={String(nbFlyers)}  sub="déposés ce mois" color={C.orange} />
+            <KpiCard label="Estimations" value={String(nbEstimations)} sub={periodeLabel} color={C.info} />
+            <KpiCard label="Mandats signés" value={String(nbMandats)} sub={periodeLabel} color={C.gold} variant="accent" />
+            <KpiCard label="Flyers / courriers" value={String(nbFlyers)} sub="déposés ce mois" color={C.orange} />
           </div>
         </div>
 
         {/* ═══ 2 & 3. ACTIVITÉ + PERFORMANCE ═══ */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
 
-          {/* Activité terrain */}
           <Card>
             <SectionTitle title="Activité terrain" badge={monthBadge} />
             <div style={{ marginBottom: 18 }}>
@@ -737,74 +849,39 @@ export default async function DashboardPage({
             <WeeklyHistogram weeks={weeklyData} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 18 }}>
               <MiniKPI label="Moy. portes/session" value={avgPortes} color={C.info} />
-              <MiniKPI label="Sessions ce mois"    value={String(nbSessionsReal)} color={C.gold} />
-              <MiniKPI label="Flyers déposés"      value={String(nbFlyers)} color={C.purple} />
+              <MiniKPI label="Sessions ce mois" value={String(nbSessionsReal)} color={C.gold} />
+              <MiniKPI label="Flyers déposés" value={String(nbFlyers)} color={C.purple} />
             </div>
           </Card>
 
-          {/* Performance commerciale — avec sélecteur de période */}
           <Card>
-            <SectionTitle
-              title="Performance commerciale"
-              badge="Pipeline"
-              right={<PeriodeSelector current={periode} />}
-            />
-
-            {/* Entonnoir CRM */}
+            <SectionTitle title="Performance commerciale" badge="Pipeline" right={<PeriodeSelector current={periode} />} />
             <ConversionFunnel steps={[
               { label: 'Contacts',    value: nbContactsTotal, color: C.success },
-              { label: 'Découvertes', value: nbDecouvertes,   color: C.teal },    // FIX : decouverte
+              { label: 'Découvertes', value: nbDecouvertes,   color: C.teal },
               { label: 'Estimations', value: nbEstimations,   color: C.purple },
               { label: 'Mandats',     value: nbMandats,       color: C.gold },
             ]} />
-
-            {/* Ratios */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 18 }}>
-              {/* Terrain — toujours ce mois */}
-              <RatioTile
-                label="Taux de contact"
-                value={tauxLabel}
-                color={C.success}
-                sub={monthBadge}
-              />
-              {/* CRM — filtrés par période */}
-              <RatioTile
-                label="Découv. / contact"
-                value={fmtPct(nbDecouvertes, nbContactsTotal)}
-                color={C.teal}
-                sub={periodeLabel}
-              />
-              <RatioTile
-                label="Mandats / estim."
-                value={fmtPct(nbMandats, nbEstimations)}
-                color={C.gold}
-                sub={periodeLabel}
-              />
-              <RatioTile
-                label="Mandats signés"
-                value={String(nbMandats)}
-                color={C.purple}
-                sub={periodeLabel}
-              />
+              <RatioTile label="Taux de contact"   value={tauxLabel}                 color={C.success} sub={monthBadge} />
+              <RatioTile label="Découv. / contact" value={fmtPct(nbDecouvertes, nbContactsTotal)} color={C.teal}    sub={periodeLabel} />
+              <RatioTile label="Mandats / estim."  value={fmtPct(nbMandats, nbEstimations)}       color={C.gold}    sub={periodeLabel} />
+              <RatioTile label="Mandats signés"    value={String(nbMandats)}         color={C.purple}  sub={periodeLabel} />
             </div>
-
-            {/* Relances — contacts de la période sélectionnée */}
             <div style={{ marginTop: 18 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: C.mid, marginBottom: 10, display: 'block' }}>
                 Relances
-                <span style={{ fontSize: 10, color: C.dim, fontWeight: 400, marginLeft: 6 }}>
-                  (contacts {periodeLabel.toLowerCase()})
-                </span>
+                <span style={{ fontSize: 10, color: C.dim, fontWeight: 400, marginLeft: 6 }}>(contacts {periodeLabel.toLowerCase()})</span>
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
-                  { label: 'Cette semaine', value: nbRelSemaine, max: Math.max(nbContactsTotal, 1), color: C.info },
-                  { label: 'Ce mois',       value: nbRelMois,    max: Math.max(nbContactsTotal, 1), color: C.gold },
-                  { label: 'En retard',     value: nbRelRetard,  max: Math.max(nbContactsTotal, 1), color: C.danger },
+                  { label: 'Cette semaine', value: nbRelSemaine, color: C.info },
+                  { label: 'Ce mois',       value: nbRelMois,    color: C.gold },
+                  { label: 'En retard',     value: nbRelRetard,  color: C.danger },
                 ].map((r, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 11, color: C.muted, fontWeight: 500, width: 95, flexShrink: 0 }}>{r.label}</span>
-                    <div style={{ flex: 1 }}><HBar fill={r.max > 0 ? r.value / r.max : 0} color={r.color} h={5} /></div>
+                    <div style={{ flex: 1 }}><HBar fill={nbContactsTotal > 0 ? r.value / nbContactsTotal : 0} color={r.color} h={5} /></div>
                     <span style={{ fontSize: 12, fontWeight: 700, color: r.color, width: 22, textAlign: 'right' }}>{r.value}</span>
                   </div>
                 ))}
@@ -816,6 +893,7 @@ export default async function DashboardPage({
         {/* ═══ 4 & 5. COUVERTURE + DPE ═══ */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
 
+          {/* Couverture territoriale */}
           <Card>
             <SectionTitle title="Couverture territoriale" badge={`${zones.length} zones`} />
             <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
@@ -862,29 +940,67 @@ export default async function DashboardPage({
             )}
           </Card>
 
+          {/* ══ Intelligence DPE ══ */}
           <Card>
-            <SectionTitle title="Intelligence DPE" badge="Secteur" />
+            <SectionTitle
+              title="Intelligence DPE"
+              badge="Secteur"
+              right={<DpePeriodeSelector current={dpePeriode} />}
+            />
+
+            {/* 3 KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
-              <MiniKPI label="DPE total"    value={String(dpeTotal)} color={C.gold} />
-              <MiniKPI label="Opp. F/G"     value={String(dpeFG)}   color={C.danger} />
-              <MiniKPI label="% DPE connu"  value={dpePct + '%'}    color={C.success} />
+              {/* KPI 1 : DPE total (filtré par dpe_periode) */}
+              <MiniKPI label="DPE total"              value={String(dpeTotal)} color={C.gold}    sub={dpePeriodeLabel} />
+              {/* KPI 2 : DPE récents < 2 semaines (JAMAIS filtré) */}
+              <MiniKPI label="DPE < 2 semaines"       value={String(dpeRecents)} color={C.info}  sub="Toujours actif" />
+              {/* KPI 3 : % adresses avec DPE (renommé) */}
+              <MiniKPI label="% adr. avec DPE"        value={dpePct + '%'}     color={C.success} sub="du secteur" />
             </div>
+
+            {/* Histogramme A→G */}
             <span style={{ fontSize: 12, fontWeight: 600, color: C.mid, marginBottom: 10, display: 'block' }}>
               Répartition par étiquette
             </span>
             <DPEHistogram distribution={dpeDistrib} />
-            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {[
-                { label: 'DPE F/G — Opportunités vente',  value: String(dpeFG),    color: C.danger },
-                { label: 'DPE D/E — À surveiller',        value: String(dpeDE),    color: C.orange },
-                { label: 'DPE identifiés sur le secteur', value: String(dpeTotal), color: C.info },
-              ].map((a, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: a.color + '08', border: `1px solid ${a.color}15` }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: a.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: a.color, fontWeight: 500, flex: 1 }}>{a.label}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: a.color }}>{a.value}</span>
-                </div>
-              ))}
+
+            {/* 4 lignes détaillées */}
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+              {/* Ligne 1 : DPE identifiés sur le secteur (tous, avec type) */}
+              <DpeDetailRow
+                label="DPE identifiés sur le secteur"
+                maison={dpeMaisonTotal}
+                appart={dpeAppartTotal}
+                total={dpeTotal}
+                color={C.info}
+              />
+
+              {/* Ligne 2 : DPE dans une zone de prospection */}
+              <DpeDetailRow
+                label="DPE dans une zone de prospection"
+                maison={dpeInZoneMaison}
+                appart={dpeInZoneAppart}
+                total={dpeInZoneTotal}
+                color={C.success}
+              />
+
+              {/* Ligne 3 : DPE hors zone de prospection */}
+              <DpeDetailRow
+                label="DPE hors zone de prospection"
+                maison={dpeHorsZoneMaison}
+                appart={dpeHorsZoneAppart}
+                total={dpeHorsZoneTotal}
+                color={C.orange}
+              />
+
+              {/* Ligne 4 : DPE boîtés */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: C.purple + '08', border: `1px solid ${C.purple}15` }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: C.purple, fontWeight: 500, flex: 1 }}>DPE boîtés (courrier/flyer déposé)</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.purple }}>{dpeBoites}</span>
+              </div>
+
             </div>
           </Card>
         </div>
