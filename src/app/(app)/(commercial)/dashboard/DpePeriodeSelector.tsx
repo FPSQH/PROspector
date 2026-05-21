@@ -1,0 +1,52 @@
+'use client'
+
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+
+const OPTIONS = [
+  { value: 'mois',   label: 'Ce mois' },
+  { value: '2mois',  label: '< 2 mois' },
+  { value: 'annee',  label: 'Cette année' },
+  { value: 'tout',   label: 'Depuis toujours' },
+]
+
+export default function DpePeriodeSelector({ current }: { current: string }) {
+  const router      = useRouter()
+  const pathname    = usePathname()
+  const searchParams = useSearchParams()
+
+  const navigate = (val: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('dpe_periode', val)
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
+  return (
+    <div style={{
+      display: 'flex', gap: 2,
+      background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 8, padding: 3,
+    }}>
+      {OPTIONS.map(opt => {
+        const active = current === opt.value
+        return (
+          <button
+            key={opt.value}
+            onClick={() => navigate(opt.value)}
+            style={{
+              padding: '4px 8px', borderRadius: 6,
+              fontSize: 10, fontWeight: 600,
+              cursor: 'pointer', border: 'none',
+              background: active ? '#D97706' : 'transparent',
+              color: active ? '#fff' : '#6B6B7B',
+              transition: 'all 0.12s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
