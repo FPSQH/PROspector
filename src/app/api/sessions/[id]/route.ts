@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 type Params = { params: { id: string } }
@@ -47,7 +47,10 @@ export async function GET(_req: Request, { params }: Params) {
     }
   }
 
-  const { data: interactions } = await supabase
+  // FIX : utiliser adminDb pour bypasser RLS sur interactions (cohérent avec interactions/route.ts)
+  const adminDb = createAdminClient()
+
+  const { data: interactions } = await adminDb
     .from('interactions')
     .select('id, adresse_id, resultat, action, type_contact, type_habitat, statut_adresse, note, date_relance')
     .eq('session_id', params.id)
@@ -64,7 +67,6 @@ export async function GET(_req: Request, { params }: Params) {
   const itinMap  = new Map(itineraire.map((i: any) => [i.adresse_id, i.ordre]))
 
   const adresseIds = allAdresses.map((a: any) => a.id)
-  // Map adresse_id → { date, etiquette } du DPE le plus récent
   const dpeMap: Record<string, { date: string; etiquette: string | null }> = {}
   if (adresseIds.length > 0) {
     const { data: dpes } = await supabase
@@ -120,7 +122,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const updates: any = {}
   if (statut)                  updates.statut         = statut
   if (heure_fin)               updates.heure_fin      = heure_fin
-  if (heure_fin)               updates.heure_fin_reel = new Date().toISOString()  // TIMESTAMPTZ
+  if (heure_fin)               updates.heure_fin_reel = new Date().toISOString()
   if (nb_portes !== undefined) updates.nb_portes      = nb_portes
   if (nb_boites !== undefined) updates.nb_boites      = nb_boites
   if (notes     !== undefined) updates.notes          = notes
@@ -128,11 +130,9 @@ export async function PATCH(req: Request, { params }: Params) {
   if (zone_id)                 updates.zone_id        = zone_id
 
   if (statut === 'realisee' && !heure_fin) {
-    updates.heure_fin_reel = new Date().toISOString()  // TIMESTAMPTZ
+    updates.heure_fin_reel = new Date().toISOString()
   }
 
-  // ✅ CORRECTION PRINCIPALE : update SANS .select().single() pour éviter PGRST116
-  // Le .select().single() après update échoue avec RLS même si l'update réussit
   const { error: updateError } = await supabase
     .from('sessions_prospection')
     .update(updates)
@@ -144,43 +144,49 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
-  // ── Clôture : calcul rapport complet ─────────────────────────────────────
+  // ── Clôture : calcul rapport complet ──────────────────────────────────────
   if (statut === 'realisee') {
     try {
-      // Interactions de la session
-      const { data: ints } = await supabase
+      // FIX : adminDb pour bypasser RLS — le client user ne peut pas lire interactions
+      const adminDb = createAdminClient()
+
+      const { data: ints } = await adminDb
         .from('interactions')
         .select('adresse_id, type_habitat, statut_adresse, resultat, action, contact_id')
         .eq('session_id', params.id)
 
-      const allInts         = ints ?? []
-      const nb_vis          = allInts.length
-      const nb_contacts_int = allInts.filter((i: any) => i.resultat === 'contact').length
-      // flyer_depose (courrier DPE) + courrier_depose (boîté)
-      const nb_flyers = allInts.filter((i: any) =>
-        i.action === 'flyer_depose' || i.action === 'courrier_depose').length
-      const nb_maisons      = allInts.filter((i: any) => i.type_habitat === 'individuel').length
-      const nb_immeubles    = allInts.filter((i: any) => i.type_habitat === 'collectif').length
-      const nb_supprimees   = allInts.filter((i: any) => i.statut_adresse === 'supprimee').length
-      const nb_qualifs      = allInts.filter((i: any) =>
-        i.type_habitat && i.type_habitat !== 'inconnu').length
+      const allInts    = ints ?? []
+      const nb_vis     = allInts.length
 
-      // Syndics : requête séparée sur adresses
+      // FIX : compter aussi 'contact_etabli' (variante utilisée dans certains flows)
+      const nb_contacts_int = allInts.filter((i: any) =>
+        i.resultat === 'contact' || i.resultat === 'contact_etabli'
+      ).length
+
+      const nb_flyers = allInts.filter((i: any) =>
+        i.action === 'flyer_depose' || i.action === 'courrier_depose'
+      ).length
+      const nb_maisons   = allInts.filter((i: any) => i.type_habitat === 'individuel').length
+      const nb_immeubles = allInts.filter((i: any) => i.type_habitat === 'collectif').length
+      const nb_supprimees = allInts.filter((i: any) => i.statut_adresse === 'supprimee').length
+      const nb_qualifs   = allInts.filter((i: any) =>
+        i.type_habitat && i.type_habitat !== 'inconnu'
+      ).length
+
+      // Syndics
       let nb_syndics = 0
       const adresseIdsWithInt = allInts.map((i: any) => i.adresse_id).filter(Boolean)
       if (adresseIdsWithInt.length > 0) {
-        const { data: adrsSync } = await supabase
+        const { data: adrsSync } = await adminDb
           .from('adresses').select('id')
           .in('id', adresseIdsWithInt)
           .not('nom_syndic', 'is', null).neq('nom_syndic', '')
         nb_syndics = adrsSync?.length ?? 0
       }
 
-      // Contacts saisis : interactions avec contact_id non null (fiche contact créée)
+      // Contacts via fiche créée (contact_id lié à l'interaction)
       const nb_fiches_contact = allInts.filter((i: any) => i.contact_id).length
-
-      // nb_contacts = interactions contact OU fiches créées (le plus grand)
-      const nb_contacts_val = Math.max(nb_contacts_int, nb_fiches_contact)
+      const nb_contacts_val   = Math.max(nb_contacts_int, nb_fiches_contact)
 
       const rapport_json = {
         nb_visites:             nb_vis,
@@ -195,13 +201,11 @@ export async function PATCH(req: Request, { params }: Params) {
         date_cloture:           new Date().toISOString(),
       }
 
-      // ✅ Stockage rapport_json (update simple, sans select)
       await supabase
         .from('sessions_prospection')
         .update({ rapport_json, nb_portes: nb_vis })
         .eq('id', params.id)
 
-      // Mise à jour planning_sessions si liée
       await supabase.from('planning_sessions')
         .update({
           statut:                 'realisee',
@@ -220,7 +224,6 @@ export async function PATCH(req: Request, { params }: Params) {
     }
   }
 
-  // ✅ Re-fetch séparé (lecture indépendante de l'update, pas de PGRST116)
   const { data: sessionFinal } = await supabase
     .from('sessions_prospection')
     .select('*, zones_prospection:zone_id(id, nom, couleur, numero, nb_prospectables)')
