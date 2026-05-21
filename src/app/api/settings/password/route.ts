@@ -16,6 +16,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Le nouveau mot de passe doit faire au moins 8 caractères' }, { status: 400 })
   }
 
+  if (body.new_password === body.current) {
+    return NextResponse.json({ error: 'Le nouveau mot de passe doit être différent de l\'actuel' }, { status: 400 })
+  }
+
   // Vérifier le mot de passe actuel via une tentative de connexion
   const { error: signInError } = await supabase.auth.signInWithPassword({
     email:    user.email!,
