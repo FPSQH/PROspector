@@ -117,9 +117,13 @@ export default function PlanningPage() {
   const [showCfg,        setShowCfg]        = useState(false)
   const [savingCfg,      setSavingCfg]      = useState(false)
   const [selDate,        setSelDate]        = useState<string | null>(null)
-  const [reporting,      setReporting]      = useState<string | null>(null) // session_id en cours de report
+  const [reporting,      setReporting]      = useState<string | null>(null)
 
-  // ── Chargement ─────────────────────────────────────────────────────────────
+  // FIX : lookup zone par id dans le state zones (noms toujours à jour)
+  const getZone = useCallback((zoneId: string): Zone | null => {
+    return zones.find(z => z.id === zoneId) ?? null
+  }, [zones])
+
   const load = useCallback(async (m: number, a: number) => {
     setLoading(true)
     try {
@@ -149,7 +153,6 @@ export default function PlanningPage() {
 
   useEffect(() => { load(mois, annee) }, [mois, annee, load])
 
-  // ── Actions ────────────────────────────────────────────────────────────────
   const patch = useCallback(async (id: string, body: object) => {
     const r = await fetch(`/api/planning/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const d = await r.json()
@@ -167,32 +170,26 @@ export default function PlanningPage() {
     try {
       const r = await fetch('/api/planning/reporter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) })
       const d = await r.json()
-      if (d.ok) {
-        await load(mois, annee)
-        setSelDate(null)
-      } else {
-        alert(d.error ?? 'Erreur lors du report')
-      }
-    } finally {
-      setReporting(null)
-    }
+      if (d.ok) { await load(mois, annee); setSelDate(null) }
+      else alert(d.error ?? 'Erreur lors du report')
+    } finally { setReporting(null) }
   }
 
-const generate = async () => {
-  if (sessions.some(s => s.statut === 'planifiee')) {
-    const nb = sessions.filter(s => s.statut === 'planifiee').length
-    if (!confirm(`${nb} session${nb > 1 ? 's' : ''} planifiée${nb > 1 ? 's' : ''} existent déjà pour ${MOIS[mois]} ${annee}.\nLes supprimer et régénérer ?`)) return
-    await fetch(`/api/planning?mois=${mois}&annee=${annee}`, { method: 'DELETE' })
-    setSessions(s => s.filter(x => x.statut !== 'planifiee'))
+  // FIX generate : reset automatique si sessions planifiées existent
+  const generate = async () => {
+    if (sessions.some(s => s.statut === 'planifiee')) {
+      const nb = sessions.filter(s => s.statut === 'planifiee').length
+      if (!confirm(`${nb} session${nb > 1 ? 's' : ''} planifiée${nb > 1 ? 's' : ''} exist${nb > 1 ? 'ent' : 'e'} déjà pour ${MOIS[mois]} ${annee}.\nLes supprimer et régénérer le planning ?`)) return
+      await fetch(`/api/planning?mois=${mois}&annee=${annee}`, { method: 'DELETE' })
+      setSessions(s => s.filter(x => x.statut !== 'planifiee'))
+    }
+    setGenerating(true)
+    const r = await fetch('/api/planning', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mois, annee }) })
+    const d = await r.json()
+    setGenerating(false)
+    if (d.planning) { setSessions(d.planning); setSessionsLibres(d.sessions_libres ?? []); setKpis(d.kpis ?? null) }
+    else if (d.error) alert(d.error)
   }
-  
-  setGenerating(true)
-  const r = await fetch('/api/planning', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mois, annee }) })
-  const d = await r.json()
-  setGenerating(false)
-  if (d.planning) { setSessions(d.planning); setSessionsLibres(d.sessions_libres ?? []); setKpis(d.kpis ?? null) }
-  else if (d.error) alert(d.error)
-}
 
   const resetMois = async () => {
     if (!confirm(`Supprimer toutes les sessions planifiées de ${MOIS[mois]} ${annee} ?`)) return
@@ -214,7 +211,6 @@ const generate = async () => {
     setMois(m); setAnnee(a); setSelDate(null)
   }
 
-  // ── Calculs dérivés ────────────────────────────────────────────────────────
   const daysInMonth     = new Date(annee, mois, 0).getDate()
   const firstDayOfWeek  = new Date(annee, mois - 1, 1).getDay()
   const heureFin1       = addMin(cfg.heure_debut, cfg.duree_minutes)
@@ -241,7 +237,7 @@ const generate = async () => {
     d.relances.push(r); byDate.set(r.date_relance, d)
   }
 
-  const selDayData    = selDate ? (byDate.get(selDate) ?? { planned: [], free: [] }) : null
+  const selDayData    = selDate ? (byDate.get(selDate) ?? { planned: [], free: [], relances: [] }) : null
   const totalSessJour = selDayData ? selDayData.planned.length + selDayData.free.length : 0
 
   const totalJour = selDayData ? (() => {
@@ -268,7 +264,8 @@ const generate = async () => {
     ...sessionsLibres.map(s => s.date_session),
   ])).sort()
 
-const peutGenerer = !loading
+  // FIX : bouton toujours visible, change de label/couleur selon état
+  const peutGenerer = !loading
   const peutReset   = sessions.some(s => s.statut === 'planifiee')
 
   return (
@@ -401,14 +398,14 @@ const peutGenerer = !loading
           </div>
         </div>
 
-        {/* Bouton générer */}
-{peutGenerer && (
-  <div style={{ padding: '10px 14px', borderTop: '1px solid #E8E6DF', textAlign: 'center', flexShrink: 0 }}>
-    <button onClick={generate} disabled={generating} style={{ padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: generating ? '#E8E6DF' : peutReset ? '#d97706' : '#1D9E75', color: '#fff', border: 'none', cursor: generating ? 'not-allowed' : 'pointer' }}>
-      {generating ? 'Génération...' : peutReset ? `↺ Régénérer ${MOIS[mois]}` : `✦ Générer ${MOIS[mois]}`}
-    </button>
-  </div>
-)}
+        {/* FIX : Bouton toujours visible — vert si vide, orange si régénération */}
+        {peutGenerer && (
+          <div style={{ padding: '10px 14px', borderTop: '1px solid #E8E6DF', textAlign: 'center', flexShrink: 0 }}>
+            <button onClick={generate} disabled={generating} style={{ padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: generating ? '#E8E6DF' : peutReset ? '#d97706' : '#1D9E75', color: '#fff', border: 'none', cursor: generating ? 'not-allowed' : 'pointer' }}>
+              {generating ? 'Génération...' : peutReset ? `↺ Régénérer ${MOIS[mois]}` : `✦ Générer ${MOIS[mois]}`}
+            </button>
+          </div>
+        )}
 
         {/* Liste journées */}
         <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #E8E6DF' }}>
@@ -422,25 +419,38 @@ const peutGenerer = !loading
           ) : datesTriees.map(date => {
             const dayData = byDate.get(date)!
             const isSel   = selDate === date
-            const z1      = dayData.planned[0]?.zones_prospection
+            // FIX : utiliser getZone() pour avoir le nom à jour
+            const z1      = dayData.planned[0]?.zone_id ? getZone(dayData.planned[0].zone_id) : null
             const hasUpcoming = dayData.planned.some(p => p.statut === 'planifiee' && p.date_prevue >= today)
+            // FIX : première zone planifiable du jour pour le lien Go
+            const nextPlan = dayData.planned.find(p => p.statut === 'planifiee' && p.date_prevue >= today)
             return (
               <div key={date} onClick={() => setSelDate(date === selDate ? null : date)}
                 style={{ padding: '8px 13px', cursor: 'pointer', borderBottom: '1px solid #F0EDE6', background: isSel ? '#f8fffe' : 'transparent', borderLeft: isSel ? '3px solid ' + (z1?.couleur ?? '#1D9E75') : '3px solid transparent' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                    {dayData.planned.map((p, idx) => <div key={idx} style={{ width: 8, height: 8, borderRadius: '50%', background: p.zones_prospection?.couleur ?? '#9ca3af', opacity: ['annulee','non_realisee'].includes(p.statut) ? 0.3 : 1 }} />)}
+                    {dayData.planned.map((p, idx) => {
+                      const zz = getZone(p.zone_id) ?? p.zones_prospection
+                      return <div key={idx} style={{ width: 8, height: 8, borderRadius: '50%', background: zz?.couleur ?? '#9ca3af', opacity: ['annulee','non_realisee'].includes(p.statut) ? 0.3 : 1 }} />
+                    })}
                     {dayData.free.map((_, idx) => <div key={'f'+idx} style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B' }} />)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 12, textTransform: 'capitalize' }}>{fmtDate(date)}</div>
+                    {/* FIX : affichage nom zone à jour */}
                     <div style={{ fontSize: 11, color: '#6b7280' }}>
-                      {dayData.planned.length > 0 && dayData.planned.map(p => p.zones_prospection ? `Z${p.zones_prospection.numero}` : '?').join(' + ')}
+                      {dayData.planned.length > 0 && dayData.planned.map(p => {
+                        const zz = getZone(p.zone_id) ?? p.zones_prospection
+                        return zz ? `Z${zz.numero} — ${zz.nom}` : '?'
+                      }).join(' · ')}
                       {dayData.planned.length > 0 && dayData.free.length > 0 && ' · '}
                       {dayData.free.length > 0 && <span style={{ color: '#92400e' }}>{dayData.free.length} libre{dayData.free.length > 1 ? 's' : ''}</span>}
                     </div>
                   </div>
-                  {hasUpcoming && <a href="/terrain" onClick={e => e.stopPropagation()} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#1D9E75', color: '#fff', textDecoration: 'none', flexShrink: 0 }}>Go→</a>}
+                  {/* FIX : lien Go avec zone_id + autostart */}
+                  {hasUpcoming && nextPlan && (
+                    <a href={`/terrain?zone_id=${nextPlan.zone_id}&autostart=1`} onClick={e => e.stopPropagation()} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#1D9E75', color: '#fff', textDecoration: 'none', flexShrink: 0 }}>Go→</a>
+                  )}
                 </div>
               </div>
             )
@@ -460,14 +470,18 @@ const peutGenerer = !loading
                 {selDayData.free.length > 0 && <span style={{ color: '#F59E0B', marginLeft: 4 }}>· {selDayData.free.length} libre{selDayData.free.length > 1 ? 's' : ''}</span>}
               </div>
             </div>
-            {selDayData.planned.some(p => p.statut === 'planifiee' && p.date_prevue >= today) && (
-              <a href="/terrain" style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#1D9E75', color: '#fff', textDecoration: 'none' }}>Démarrer →</a>
-            )}
+            {/* FIX : Démarrer header avec zone_id + autostart */}
+            {(() => {
+              const nextSess = selDayData.planned.find(p => p.statut === 'planifiee' && p.date_prevue >= today)
+              return nextSess ? (
+                <a href={`/terrain?zone_id=${nextSess.zone_id}&autostart=1`} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#1D9E75', color: '#fff', textDecoration: 'none' }}>Démarrer →</a>
+              ) : null
+            })()}
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
 
-            {/* ── Relances contacts ── */}
+            {/* Relances contacts */}
             {(selDayData.relances?.length ?? 0) > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#9b9b96', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
@@ -506,38 +520,15 @@ const peutGenerer = !loading
                           <div style={{ fontWeight: 700, fontSize: 13, color: '#1a1a18' }}>{nomStr}</div>
                           {adrStr && <div style={{ fontSize: 11, color: '#9b9b96' }}>{adrStr}</div>}
                         </div>
-                        <a href={mailtoHref}
-                          style={{ padding: '4px 8px', borderRadius: 6, background: '#fff', border: '1px solid #fed7aa', fontSize: 11, color: '#c2410c', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}>
-                          ✉️
-                        </a>
+                        <a href={mailtoHref} style={{ padding: '4px 8px', borderRadius: 6, background: '#fff', border: '1px solid #fed7aa', fontSize: 11, color: '#c2410c', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}>✉️</a>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                        {r.type_contact && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>
-                            {typeLabels[r.type_contact] ?? r.type_contact}
-                          </span>
-                        )}
-                        {r.horizon_vente && (
-                          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#f0fdf4', color: '#166534' }}>
-                            {horizonLabels[r.horizon_vente] ?? r.horizon_vente}
-                          </span>
-                        )}
-                        {r.tel1 && (
-                          <a href={`tel:${r.tel1}`} style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#eff6ff', color: '#1d4ed8', textDecoration: 'none' }}>
-                            📱 {r.tel1}
-                          </a>
-                        )}
+                        {r.type_contact && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>{typeLabels[r.type_contact] ?? r.type_contact}</span>}
+                        {r.horizon_vente && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#f0fdf4', color: '#166534' }}>{horizonLabels[r.horizon_vente] ?? r.horizon_vente}</span>}
+                        {r.tel1 && <a href={`tel:${r.tel1}`} style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#eff6ff', color: '#1d4ed8', textDecoration: 'none' }}>📱 {r.tel1}</a>}
                       </div>
-                      {r.notes && (
-                        <div style={{ marginTop: 8, fontSize: 11, color: '#5F5E5A', fontStyle: 'italic', lineHeight: 1.4, background: '#fff', borderRadius: 6, padding: '6px 8px' }}>
-                          {r.notes}
-                        </div>
-                      )}
-                      {r.statut_pipeline && (
-                        <div style={{ marginTop: 6, fontSize: 10, color: '#9b9b96' }}>
-                          Pipeline : <strong>{r.statut_pipeline}</strong>
-                        </div>
-                      )}
+                      {r.notes && <div style={{ marginTop: 8, fontSize: 11, color: '#5F5E5A', fontStyle: 'italic', lineHeight: 1.4, background: '#fff', borderRadius: 6, padding: '6px 8px' }}>{r.notes}</div>}
+                      {r.statut_pipeline && <div style={{ marginTop: 6, fontSize: 10, color: '#9b9b96' }}>Pipeline : <strong>{r.statut_pipeline}</strong></div>}
                     </div>
                   )
                 })}
@@ -546,7 +537,8 @@ const peutGenerer = !loading
 
             {/* Sessions planifiées */}
             {selDayData.planned.map(s => {
-              const z   = s.zones_prospection
+              // FIX : nom de zone toujours à jour via lookup
+              const z   = getZone(s.zone_id) ?? s.zones_prospection ?? null
               const st  = STATUT[s.statut as keyof typeof STATUT] ?? STATUT.planifiee
               const rap = s.session_data?.rapport_json
               const vis  = rap?.nb_visites   ?? s.nb_adresses_visitees ?? 0
@@ -563,22 +555,19 @@ const peutGenerer = !loading
 
               return (
                 <div key={s.id} style={{ marginBottom: 14, padding: 12, borderRadius: 10, border: '1.5px solid ' + (estAnnulee ? '#fee2e2' : '#E8E6DF'), background: estAnnulee ? '#fff5f5' : '#FAFAF8' }}>
-                  {/* En-tête */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     {z && <div style={{ width: 10, height: 10, borderRadius: '50%', background: z.couleur, flexShrink: 0 }} />}
                     <div style={{ flex: 1 }}>
+                      {/* FIX : affichage nom zone à jour */}
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{z ? `Zone ${z.numero} — ${z.nom}` : 'Zone non assignée'}</div>
                       <div style={{ fontSize: 11, color: '#6b7280' }}>{s.heure_debut} – {s.heure_fin}</div>
                     </div>
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: st.bg, color: st.color }}>{st.label}</span>
                   </div>
 
-                  {/* ✅ REPORT : boutons spécifiques aux sessions annulées */}
                   {estAnnulee && (
                     <div style={{ padding: '10px', borderRadius: 8, background: '#fff5f5', border: '1px dashed #fca5a5', marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginBottom: 8 }}>
-                        Session annulée — que faire ?
-                      </div>
+                      <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginBottom: 8 }}>Session annulée — que faire ?</div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button onClick={() => reporter(s.id)} disabled={reporting === s.id}
                           style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: reporting === s.id ? 'not-allowed' : 'pointer', background: reporting === s.id ? '#E8E6DF' : '#1D9E75', color: '#fff', border: 'none' }}>
@@ -589,13 +578,10 @@ const peutGenerer = !loading
                           Ne pas reporter
                         </button>
                       </div>
-                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6 }}>
-                        Reporter décale toutes les sessions planifiées suivantes d'un créneau
-                      </div>
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6 }}>Reporter décale toutes les sessions planifiées suivantes d'un créneau</div>
                     </div>
                   )}
 
-                  {/* Changement de statut (planifiées à venir) */}
                   {peutDemarrer && (
                     <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
                       {(['annulee', 'non_realisee'] as const).map(k => (
@@ -607,23 +593,21 @@ const peutGenerer = !loading
                     </div>
                   )}
 
-                  {/* Zone selector */}
                   {estPlanifiee && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>ZONE</div>
                       <select value={s.zone_id} onChange={e => patchZone(s.id, e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #E8E6DF', fontSize: 12, background: '#fff' }}>
-                        {zones.map(z => <option key={z.id} value={z.id}>Zone {z.numero} — {z.nom}</option>)}
+                        {zones.map(zz => <option key={zz.id} value={zz.id}>Zone {zz.numero} — {zz.nom}</option>)}
                       </select>
                     </div>
                   )}
 
-                  {/* ✅ STATS COMPLÈTES (lecture seule) */}
                   {aDesResultats && (
                     <>
                       <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>RÉSULTATS</div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, marginBottom: 4 }}>
-                        <StatBox label="Visites"   value={vis}  accent />
-                        <StatBox label="Contacts"  value={cont} />
+                        <StatBox label="Visites"    value={vis}  accent />
+                        <StatBox label="Contacts"   value={cont} />
                         <StatBox label="Supprimées" value={supp} />
                       </div>
                       <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, marginBottom: 4, marginTop: 6 }}>QUALIFICATIONS</div>
@@ -635,8 +619,9 @@ const peutGenerer = !loading
                     </>
                   )}
 
+                  {/* FIX : Démarrer card avec zone_id + autostart */}
                   {peutDemarrer && (
-                    <a href="/terrain" style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '7px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#1D9E75', color: '#fff', textDecoration: 'none' }}>
+                    <a href={`/terrain?zone_id=${s.zone_id}&autostart=1`} style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '7px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#1D9E75', color: '#fff', textDecoration: 'none' }}>
                       Démarrer →
                     </a>
                   )}
