@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
@@ -23,7 +23,6 @@ const C = {
   teal:      '#14B8A6',
 }
 
-// 12 couleurs pour les zones
 const ZONE_COLORS = [
   '#22C55E','#3B82F6','#F59E0B','#EF4444','#8B5CF6',
   '#EC4899','#14B8A6','#F97316','#6366F1','#0EA5E9',
@@ -37,14 +36,6 @@ const DPE_COLORS: Record<string, string> = {
 }
 
 const FONT = "var(--font-outfit, 'Outfit'), -apple-system, sans-serif"
-
-type RapportJson = {
-  nb_visites?:        number
-  nb_portes?:         number
-  nb_contacts?:       number
-  nb_flyers?:         number
-  nb_flyers_deposes?: number
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -126,7 +117,7 @@ function HBar({ fill, color, h = 6, w = '100%' }: { fill: number; color: string;
   return (
     <div style={{ width: w, height: h, borderRadius: h, background: 'rgba(255,255,255,0.04)', overflow: 'hidden', flexShrink: 0 }}>
       <div style={{
-        width: `${Math.max(Math.min(fill * 100, 100), 2)}%`, height: '100%', borderRadius: h,
+        width: `${Math.max(Math.min(fill * 100, 100), fill > 0 ? 2 : 0)}%`, height: '100%', borderRadius: h,
         background: `linear-gradient(90deg, ${color}cc, ${color})`,
       }} />
     </div>
@@ -332,10 +323,17 @@ function RatioTile({ label, value, color }: { label: string; value: string; colo
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
+function getWeek(d: string): number {
+  return Math.min(Math.ceil(parseInt(d.split('-')[2] ?? '1', 10) / 7), 4)
+}
 
+// ── Main page ─────────────────────────────────────────────────────────────
 export default async function DashboardPage() {
   const supabase = await createClient()
+  // ★ adminDb : nécessaire pour lire interactions (RLS bloque le client user)
+  const adminDb  = createAdminClient()
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -346,10 +344,8 @@ export default async function DashboardPage() {
   const { data: communes } = await supabase
     .from('communes').select('id, nom, code_insee, chargee_at')
     .eq('commercial_id', commercial.id)
-
   if (!communes || communes.length === 0) redirect('/onboarding')
 
-  // FIX : cast explicite en string pour la comparaison code_insee
   const communesInsee = communes.map((c: any) => String(c.code_insee))
   const uid = user.id
 
@@ -364,14 +360,110 @@ export default async function DashboardPage() {
   sunDate.setDate(now.getDate() + (now.getDay() === 0 ? 0 : 7 - now.getDay()))
   const sundayStr  = sunDate.toISOString().split('T')[0]
 
-  // ── FIX DPE : 7 requêtes COUNT par lettre (contourne limite PostgREST 1000 lignes) ──
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 1 : Données structurelles (pas affectées par RLS interactions)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const [
+    zonesRes,
+    sessionsMonthRes,   // sessions réalisées CE MOIS → base du calcul terrain
+    planningMonthRes,   // sessions planifiées ce mois → dénominateur planning
+    contactsRes,        // contacts CRM pipeline
+    allZonedSessionsRes,// toutes sessions réalisées par zone → couverture
+    upcomingRes,        // prochaines sessions planifiées → retour prévu
+    sessionEnCoursRes,  // session en cours → bannière
+    nbAdressesRes,      // count total adresses → % DPE connu
+  ] = await Promise.all([
+    // 1. Zones avec nb_logements_sociaux pour barre exclues
+    supabase.from('zones_prospection')
+      .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
+      .eq('commercial_id', uid).order('numero'),
+
+    // 2. Sessions réalisées ce mois (source vérité pour indicateurs terrain)
+    supabase.from('sessions_prospection')
+      .select('id, date_session, zone_id')
+      .eq('commercial_id', uid).eq('statut', 'realisee')
+      .gte('date_session', monthStart).lte('date_session', monthEnd),
+
+    // 3. Sessions planifiées ce mois (pour ratio réalisées/planifiées)
+    supabase.from('planning_sessions')
+      .select('id')
+      .eq('commercial_id', uid)
+      .gte('date_prevue', monthStart).lte('date_prevue', monthEnd),
+
+    // 4. Contacts CRM (pipeline commercial)
+    supabase.from('contacts')
+      .select('id, statut_pipeline, date_relance')
+      .eq('commercial_id', uid),
+
+    // 5. Toutes sessions réalisées avec zone (pour couverture + dernier passage)
+    supabase.from('sessions_prospection')
+      .select('id, zone_id, date_session')
+      .eq('commercial_id', uid).eq('statut', 'realisee')
+      .not('zone_id', 'is', null)
+      .order('date_session', { ascending: false }).limit(500),
+
+    // 6. Prochaines sessions planifiées (pour retour prévu)
+    supabase.from('planning_sessions')
+      .select('zone_id, date_prevue')
+      .eq('commercial_id', uid).eq('statut', 'planifiee')
+      .gte('date_prevue', todayStr)
+      .order('date_prevue', { ascending: true }),
+
+    // 7. Session en cours (bannière)
+    supabase.from('sessions_prospection')
+      .select('id, zone_id, date_session, heure_debut, zones_prospection:zone_id(nom, couleur, numero)')
+      .eq('commercial_id', uid).eq('statut', 'en_cours')
+      .order('created_at', { ascending: false }).limit(1),
+
+    // 8. Count adresses pour % DPE connu
+    supabase.from('adresses')
+      .select('id', { count: 'exact', head: true })
+      .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__']),
+  ])
+
+  const zones             = zonesRes.data ?? []
+  const sessionsMonth     = sessionsMonthRes.data ?? []
+  const nbPlanned         = planningMonthRes.data?.length ?? 0
+  const contacts          = contactsRes.data ?? []
+  const allZonedSessions  = allZonedSessionsRes.data ?? []
+  const upcoming          = upcomingRes.data ?? []
+  const sessionEC         = (sessionEnCoursRes.data ?? [])[0] ?? null
+  const nbAdresses        = nbAdressesRes.count ?? 0
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 2 : Interactions via adminDb (bypass RLS)
+  // Source de vérité pour : portes, contacts terrain, flyers, couverture
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const monthSessionIds     = sessionsMonth.map(s => s.id)
+  const allZonedSessionIds  = allZonedSessions.map(s => s.id)
+
+  // 2a. Interactions du mois → KPIs terrain + histogramme hebdo
+  const { data: monthInts } = monthSessionIds.length > 0
+    ? await adminDb.from('interactions')
+        .select('adresse_id, session_id, resultat, action')
+        .in('session_id', monthSessionIds)
+    : { data: [] as { adresse_id: string; session_id: string; resultat: string; action: string }[] }
+
+  // 2b. Toutes interactions par zone → couverture (adresses distinctes visitées)
+  const { data: coverageInts } = allZonedSessionIds.length > 0
+    ? await adminDb.from('interactions')
+        .select('adresse_id, session_id')
+        .in('session_id', allZonedSessionIds)
+    : { data: [] as { adresse_id: string; session_id: string }[] }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 3 : DPE par lettre (7 COUNT indépendants, bypass limite PostgREST)
+  // ══════════════════════════════════════════════════════════════════════════
+
   const dpeCountsPerLetter = communesInsee.length > 0
     ? await Promise.all(
         DPE_LETTERS.map(letter =>
           supabase.from('dpe_logement')
             .select('id', { count: 'exact', head: true })
             .in('code_insee', communesInsee)
-            .eq('etiquette_dpe', letter)
+            .eq('etiquette_dpe', letter)   // ★ colonne réelle = etiquette_dpe
         )
       )
     : DPE_LETTERS.map(() => ({ count: 0 }))
@@ -384,142 +476,122 @@ export default async function DashboardPage() {
   const dpeTotal = dpeDistrib.reduce((s, d) => s + d.count, 0)
   const dpeFG    = dpeDistrib.filter(d => d.letter === 'F' || d.letter === 'G').reduce((s, d) => s + d.count, 0)
   const dpeDE    = dpeDistrib.filter(d => d.letter === 'D' || d.letter === 'E').reduce((s, d) => s + d.count, 0)
+  const dpePct   = nbAdresses > 0 ? (dpeTotal / nbAdresses * 100).toFixed(1) : '0.0'
 
-  // ── Parallel fetch (reste) ──
-  const [
-    zonesRes, sessionsMonthRes, planningMonthRes,
-    contactsRes, allSessZoneRes,
-    upcomingRes, sessionEnCoursRes, nbAdressesRes,
-  ] = await Promise.all([
-    supabase.from('zones_prospection')
-      .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
-      .eq('commercial_id', uid).order('numero'),
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 4 : Calculs KPIs terrain depuis interactions (source fiable)
+  // ══════════════════════════════════════════════════════════════════════════
 
-    supabase.from('sessions_prospection')
-      .select('id, date_session, rapport_json, zone_id')
-      .eq('commercial_id', uid).eq('statut', 'realisee')
-      .gte('date_session', monthStart).lte('date_session', monthEnd),
+  const allMonthInts = monthInts ?? []
 
-    supabase.from('planning_sessions')
-      .select('id')
-      .eq('commercial_id', uid)
-      .gte('date_prevue', monthStart).lte('date_prevue', monthEnd),
+  // Portes frappées = toutes les interactions du mois (1 interaction = 1 porte)
+  const nbPortes = allMonthInts.length
 
-    supabase.from('contacts')
-      .select('id, statut_pipeline, date_relance')
-      .eq('commercial_id', uid),
+  // Contacts obtenus terrain = interactions avec resultat contact
+  const nbContactsSess = allMonthInts.filter(i =>
+    i.resultat === 'contact' || i.resultat === 'contact_etabli'
+  ).length
 
-    supabase.from('sessions_prospection')
-      .select('zone_id, date_session')
-      .eq('commercial_id', uid).eq('statut', 'realisee')
-      .not('zone_id', 'is', null)
-      .order('date_session', { ascending: false }).limit(500),
+  // Flyers / courriers déposés
+  const nbFlyers = allMonthInts.filter(i =>
+    i.action === 'flyer_depose' || i.action === 'courrier_depose'
+  ).length
 
-    supabase.from('planning_sessions')
-      .select('zone_id, date_prevue')
-      .eq('commercial_id', uid).eq('statut', 'planifiee')
-      .gte('date_prevue', todayStr)
-      .order('date_prevue', { ascending: true }),
+  const tauxContact = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
+  const tauxLabel   = tauxContact > 0 ? tauxContact.toFixed(1) + '%' : '—'
 
-    supabase.from('sessions_prospection')
-      .select('id, zone_id, date_session, heure_debut, zones_prospection:zone_id(nom, couleur, numero)')
-      .eq('commercial_id', uid).eq('statut', 'en_cours')
-      .order('created_at', { ascending: false }).limit(1),
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 5 : Histogramme hebdomadaire depuis interactions
+  // ══════════════════════════════════════════════════════════════════════════
 
-    supabase.from('adresses')
-      .select('id', { count: 'exact', head: true })
-      .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__']),
-  ])
-
-  // ── Computed ──
-  const zones         = zonesRes.data ?? []
-  const sessionsMonth = sessionsMonthRes.data ?? []
-  const nbPlanned     = planningMonthRes.data?.length ?? 0
-  const contacts      = contactsRes.data ?? []
-  const allZoneSess   = allSessZoneRes.data ?? []
-  const upcoming      = upcomingRes.data ?? []
-  const sessionEC     = (sessionEnCoursRes.data ?? [])[0] ?? null
-  const nbAdresses    = nbAdressesRes.count ?? 0
-
-  const dpePct = nbAdresses > 0 ? (dpeTotal / nbAdresses * 100).toFixed(1) : '0.0'
-
-  function getWeek(d: string): number {
-    return Math.min(Math.ceil(parseInt(d.split('-')[2] ?? '1', 10) / 7), 4)
-  }
+  // Map session_id → date_session pour grouper par semaine
+  const sessDateMap = new Map(sessionsMonth.map(s => [s.id, s.date_session]))
 
   const weeklyData = [1, 2, 3, 4].map(wk => {
-    const ws = sessionsMonth.filter(s => getWeek(s.date_session) === wk)
+    const weekSessIds = sessionsMonth
+      .filter(s => getWeek(s.date_session) === wk)
+      .map(s => s.id)
+    const weekInts = allMonthInts.filter(i => weekSessIds.includes(i.session_id))
     return {
       label:    `Sem. ${wk}`,
-      sessions: ws.length,
-      // FIX : fallback nb_portes si nb_visites absent
-      portes: ws.reduce((s, x) => {
-        const r = x.rapport_json as RapportJson | null
-        return s + (r?.nb_visites ?? r?.nb_portes ?? 0)
-      }, 0),
-      flyers: ws.reduce((s, x) => {
-        const r = x.rapport_json as RapportJson | null
-        return s + (r?.nb_flyers ?? r?.nb_flyers_deposes ?? 0)
-      }, 0),
-      contacts: ws.reduce((s, x) => {
-        const r = x.rapport_json as RapportJson | null
-        return s + (r?.nb_contacts ?? 0)
-      }, 0),
+      sessions: weekSessIds.length,
+      portes:   weekInts.length,
+      contacts: weekInts.filter(i => i.resultat === 'contact' || i.resultat === 'contact_etabli').length,
+      flyers:   weekInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length,
     }
   })
 
   const nbSessionsReal = sessionsMonth.length
   const nbSessionsTot  = Math.max(nbPlanned, nbSessionsReal)
-  const nbPortes       = weeklyData.reduce((s, w) => s + w.portes, 0)
-  const nbContactsSess = weeklyData.reduce((s, w) => s + w.contacts, 0)
-  const nbFlyers       = weeklyData.reduce((s, w) => s + w.flyers, 0)
-  const tauxContact    = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
-  const tauxLabel      = tauxContact > 0 ? tauxContact.toFixed(1) + '%' : '—'
   const avgPortes      = nbSessionsReal > 0 ? (nbPortes / nbSessionsReal).toFixed(1) : '—'
 
-  const nbContactsTotal = contacts.filter(c => c.statut_pipeline !== 'perdu').length
-  const nbQualifies     = contacts.filter(c => ['qualification', 'estimation', 'mandat'].includes(c.statut_pipeline ?? '')).length
-  const nbEstimations   = contacts.filter(c => ['estimation', 'mandat'].includes(c.statut_pipeline ?? '')).length
-  const nbMandats       = contacts.filter(c => c.statut_pipeline === 'mandat').length
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 6 : Couverture par zone (adresses distinctes visitées)
+  // ══════════════════════════════════════════════════════════════════════════
 
-  const nbRelRetard  = contacts.filter(c => c.date_relance && c.date_relance < todayStr).length
-  const nbRelMois    = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= monthEnd).length
-  const nbRelSemaine = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= sundayStr).length
+  // Map session_id → zone_id (pour rattacher chaque interaction à sa zone)
+  const sessZoneMap = new Map(allZonedSessions.map(s => [s.id, s.zone_id]))
 
+  // Pour chaque zone : Set des adresse_id uniques visitées
+  const zoneAdresseSets = new Map<string, Set<string>>()
+  for (const int of (coverageInts ?? [])) {
+    const zoneId = sessZoneMap.get(int.session_id)
+    if (!zoneId) continue
+    if (!zoneAdresseSets.has(zoneId)) zoneAdresseSets.set(zoneId, new Set())
+    zoneAdresseSets.get(zoneId)!.add(int.adresse_id)
+  }
+  // Convertir en count
+  const visitedCountByZone = new Map<string, number>()
+  for (const [zoneId, adresseSet] of zoneAdresseSets) {
+    visitedCountByZone.set(zoneId, adresseSet.size)
+  }
+
+  // Dernier passage par zone
   const lastByZone: Record<string, string> = {}
-  for (const s of allZoneSess) {
+  for (const s of allZonedSessions) {
     if (s.zone_id && !lastByZone[s.zone_id]) lastByZone[s.zone_id] = s.date_session
   }
+  // Retour prévu par zone
   const nextByZone: Record<string, string> = {}
   for (const s of upcoming) {
     if (s.zone_id && !nextByZone[s.zone_id]) nextByZone[s.zone_id] = s.date_prevue
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 7 : Construction zonesDisplay avec couverture réelle
+  // ══════════════════════════════════════════════════════════════════════════
+
   const zonesDisplay = zones.map((z, i) => {
-    const nbProspectables = z.nb_prospectables ?? 0
-    const nbAdresses      = z.nb_adresses ?? 0
-    const nbExclus        = (z as any).nb_logements_sociaux ?? 0
-    // visited = adresses initialement prospectables moins celles restantes
-    const visited   = Math.max(0, nbAdresses - nbProspectables)
-    const remaining = nbProspectables
-    const excluded  = nbExclus
-    // total de la barre = tout ce qu'il y a dans la zone
-    const barTotal  = Math.max(nbAdresses + nbExclus, 1)
-    const pct       = nbAdresses > 0 ? Math.round((visited / nbAdresses) * 100) : 0
+    const total    = z.nb_adresses ?? 0
+    const excluded = (z as any).nb_logements_sociaux ?? 0
+    // ★ visited = adresses distinctes ayant fait l'objet d'une interaction
+    const visited   = visitedCountByZone.get(z.id) ?? 0
+    const remaining = Math.max(0, total - visited)
+    const pct       = total > 0 ? Math.round((visited / total) * 100) : 0
     const pctColor  = pct >= 60 ? C.success : pct >= 40 ? C.gold : C.danger
     const color     = ZONE_COLORS[i % ZONE_COLORS.length]!
     const lastD     = lastByZone[z.id]
     const nextD     = nextByZone[z.id]
     return {
       ...z, color, visited, remaining, excluded,
-      total: barTotal, pct, pctColor,
+      total: Math.max(total, 1), pct, pctColor,
       lastLabel: lastD ? new Date(lastD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
       nextLabel: nextD ? new Date(nextD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
     }
   })
 
-  // Toutes les zones — la card couverture scrolle
-  const zonesCarteMax = zonesDisplay
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉTAPE 8 : Contacts CRM (pipeline)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const nbContactsTotal = contacts.filter(c => c.statut_pipeline !== 'perdu').length
+  const nbQualifies     = contacts.filter(c => ['qualification','estimation','mandat'].includes(c.statut_pipeline ?? '')).length
+  const nbEstimations   = contacts.filter(c => ['estimation','mandat'].includes(c.statut_pipeline ?? '')).length
+  const nbMandats       = contacts.filter(c => c.statut_pipeline === 'mandat').length
+
+  const nbRelRetard  = contacts.filter(c => c.date_relance && c.date_relance < todayStr).length
+  const nbRelMois    = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= monthEnd).length
+  const nbRelSemaine = contacts.filter(c => c.date_relance && c.date_relance >= todayStr && c.date_relance <= sundayStr).length
 
   const monthLabel = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   const monthBadge = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
@@ -558,6 +630,7 @@ export default async function DashboardPage() {
       {/* Content */}
       <div style={{ padding: '20px 22px' }}>
 
+        {/* Bannière manager */}
         {isManager && (
           <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div>
@@ -570,6 +643,7 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {/* Session en cours */}
         {sessionEC && (
           <div style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 12, padding: '14px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -590,25 +664,66 @@ export default async function DashboardPage() {
         )}
 
         {/* ═══ 1. KPI STRIP ═══ */}
+        {/* Ligne 1 : indicateurs terrain (source = interactions) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 10 }}>
-          <KpiCard label="Sessions réalisées" value={String(nbSessionsReal)}
-            sub={`sur ${nbSessionsTot} planifiées`} color={C.gold} variant="hero"
-            sparkData={weeklyData.map(w => w.sessions)} />
-          <KpiCard label="Portes frappées" value={String(nbPortes)}
-            color={C.info} variant="accent" sparkData={weeklyData.map(w => w.portes)} />
-          <KpiCard label="Contacts obtenus" value={String(nbContactsSess)}
-            color={C.success} variant="accent" sparkData={weeklyData.map(w => w.contacts)} />
-          <KpiCard label="Taux de contact" value={tauxLabel} sub="portes → contacts" color={C.teal} />
+          <KpiCard
+            label="Sessions réalisées"
+            value={String(nbSessionsReal)}
+            sub={`sur ${nbSessionsTot} planifiées`}
+            color={C.gold} variant="hero"
+            sparkData={weeklyData.map(w => w.sessions)}
+          />
+          <KpiCard
+            label="Portes frappées"
+            value={String(nbPortes)}
+            sub="interactions terrain"
+            color={C.info} variant="accent"
+            sparkData={weeklyData.map(w => w.portes)}
+          />
+          <KpiCard
+            label="Contacts obtenus"
+            value={String(nbContactsSess)}
+            sub="sur le terrain ce mois"
+            color={C.success} variant="accent"
+            sparkData={weeklyData.map(w => w.contacts)}
+          />
+          <KpiCard
+            label="Taux de contact"
+            value={tauxLabel}
+            sub="portes → contacts"
+            color={C.teal}
+          />
         </div>
+        {/* Ligne 2 : indicateurs CRM (source = contacts table) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
-          <KpiCard label="Contacts CRM" value={String(nbContactsTotal)} sub="dans le pipeline" color={C.purple} />
-          <KpiCard label="Estimations" value={String(nbEstimations)} color={C.info} />
-          <KpiCard label="Mandats signés" value={String(nbMandats)} color={C.gold} variant="accent" />
-          <KpiCard label="Flyers / courriers" value={String(nbFlyers)} sub="déposés ce mois" color={C.orange} />
+          <KpiCard
+            label="Contacts CRM"
+            value={String(nbContactsTotal)}
+            sub="dans le pipeline actif"
+            color={C.purple}
+          />
+          <KpiCard
+            label="Estimations"
+            value={String(nbEstimations)}
+            color={C.info}
+          />
+          <KpiCard
+            label="Mandats signés"
+            value={String(nbMandats)}
+            color={C.gold} variant="accent"
+          />
+          <KpiCard
+            label="Flyers / courriers"
+            value={String(nbFlyers)}
+            sub="déposés ce mois"
+            color={C.orange}
+          />
         </div>
 
         {/* ═══ 2 & 3. ACTIVITÉ + PERFORMANCE ═══ */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+
+          {/* Activité terrain */}
           <Card>
             <SectionTitle title="Activité terrain" badge={monthBadge} />
             <div style={{ marginBottom: 18 }}>
@@ -633,6 +748,7 @@ export default async function DashboardPage() {
             </div>
           </Card>
 
+          {/* Performance commerciale */}
           <Card>
             <SectionTitle title="Performance commerciale" badge="Pipeline" />
             <ConversionFunnel steps={[
@@ -668,6 +784,8 @@ export default async function DashboardPage() {
 
         {/* ═══ 4 & 5. COUVERTURE + DPE ═══ */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+
+          {/* Couverture territoriale */}
           <Card>
             <SectionTitle title="Couverture territoriale" badge={`${zones.length} zones`} />
             <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
@@ -682,17 +800,17 @@ export default async function DashboardPage() {
                 </div>
               ))}
             </div>
-            {zonesCarteMax.length === 0 ? (
+            {zonesDisplay.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted }}>
                 <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.4 }}>🗺️</div>
                 <span style={{ fontSize: 13 }}>Aucune zone configurée</span>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 320 }}>
-                {zonesCarteMax.map((z, i) => (
+                {zonesDisplay.map((z, i) => (
                   <div key={z.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '7px 4px',
-                    borderBottom: i < zonesCarteMax.length - 1 ? `1px solid ${C.borderSub}` : 'none',
+                    borderBottom: i < zonesDisplay.length - 1 ? `1px solid ${C.borderSub}` : 'none',
                   }}>
                     <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, background: z.color + '15', border: `1.5px solid ${z.color}35`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span style={{ fontSize: 9, fontWeight: 700, color: z.color }}>{z.numero}</span>
@@ -714,6 +832,7 @@ export default async function DashboardPage() {
             )}
           </Card>
 
+          {/* Intelligence DPE */}
           <Card>
             <SectionTitle title="Intelligence DPE" badge="Secteur" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
@@ -741,7 +860,7 @@ export default async function DashboardPage() {
           </Card>
         </div>
 
-        {/* ═══ 6. TABLEAU DE PILOTAGE — toutes les zones ═══ */}
+        {/* ═══ 6. TABLEAU DE PILOTAGE ═══ */}
         <Card style={{ padding: 20 }}>
           <SectionTitle title={`Tableau de pilotage — ${zones.length} zones`} action="Exporter" />
           {zones.length === 0 ? (
@@ -754,7 +873,7 @@ export default async function DashboardPage() {
               <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: FONT, fontSize: 12 }}>
                 <thead>
                   <tr>
-                    {['Zone', '% couverture', 'Adr. restantes', 'Dernier passage', 'Retour prévu', 'Statut'].map((h, i) => (
+                    {['Zone', '% couverture', 'Visitées', 'Restantes', 'Dernier passage', 'Retour prévu', 'Statut'].map((h, i) => (
                       <th key={i} style={{
                         padding: '10px', textAlign: i === 0 ? 'left' : 'center',
                         borderBottom: `1px solid ${C.borderL}`,
@@ -781,6 +900,9 @@ export default async function DashboardPage() {
                           <HBar w={48} h={4} fill={z.pct / 100} color={z.pctColor} />
                           <span style={{ fontSize: 11, fontWeight: 700, color: z.pctColor }}>{z.pct}%</span>
                         </div>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: C.success }}>{z.visited}</span>
                       </td>
                       <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: C.mid }}>{z.remaining}</span>
