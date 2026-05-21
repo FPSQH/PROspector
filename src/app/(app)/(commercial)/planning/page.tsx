@@ -178,14 +178,21 @@ export default function PlanningPage() {
     }
   }
 
-  const generate = async () => {
-    setGenerating(true)
-    const r = await fetch('/api/planning', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mois, annee }) })
-    const d = await r.json()
-    setGenerating(false)
-    if (d.planning) { setSessions(d.planning); setSessionsLibres(d.sessions_libres ?? []); setKpis(d.kpis ?? null) }
-    else if (d.error) alert(d.error)
+const generate = async () => {
+  if (sessions.some(s => s.statut === 'planifiee')) {
+    const nb = sessions.filter(s => s.statut === 'planifiee').length
+    if (!confirm(`${nb} session${nb > 1 ? 's' : ''} planifiée${nb > 1 ? 's' : ''} existent déjà pour ${MOIS[mois]} ${annee}.\nLes supprimer et régénérer ?`)) return
+    await fetch(`/api/planning?mois=${mois}&annee=${annee}`, { method: 'DELETE' })
+    setSessions(s => s.filter(x => x.statut !== 'planifiee'))
   }
+  
+  setGenerating(true)
+  const r = await fetch('/api/planning', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mois, annee }) })
+  const d = await r.json()
+  setGenerating(false)
+  if (d.planning) { setSessions(d.planning); setSessionsLibres(d.sessions_libres ?? []); setKpis(d.kpis ?? null) }
+  else if (d.error) alert(d.error)
+}
 
   const resetMois = async () => {
     if (!confirm(`Supprimer toutes les sessions planifiées de ${MOIS[mois]} ${annee} ?`)) return
@@ -261,7 +268,7 @@ export default function PlanningPage() {
     ...sessionsLibres.map(s => s.date_session),
   ])).sort()
 
-  const peutGenerer = !loading && !sessions.some(s => s.statut === 'planifiee')
+const peutGenerer = !loading
   const peutReset   = sessions.some(s => s.statut === 'planifiee')
 
   return (
@@ -395,13 +402,13 @@ export default function PlanningPage() {
         </div>
 
         {/* Bouton générer */}
-        {peutGenerer && (
-          <div style={{ padding: '10px 14px', borderTop: '1px solid #E8E6DF', textAlign: 'center', flexShrink: 0 }}>
-            <button onClick={generate} disabled={generating} style={{ padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: generating ? '#E8E6DF' : '#1D9E75', color: '#fff', border: 'none', cursor: generating ? 'not-allowed' : 'pointer' }}>
-              {generating ? 'Génération...' : `✦ Générer ${MOIS[mois]}`}
-            </button>
-          </div>
-        )}
+{peutGenerer && (
+  <div style={{ padding: '10px 14px', borderTop: '1px solid #E8E6DF', textAlign: 'center', flexShrink: 0 }}>
+    <button onClick={generate} disabled={generating} style={{ padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: generating ? '#E8E6DF' : peutReset ? '#d97706' : '#1D9E75', color: '#fff', border: 'none', cursor: generating ? 'not-allowed' : 'pointer' }}>
+      {generating ? 'Génération...' : peutReset ? `↺ Régénérer ${MOIS[mois]}` : `✦ Générer ${MOIS[mois]}`}
+    </button>
+  </div>
+)}
 
         {/* Liste journées */}
         <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #E8E6DF' }}>
