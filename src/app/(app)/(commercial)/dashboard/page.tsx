@@ -599,7 +599,7 @@ export default async function DashboardPage({
     .from('dpe_logement')
     .select('adresse_id, type_batiment')
     .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
-    .not('adresse_id', 'is', null)
+    // adresse_id peut être null → compté comme hors zone dans le secteur
   if (dpeDateDebut) {
     dpeMatchedQuery = dpeMatchedQuery.gte('date_etablissement', dpeDateDebut) as any
   }
@@ -614,8 +614,10 @@ export default async function DashboardPage({
 
   // ── Calcul zone / hors zone (client-side sur dpeMatchedRows) ────────────
   const dpeMatched      = dpeMatchedRows ?? []
-  const dpeInZoneRows   = dpeMatched.filter(d => zoneAdresseSet.has(d.adresse_id))
-  const dpeHorsZoneRows = dpeMatched.filter(d => !zoneAdresseSet.has(d.adresse_id))
+  // DPE dans une zone : adresse_id non null ET appartenant à une zone du commercial
+  const dpeInZoneRows   = dpeMatched.filter(d => d.adresse_id && zoneAdresseSet.has(d.adresse_id))
+  // DPE hors zone dans le secteur : adresse_id null (non matché) OU adresse hors zone
+  const dpeHorsZoneRows = dpeMatched.filter(d => !d.adresse_id || !zoneAdresseSet.has(d.adresse_id))
 
   const dpeInZoneMaison  = dpeInZoneRows.filter(d => d.type_batiment === 'maison').length
   const dpeInZoneAppart  = dpeInZoneRows.filter(d => d.type_batiment !== 'maison').length
