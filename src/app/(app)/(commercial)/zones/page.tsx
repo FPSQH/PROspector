@@ -59,9 +59,9 @@ interface DpeAdresse {
 }
 
 const PALETTE = [
-  '#E63946','#2196F3','#FF9800','#4CAF50','#9C27B0',
-  '#00BCD4','#FF5722','#607D8B','#795548','#E91E63',
-  '#00897B','#F57F17',
+  '#22C55E','#3B82F6','#F59E0B','#EF4444','#8B5CF6',
+  '#EC4899','#14B8A6','#F97316','#6366F1','#0EA5E9',
+  '#84CC16','#A855F7',
 ]
 
 export default function ZonesPage() {
@@ -727,11 +727,23 @@ export default function ZonesPage() {
   {editNom.length}/45 caractères
 </div>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5F5E5A', display: 'block', marginBottom: 8 }}>Couleur</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 20 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 10 }}>
               {PALETTE.map((c) => (
                 <button key={c} onClick={() => setEditCouleur(c)}
-                  style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: editCouleur === c ? '3px solid #1a1a18' : '2px solid transparent', cursor: 'pointer', transform: editCouleur === c ? 'scale(1.2)' : 'scale(1)' }}/>
+                  style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: editCouleur === c ? '3px solid #1a1a18' : '2px solid transparent', cursor: 'pointer', transform: editCouleur === c ? 'scale(1.2)' : 'scale(1)', transition: 'transform 0.1s' }}/>
               ))}
+            </div>
+            {/* Colorpicker couleur libre — pour >12 zones ou couleur personnalisée */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '8px 10px', borderRadius: 8, background: '#f8f7f4', border: '1px solid #e8e7e0' }}>
+              <span style={{ fontSize: '0.75rem', color: '#9b9b96', fontWeight: 500 }}>Couleur libre :</span>
+              <input
+                type="color"
+                value={editCouleur}
+                onChange={(e) => setEditCouleur(e.target.value)}
+                style={{ width: 32, height: 32, borderRadius: 6, border: '1.5px solid #e8e7e0', cursor: 'pointer', padding: 2, background: 'none' }}
+              />
+              <div style={{ width: 20, height: 20, borderRadius: '50%', background: editCouleur, border: '2px solid #e8e7e0', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.72rem', color: '#9b9b96', fontFamily: 'monospace' }}>{editCouleur.toUpperCase()}</span>
             </div>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
