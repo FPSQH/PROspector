@@ -716,7 +716,7 @@ export default async function DashboardPage({
     const remaining = Math.max(0, total - visited)
     const pct       = total > 0 ? Math.round((visited / total) * 100) : 0
     const pctColor  = pct >= 60 ? C.success : pct >= 40 ? C.gold : C.danger
-    const color     = ZONE_COLORS[i % ZONE_COLORS.length]!
+    const color     = z.couleur ?? ZONE_COLORS[i % ZONE_COLORS.length]!
     const lastD     = lastByZone[z.id]
     const nextD     = nextByZone[z.id]
     return {
