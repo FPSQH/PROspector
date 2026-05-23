@@ -11,6 +11,10 @@ export async function POST(req: Request) {
     session_id, adresse_id, resultat, action,
     type_habitat, nb_etages, nom_boite,
     type_contact, note, date_relance,
+    presence,    // ← FIX : lire presence depuis le body
+    contact_id,  // ← FIX : lire contact_id depuis le body
+    observations_terrain,
+    statut_adresse,
   } = body
 
   if (!session_id || !adresse_id || !resultat) {
@@ -20,18 +24,20 @@ export async function POST(req: Request) {
     )
   }
 
-  // Normaliser les valeurs action vers les valeurs acceptées par la contrainte DB
   const actionMap: Record<string, string> = {
     'flyer':           'flyer_depose',
     'courrier':        'courrier_depose',
-    'boite':           'courrier_depose',  // boîtage = dépôt courrier
+    'boite':           'courrier_depose',
     'rien':            'rien',
     'flyer_depose':    'flyer_depose',
     'courrier_depose': 'courrier_depose',
   }
   const actionNorm = action ? (actionMap[action] ?? 'rien') : 'rien'
 
-  // Vérifier ownership session (client normal)
+  // FIX : presence = true si resultat est 'contact' (filet de sécurité)
+  // Couvre le cas où le BottomSheet ancien ne passe pas presence explicitement
+  const presenceVal = presence === true || resultat === 'contact'
+
   const { data: session } = await supabase
     .from('sessions_prospection')
     .select('id, statut')
@@ -41,10 +47,8 @@ export async function POST(req: Request) {
 
   if (!session) return NextResponse.json({ error: 'Session non trouvee' }, { status: 404 })
 
-  // Admin client pour bypasser RLS sur interactions
   const adminDb = createAdminClient()
 
-  // maybeSingle() retourne null sans erreur si aucune ligne
   const { data: existing } = await adminDb
     .from('interactions')
     .select('id')
@@ -59,14 +63,18 @@ export async function POST(req: Request) {
       .from('interactions')
       .update({
         resultat,
-        action:       actionNorm,
-        type_habitat: type_habitat ?? null,
-        nb_etages:    nb_etages    ?? null,
-        nom_boite:    nom_boite    ?? null,
-        type_contact: type_contact ?? null,
-        note:         note         ?? null,
-        date_relance: date_relance ?? null,
-        updated_at:   new Date().toISOString(),
+        action:               actionNorm,
+        type_habitat:         type_habitat         ?? null,
+        nb_etages:            nb_etages            ?? null,
+        nom_boite:            nom_boite            ?? null,
+        type_contact:         type_contact         ?? null,
+        note:                 note                 ?? null,
+        date_relance:         date_relance         ?? null,
+        presence:             presenceVal,          // ← FIX
+        contact_id:           contact_id           ?? null, // ← FIX
+        statut_adresse:       statut_adresse       ?? null,
+        observations_terrain: observations_terrain ?? {},
+        updated_at:           new Date().toISOString(),
       })
       .eq('id', existing.id)
       .select()
@@ -82,15 +90,19 @@ export async function POST(req: Request) {
       .insert({
         session_id,
         adresse_id,
-        commercial_id: user.id,
+        commercial_id:        user.id,
         resultat,
-        action:       actionNorm,
-        type_habitat: type_habitat ?? null,
-        nb_etages:    nb_etages    ?? null,
-        nom_boite:    nom_boite    ?? null,
-        type_contact: type_contact ?? null,
-        note:         note         ?? null,
-        date_relance: date_relance ?? null,
+        action:               actionNorm,
+        type_habitat:         type_habitat         ?? null,
+        nb_etages:            nb_etages            ?? null,
+        nom_boite:            nom_boite            ?? null,
+        type_contact:         type_contact         ?? null,
+        note:                 note                 ?? null,
+        date_relance:         date_relance         ?? null,
+        presence:             presenceVal,          // ← FIX
+        contact_id:           contact_id           ?? null, // ← FIX
+        statut_adresse:       statut_adresse       ?? null,
+        observations_terrain: observations_terrain ?? {},
       })
       .select()
       .single()
@@ -101,7 +113,6 @@ export async function POST(req: Request) {
     interaction = data
   }
 
-  // Incrémenter nb_portes — fire & forget non bloquant
   adminDb.rpc('increment_session_portes', { p_session_id: session_id })
     .then(({ error }) => { if (error) console.warn('[interactions] rpc:', error.message) })
     .catch(() => {})
