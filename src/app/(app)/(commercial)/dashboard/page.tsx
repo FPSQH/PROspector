@@ -668,7 +668,30 @@ export default async function DashboardPage({
   const allMonthInts   = monthInts ?? []
   const nbPortes       = allMonthInts.length
   // FIX : le BottomSheet enregistre presence=true pour les contacts
-  const nbContactsSess = allMonthInts.filter(i => i.presence === true).length
+  // Contacts terrain (presence=true via BottomSheet)
+  const nbContactsPresence = allMonthInts.filter(i => i.presence === true).length
+
+  // Contacts CRM liés aux adresses des sessions de ce mois (créés hors terrain)
+  const monthAdresseIds = [...new Set(allMonthInts.map(i => i.adresse_id).filter(Boolean))]
+  let nbContactsCRM = 0
+  if (monthAdresseIds.length > 0) {
+    // Récupérer en batches de 200 (limite Supabase .in())
+    const batches = []
+    for (let i = 0; i < monthAdresseIds.length; i += 200) {
+      batches.push(monthAdresseIds.slice(i, i + 200))
+    }
+    const counts = await Promise.all(
+      batches.map(batch =>
+        adminDb.from('contacts')
+          .select('id', { count: 'exact', head: true })
+          .in('adresse_id', batch)
+          .eq('commercial_id', uid)
+      )
+    )
+    nbContactsCRM = counts.reduce((s, r) => s + ((r as any).count ?? 0), 0)
+  }
+
+  const nbContactsSess = Math.max(nbContactsPresence, nbContactsCRM)
   const nbFlyers       = allMonthInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length
   const tauxContact    = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
   const tauxLabel      = tauxContact > 0 ? tauxContact.toFixed(2) + ' %' : '0 %'
@@ -680,7 +703,7 @@ export default async function DashboardPage({
       label:    `Sem. ${wk}`,
       sessions: weekSessIds.length,
       portes:   weekInts.length,
-      contacts: weekInts.filter(i => i.presence === true).length,
+      contacts: weekInts.filter(i => i.presence === true).length, // complété par nbContactsCRM global
       flyers:   weekInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length,
     }
   })
