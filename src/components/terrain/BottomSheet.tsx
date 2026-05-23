@@ -86,14 +86,22 @@ export default function BottomSheet({
   const submitContact = async () => {
     setSaving(true)
     if (typeHabitat) await patchAdresse({ type_habitat: typeHabitat })
-    await postInteraction({
-      adresse_id: adresse.id, session_id: sessionId,
-      resultat: 'contact', action: 'rien',
-      type_habitat: typeHabitat || null,
-      notes: note || null,
+const intRes = await fetch('/api/interactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adresse_id:   adresse.id,
+        session_id:   sessionId,
+        resultat:     'contact',
+        action:       'rien',
+        type_habitat: typeHabitat || null,
+        note:         note || null,    // FIX : 'note' pas 'notes'
+        presence:     true,            // FIX : marquer le contact
+      }),
     })
-    if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
-      await fetch('/api/contacts', {
+    const intData = await intRes.json().catch(() => ({}))
+    const interactionId = intData?.interaction?.id ?? intData?.id ?? null
+   if (showContactForm && (contact.nom || contact.prenom || contact.tel1)) {
+      const cRes = await fetch('/api/contacts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adresse_id:   adresse.id,
@@ -102,7 +110,7 @@ export default function BottomSheet({
           tel1:         contact.tel1        || null,
           email1:       contact.email1      || null,
           date_relance: contact.date_relance || null,
-          notes:        note                || null,
+          note:         note                || null,
           type_contact: typeProjet.includes('vente')       ? 'interet_vente'
                       : typeProjet.includes('location')    ? 'projet_moyen'
                       : typeProjet.includes('reflexion')   ? 'projet_long'
@@ -110,6 +118,17 @@ export default function BottomSheet({
           statut_pipeline: 'prospect',
         }),
       })
+      // FIX : lier le contact_id sur l'interaction
+      if (interactionId) {
+        const cData = await cRes.json().catch(() => ({}))
+        const contactId = cData?.contact?.id ?? cData?.id ?? null
+        if (contactId) {
+          await fetch('/api/interactions/' + interactionId, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contact_id: contactId }),
+          })
+        }
+      }
     }
     setSaving(false)
     onQualification({ resultat: 'contact', type_habitat: typeHabitat, note })
