@@ -152,16 +152,14 @@ export async function PATCH(req: Request, { params }: Params) {
 
       const { data: ints } = await adminDb
         .from('interactions')
-        .select('adresse_id, type_habitat, statut_adresse, resultat, action, contact_id')
+        .select('adresse_id, type_habitat, statut_adresse, resultat, action, presence, contact_id')
         .eq('session_id', params.id)
 
       const allInts    = ints ?? []
       const nb_vis     = allInts.length
 
-      // FIX : compter aussi 'contact_etabli' (variante utilisée dans certains flows)
-      const nb_contacts_int = allInts.filter((i: any) =>
-        i.resultat === 'contact' || i.resultat === 'contact_etabli'
-      ).length
+      // FIX : contacts = presence === true (le BottomSheet n'utilise pas resultat='contact')
+      const nb_contacts_int = allInts.filter((i: any) => i.presence === true).length
 
       const nb_flyers = allInts.filter((i: any) =>
         i.action === 'flyer_depose' || i.action === 'courrier_depose'
