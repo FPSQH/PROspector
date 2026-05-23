@@ -516,7 +516,7 @@ export default async function DashboardPage({
 
   const { data: monthInts } = monthSessionIds.length > 0
     ? await adminDb.from('interactions')
-        .select('adresse_id, session_id, resultat, action')
+        .select('adresse_id, session_id, resultat, action, presence')
         .in('session_id', monthSessionIds)
     : { data: [] as { adresse_id: string; session_id: string; resultat: string; action: string }[] }
 
@@ -666,7 +666,8 @@ export default async function DashboardPage({
 
   const allMonthInts   = monthInts ?? []
   const nbPortes       = allMonthInts.length
-  const nbContactsSess = allMonthInts.filter(i => i.resultat === 'contact' || i.resultat === 'contact_etabli').length
+  // FIX : le BottomSheet enregistre presence=true pour les contacts
+  const nbContactsSess = allMonthInts.filter(i => i.presence === true).length
   const nbFlyers       = allMonthInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length
   const tauxContact    = nbPortes > 0 ? (nbContactsSess / nbPortes * 100) : 0
   const tauxLabel      = tauxContact > 0 ? tauxContact.toFixed(2) + ' %' : '0 %'
@@ -678,7 +679,7 @@ export default async function DashboardPage({
       label:    `Sem. ${wk}`,
       sessions: weekSessIds.length,
       portes:   weekInts.length,
-      contacts: weekInts.filter(i => i.resultat === 'contact' || i.resultat === 'contact_etabli').length,
+      contacts: weekInts.filter(i => i.presence === true).length,
       flyers:   weekInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length,
     }
   })
