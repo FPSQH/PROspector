@@ -37,7 +37,6 @@ function dpeColor(etiquette?: string | null): string {
   }
 }
 
-// Types de bien pour la qualification rapide
 const TYPE_BIEN_OPTIONS = [
   { key: 'maison',       label: 'Habitat individuel', color: '#4CAF50', icon: '🏠' },
   { key: 'appartement',  label: 'Habitat collectif',  color: '#2196F3', icon: '🏢' },
@@ -59,7 +58,6 @@ export default function ZonesMap({
   const [dpePoints,  setDpePoints]  = useState<any[]>([])
   const [loadingOv,  setLoadingOv]  = useState(false)
 
-  // Qualification rapide d'une adresse
   const [qualifyPopup, setQualifyPopup] = useState<{
     id: string; lat: number; lon: number; type_bien?: string; has_commerce?: boolean
     x: number; y: number
@@ -78,29 +76,29 @@ export default function ZonesMap({
       const maplibre = await import('maplibre-gl')
       await import('maplibre-gl/dist/maplibre-gl.css')
 
-      const OSM_STYLE: maplibre.StyleSpecification = {
-  version: 8,
-  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      attribution: '© OpenStreetMap contributors',
-      tileSize: 256,
-      maxzoom: 19
-    },
-    satellite: {
-      type: 'raster',
-      tiles: ['https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'],
-      tileSize: 256,
-      maxzoom: 20
-    }
-  },
-  layers: [
-    { id: 'osm-tiles', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 22 },
-    { id: 'satellite', type: 'raster', source: 'satellite', minzoom: 0, maxzoom: 22, layout: { visibility: 'none' } }
-  ]
-}
+      const OSM_STYLE: any = {
+        version: 8,
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            attribution: '© OpenStreetMap contributors',
+            tileSize: 256,
+            maxzoom: 19
+          },
+          satellite: {
+            type: 'raster',
+            tiles: ['https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'],
+            tileSize: 256,
+            maxzoom: 20
+          }
+        },
+        layers: [
+          { id: 'osm-tiles', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 22 },
+          { id: 'satellite', type: 'raster', source: 'satellite', minzoom: 0, maxzoom: 22, layout: { visibility: 'none' } }
+        ]
+      }
 
       map = new maplibre.Map({
         container: mapContainer.current!,
@@ -111,7 +109,6 @@ export default function ZonesMap({
       mapRef.current = map
 
       map.on('load', () => {
-        // Sources zones
         map.addSource('zones-fill',     { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('zones-outline',  { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('zones-conflict', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -120,11 +117,9 @@ export default function ZonesMap({
         map.addSource('adresses',       { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('hors-zone',      { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('dpe-recents',    { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        // Sources overlay
         map.addSource('all-addr',       { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('dpe-overlay',    { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
 
-        // Layers zones
         map.addLayer({ id: 'zones-fill-layer', type: 'fill', source: 'zones-fill',
           paint: { 'fill-color': ['get', 'couleur'], 'fill-opacity': ['case', ['get', 'selected'], 0.35, 0.15] } })
         map.addLayer({ id: 'zones-outline-layer', type: 'line', source: 'zones-outline',
@@ -140,7 +135,6 @@ export default function ZonesMap({
           paint: { 'circle-radius': 4, 'circle-color': ['get', 'couleur'], 'circle-stroke-width': 1, 'circle-stroke-color': '#fff' } })
         map.addLayer({ id: 'hors-zone-layer', type: 'circle', source: 'hors-zone',
           paint: { 'circle-radius': 3, 'circle-color': '#9E9E9E', 'circle-opacity': 0.5 } })
-        // Aura DPE (dessous)
         map.addLayer({ id: 'dpe-aura-zone', type: 'circle', source: 'dpe-recents',
           layout: { visibility: 'none' },
           paint: {
@@ -159,7 +153,6 @@ export default function ZonesMap({
             'circle-stroke-width': 0,
           }
         })
-        // Points DPE (dessus)
         map.addLayer({ id: 'dpe-recents-layer', type: 'circle', source: 'dpe-recents',
           layout: { visibility: 'none' },
           paint: {
@@ -175,8 +168,6 @@ export default function ZonesMap({
             'circle-opacity': 0.95
           }
         })
-
-        // Layers overlay adresses secteur
         map.addLayer({ id: 'all-addr-layer', type: 'circle', source: 'all-addr',
           layout: { visibility: 'none' },
           paint: {
@@ -189,7 +180,6 @@ export default function ZonesMap({
             'circle-stroke-color': '#fff',
           }
         })
-        // Layer overlay DPE secteur
         map.addLayer({ id: 'dpe-overlay-layer', type: 'circle', source: 'dpe-overlay',
           layout: { visibility: 'none' },
           paint: {
@@ -202,7 +192,6 @@ export default function ZonesMap({
           }
         })
 
-        // Interactivite zones
         map.on('click', 'zones-fill-layer', (e: any) => {
           const props = e.features?.[0]?.properties
           if (!props) return
@@ -212,7 +201,6 @@ export default function ZonesMap({
         map.on('mouseenter', 'zones-fill-layer', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'zones-fill-layer', () => { map.getCanvas().style.cursor = '' })
 
-        // Clic sur adresse overlay → popup de qualification
         map.on('click', 'all-addr-layer', (e: any) => {
           const feat = e.features?.[0]
           if (!feat) return
@@ -230,29 +218,48 @@ export default function ZonesMap({
     }
 
     initMap()
-    return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null } }
-  }, [])
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
+    }
+  }, []) // eslint-disable-line
 
   // ── Satellite toggle ────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    map.setLayoutProperty('osm-tiles',       'visibility', satellite ? 'none'    : 'visible')
+    map.setLayoutProperty('osm-tiles', 'visibility', satellite ? 'none'    : 'visible')
     map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none')
   }, [satellite, mapLoaded])
 
-  // ── Données zones ───────────────────────────────────────────────────────
+  // ── Données zones — FIX : gère le cas zones vides après reset ───────────
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapLoaded || !zones.length) return
+    if (!map || !mapLoaded) return
 
-    const parseGeo = (v: any) => { if (!v) return null; if (typeof v === 'string') { try { return JSON.parse(v) } catch { return null } } return v }
-    const fillFeatures   = zones.filter(z => z.polygone_geojson).map(z => ({
+    // FIX : vider les sources si aucune zone (évite getSource sur map non prête)
+    if (!zones.length) {
+      ;(map.getSource('zones-fill')    as any)?.setData({ type: 'FeatureCollection', features: [] })
+      ;(map.getSource('zones-outline') as any)?.setData({ type: 'FeatureCollection', features: [] })
+      ;(map.getSource('labels')        as any)?.setData({ type: 'FeatureCollection', features: [] })
+      return
+    }
+
+    const parseGeo = (v: any) => {
+      if (!v) return null
+      if (typeof v === 'string') { try { return JSON.parse(v) } catch { return null } }
+      return v
+    }
+
+    const fillFeatures = zones.filter(z => z.polygone_geojson).map(z => ({
       type: 'Feature' as const,
       geometry: parseGeo(z.polygone_geojson),
       properties: { id: z.id, couleur: z.couleur, selected: z.id === selectedZoneId, conflict: conflictIds.has(z.id) },
     })).filter(f => f.geometry)
-    const labelFeatures  = zones.filter(z => z.centroide_geojson).map(z => ({
+
+    const labelFeatures = zones.filter(z => z.centroide_geojson).map(z => ({
       type: 'Feature' as const,
       geometry: parseGeo(z.centroide_geojson),
       properties: { id: z.id, label: z.numero + ' · ' + z.nb_adresses + ' adr.' },
@@ -262,17 +269,17 @@ export default function ZonesMap({
     ;(map.getSource('zones-outline') as any)?.setData({ type: 'FeatureCollection', features: fillFeatures })
     ;(map.getSource('labels')        as any)?.setData({ type: 'FeatureCollection', features: labelFeatures })
 
-    if (zones.length > 0 && fillFeatures.length > 0) {
-      const lats = zones.flatMap(z => z.centroide_geojson ? [z.centroide_geojson.coordinates[1]] : [])
-      const lons = zones.flatMap(z => z.centroide_geojson ? [z.centroide_geojson.coordinates[0]] : [])
-      if (lats.length) {
+    if (fillFeatures.length > 0) {
+      const lats = zones.flatMap(z => z.centroide_geojson ? [parseGeo(z.centroide_geojson)?.coordinates?.[1]].filter(Boolean) : [])
+      const lons = zones.flatMap(z => z.centroide_geojson ? [parseGeo(z.centroide_geojson)?.coordinates?.[0]].filter(Boolean) : [])
+      if (lats.length && lons.length) {
         map.fitBounds([
           [Math.min(...lons) - 0.05, Math.min(...lats) - 0.05],
           [Math.max(...lons) + 0.05, Math.max(...lats) + 0.05],
         ], { padding: 40, duration: 800 })
       }
     }
-  }, [zones, selectedZoneId, mapLoaded])
+  }, [zones, selectedZoneId, mapLoaded]) // eslint-disable-line
 
   // ── DPE recents (prop externe) ──────────────────────────────────────────
   useEffect(() => {
@@ -282,38 +289,48 @@ export default function ZonesMap({
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
       properties: {
-              dpeColor: dpeColor(a.dpe_etiquette),
-              dpe_signal: (() => {
-                const dateStr = a.date || null
-                if (!dateStr) return a.anciennete === 'chaud' ? 'hot' : 'recent'
-                const d = new Date(dateStr)
-                const days = (Date.now() - d.getTime()) / 86400000
-                if (days <= 30) return 'hot'
-                if (days <= 90) return 'warm'
-                if (days <= 365) return 'recent'
-                return null
-              })()
-            },
+        dpeColor: dpeColor(a.dpe_etiquette),
+        dpe_signal: (() => {
+          const dateStr = (a as any).date || null
+          if (!dateStr) return (a as any).anciennete === 'chaud' ? 'hot' : 'recent'
+          const d = new Date(dateStr)
+          const days = (Date.now() - d.getTime()) / 86400000
+          if (days <= 30)  return 'hot'
+          if (days <= 90)  return 'warm'
+          if (days <= 365) return 'recent'
+          return null
+        })()
+      },
     }))
     ;(map.getSource('dpe-recents') as any)?.setData({ type: 'FeatureCollection', features })
     map.setLayoutProperty('dpe-recents-layer', 'visibility', showDpeRecents && dpeAdresses.length ? 'visible' : 'none')
+    map.setLayoutProperty('dpe-aura-zone',     'visibility', showDpeRecents && dpeAdresses.length ? 'visible' : 'none')
   }, [dpeAdresses, showDpeRecents, mapLoaded])
 
   // ── Toggle overlay adresses secteur ────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    if (!showAddr) { map.setLayoutProperty('all-addr-layer', 'visibility', 'none'); return }
-    if (allAddr.length > 0) { map.setLayoutProperty('all-addr-layer', 'visibility', 'visible'); return }
+    if (!showAddr) {
+      map.setLayoutProperty('all-addr-layer', 'visibility', 'none')
+      return
+    }
+    if (allAddr.length > 0) {
+      map.setLayoutProperty('all-addr-layer', 'visibility', 'visible')
+      return
+    }
     setLoadingOv(true)
     fetch('/api/adresses/secteur').then(r => r.json()).then(data => {
       if (!data.adresses) return
       setAllAddr(data.adresses)
-      const fc = { type: 'FeatureCollection' as const, features: data.adresses.map((a: any) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-        properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu', has_commerce: a.has_commerce ?? false }
-      }))}
+      const fc = {
+        type: 'FeatureCollection' as const,
+        features: data.adresses.map((a: any) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
+          properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu', has_commerce: a.has_commerce ?? false }
+        }))
+      }
       ;(map.getSource('all-addr') as any)?.setData(fc)
       map.setLayoutProperty('all-addr-layer', 'visibility', 'visible')
     }).finally(() => setLoadingOv(false))
@@ -323,49 +340,66 @@ export default function ZonesMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    if (!showDpe) { map.setLayoutProperty('dpe-overlay-layer', 'visibility', 'none'); return }
-    if (dpePoints.length > 0) { map.setLayoutProperty('dpe-overlay-layer', 'visibility', 'visible'); return }
+    if (!showDpe) {
+      map.setLayoutProperty('dpe-overlay-layer', 'visibility', 'none')
+      return
+    }
+    if (dpePoints.length > 0) {
+      map.setLayoutProperty('dpe-overlay-layer', 'visibility', 'visible')
+      return
+    }
     setLoadingOv(true)
     fetch('/api/dpe/secteur?mois=12').then(r => r.json()).then(data => {
       if (!data.points) return
       setDpePoints(data.points)
-      const fc = { type: 'FeatureCollection' as const, features: data.points.map((p: any) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
-        properties: { anciennete: p.anciennete }
-      }))}
+      const fc = {
+        type: 'FeatureCollection' as const,
+        features: data.points.map((p: any) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+          properties: { anciennete: p.anciennete }
+        }))
+      }
       ;(map.getSource('dpe-overlay') as any)?.setData(fc)
       map.setLayoutProperty('dpe-overlay-layer', 'visibility', 'visible')
     }).finally(() => setLoadingOv(false))
   }, [showDpe, mapLoaded])
 
-  // ── Qualification adresse ───────────────────────────────────────────────
-  const qualifyAdresse = useCallback(async (id: string, type_bien: string, has_commerce: boolean) => {
+  // ── Qualification adresse — FIX : useCallback stable sans dépendance allAddr
+  const qualifyAdresse = useCallback(async (id: string, type_bien: string, has_commerce: boolean = false) => {
     setQualifyPopup(null)
     await fetch('/api/adresses/' + id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type_bien, has_commerce }),
     })
-    setAllAddr(prev => prev.map(a => a.id === id ? { ...a, type_bien, has_commerce } : a))
-    const map = mapRef.current
-    if (!map) return
-    const fc = { type: 'FeatureCollection' as const, features: allAddr.map((a: any) => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-      properties: { id: a.id, type_bien: a.id === id ? type_bien : (a.type_bien ?? 'inconnu') }
-    }))}
-    ;(map.getSource('all-addr') as any)?.setData(fc)
-  }, [allAddr])
+    // FIX : mise à jour de la source MapLibre DANS le setter fonctionnel
+    // → accès à la valeur fraîche via `prev` sans dépendance allAddr
+    setAllAddr(prev => {
+      const updated = prev.map(a => a.id === id ? { ...a, type_bien, has_commerce } : a)
+      const map = mapRef.current
+      if (map) {
+        const fc = {
+          type: 'FeatureCollection' as const,
+          features: updated.map((a: any) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
+            properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu' }
+          }))
+        }
+        ;(map.getSource('all-addr') as any)?.setData(fc)
+      }
+      return updated
+    })
+  }, []) // ← dépendances vides : fonction stable, pas de boucle
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 
-      {/* Controles en haut à gauche */}
+      {/* Controles */}
       <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* Satellite */}
         <button onClick={() => setSatellite(v => !v)} title="Vue satellite" style={{
           padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
           background: satellite ? '#1a1a18' : 'rgba(255,255,255,0.95)',
@@ -374,7 +408,6 @@ export default function ZonesMap({
           boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         }}>🛰 Satellite</button>
 
-        {/* Adresses */}
         <button onClick={() => setShowAddr(v => !v)} title="Afficher toutes les adresses" style={{
           padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
           background: showAddr ? '#1D9E75' : 'rgba(255,255,255,0.95)',
@@ -383,7 +416,6 @@ export default function ZonesMap({
           boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         }}>{loadingOv && showAddr ? '...' : '🏠 Adresses'}</button>
 
-        {/* DPE */}
         <button onClick={() => setShowDpe(v => !v)} title="Afficher les DPE recents" style={{
           padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
           background: showDpe ? '#E63946' : 'rgba(255,255,255,0.95)',
@@ -392,7 +424,6 @@ export default function ZonesMap({
           boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         }}>{loadingOv && showDpe ? '...' : '📋 DPE recents'}</button>
 
-        {/* Legende */}
         {showAddr && (
           <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
             <div><span style={{color:'#4CAF50'}}>●</span> Maison</div>
@@ -406,7 +437,6 @@ export default function ZonesMap({
             <div><span style={{color:'#22c55e'}}>●</span> &lt;1 mois</div>
             <div><span style={{color:'#86efac'}}>●</span> 1–12 mois</div>
             <div><span style={{color:'#fb923c'}}>●</span> &gt;12 mois</div>
-            
           </div>
         )}
       </div>
@@ -451,7 +481,6 @@ export default function ZonesMap({
                 </button>
               ))}
             </div>
-            {/* Checkbox has_commerce — visible seulement pour appartement */}
             {qualifyPopup.type_bien === 'appartement' && (
               <label style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginTop: 8,
@@ -466,11 +495,11 @@ export default function ZonesMap({
                   style={{ accentColor: '#FF9800', width: 15, height: 15, flexShrink: 0 }}
                 />
                 <span style={{ fontSize: 13, color: '#2C2C2A' }}>
-                  🏪 Commerce en rez-de-chaussee
+                  🏪 Commerce en rez-de-chaussée
                 </span>
               </label>
             )}
-                        <button
+            <button
               onClick={() => setQualifyPopup(null)}
               style={{ marginTop: 8, width: '100%', padding: '5px', borderRadius: 6, border: '1px solid #E8E6DF', background: '#F8F7F4', cursor: 'pointer', fontSize: 12, color: '#5F5E5A' }}
             >
