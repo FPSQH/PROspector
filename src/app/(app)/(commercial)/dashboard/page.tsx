@@ -772,7 +772,8 @@ export default async function DashboardPage({
   // ══════════════════════════════════════════════════════════════════════════
 
   const nbContactsTotal = contacts.filter(c => c.statut_pipeline !== 'perdu').length
-  const nbDecouvertes   = contacts.filter(c => ['decouverte','estimation','mandat'].includes(c.statut_pipeline ?? '')).length
+  // 'qualification' = valeur DB pour l'étape Découverte
+  const nbDecouvertes   = contacts.filter(c => ['qualification','estimation','mandat'].includes(c.statut_pipeline ?? '')).length
   const nbEstimations   = contacts.filter(c => ['estimation','mandat'].includes(c.statut_pipeline ?? '')).length
   const nbMandats       = contacts.filter(c => c.statut_pipeline === 'mandat').length
   const nbRelRetard  = contacts.filter(c => c.date_relance && c.date_relance < todayStr).length
