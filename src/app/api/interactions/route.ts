@@ -34,9 +34,22 @@ export async function POST(req: Request) {
   }
   const actionNorm = action ? (actionMap[action] ?? 'rien') : 'rien'
 
-  // FIX : presence = true si resultat est 'contact' (filet de sécurité)
-  // Couvre le cas où le BottomSheet ancien ne passe pas presence explicitement
-  const presenceVal = presence === true || resultat === 'contact'
+  // Normalisation resultat → valeurs autorisées par contrainte PostgreSQL
+  // CHECK ((resultat = ANY (ARRAY['pas_de_reponse', 'contact_etabli'])))
+  const resultatMap: Record<string, string> = {
+    'contact':         'contact_etabli',   // BottomSheet envoie 'contact' → mapper
+    'contact_etabli':  'contact_etabli',
+    'pas_de_reponse':  'pas_de_reponse',
+    'exclusion':       'pas_de_reponse',   // hors contrainte → fallback
+    'supprimee':       'pas_de_reponse',   // hors contrainte → fallback
+  }
+  const resultatNorm = resultatMap[resultat] ?? 'pas_de_reponse'
+
+  // presence = true si contact établi (source: BottomSheet ou normalisation)
+  const presenceVal = presence === true
+    || resultat === 'contact'
+    || resultat === 'contact_etabli'
+    || resultatNorm === 'contact_etabli'
 
   const { data: session } = await supabase
     .from('sessions_prospection')
@@ -62,7 +75,7 @@ export async function POST(req: Request) {
     const { data, error } = await adminDb
       .from('interactions')
       .update({
-        resultat,
+        resultat:     resultatNorm,   // valeur normalisée compatible contrainte DB
         action:               actionNorm,
         type_habitat:         type_habitat         ?? null,
         nb_etages:            nb_etages            ?? null,
@@ -91,7 +104,7 @@ export async function POST(req: Request) {
         session_id,
         adresse_id,
         commercial_id:        user.id,
-        resultat,
+        resultat:     resultatNorm,   // valeur normalisée compatible contrainte DB
         action:               actionNorm,
         type_habitat:         type_habitat         ?? null,
         nb_etages:            nb_etages            ?? null,
