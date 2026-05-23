@@ -166,12 +166,12 @@ function SectionTitle({ title, badge, action, actionHref, right }: {
 }
 
 function WeeklyHistogram({ weeks }: { weeks: { label: string; sessions: number; portes: number; flyers: number }[] }) {
-  const maxP = Math.max(...weeks.map(w => w.portes), 1)
+  const maxP = Math.max(...weeks.map(w => w.portes), ...weeks.map(w => w.contacts ?? 0), 1)
   const maxS = Math.max(...weeks.map(w => w.sessions), 1)
   return (
     <div>
       <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
-        {([['Sessions', C.gold], ['Portes frappées', C.info], ['Flyers déposés', C.purple]] as [string,string][]).map(([lbl, col]) => (
+        {([['Sessions', C.gold], ['Portes frappées', C.info], ['Contacts', C.success], ['Flyers déposés', C.purple]] as [string,string][]).map(([lbl, col]) => (
           <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: col, opacity: 0.85 }} />
             <span style={{ fontSize: 10, color: C.dim, fontWeight: 500 }}>{lbl}</span>
@@ -188,9 +188,10 @@ function WeeklyHistogram({ weeks }: { weeks: { label: string; sessions: number; 
           {weeks.map((w, wi) => (
             <div key={wi} style={{ flex: 1, display: 'flex', gap: 2, alignItems: 'flex-end', height: '100%' }}>
               {[
-                { val: w.sessions, max: maxS, color: C.gold },
-                { val: w.portes,   max: maxP, color: C.info },
-                { val: w.flyers,   max: maxP, color: C.purple },
+                { val: w.sessions,  max: maxS, color: C.gold },
+                { val: w.portes,    max: maxP, color: C.info },
+                { val: w.contacts,  max: maxP, color: C.success },
+                { val: w.flyers,    max: maxP, color: C.purple },
               ].map((bar, bi) => (
                 <div key={bi} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
                   <span style={{ fontSize: 8, color: C.dim, fontWeight: 600, marginBottom: 2 }}>{bar.val}</span>
