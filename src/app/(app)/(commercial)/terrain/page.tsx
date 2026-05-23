@@ -516,14 +516,14 @@ setAppState('choix_zone')
           </div>
           <div style={{ background: '#f8f7f4', borderRadius: 10, padding: '16px', marginBottom: 20 }}>
             <div style={{ fontSize: '0.72rem', color: '#9b9b96', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Rapport de prospection</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {[
-                { label: 'Portes',     value: rapport.nb_visites ?? nbVisites,         accent: true },
-                { label: 'Contacts',   value: rapport.nb_contacts ?? 0,                accent: false },
-                { label: 'Flyers',     value: rapport.nb_flyers ?? 0,                  accent: false },
-                { label: 'Maisons',    value: rapport.nb_maisons ?? 0,                 accent: false },
-                { label: 'Collectif',  value: rapport.nb_immeubles ?? 0,               accent: false },
-                { label: 'Supprimées', value: rapport.nb_adresses_supprimees ?? 0,     accent: false },
+                { label: 'Portes',     value: rapport.nb_visites  ?? nbVisites, accent: true  },
+                { label: 'Contacts',   value: rapport.nb_contacts ?? 0,         accent: false },
+                { label: 'Boitage',    value: rapport.nb_boitage  ?? rapport.nb_flyers ?? 0, accent: false },
+                { label: 'Maisons',    value: rapport.nb_maisons  ?? 0,         accent: false },
+                { label: 'Collectif',  value: rapport.nb_collectif ?? rapport.nb_immeubles ?? 0, accent: false },
+                { label: 'Commerces',  value: rapport.nb_commerces ?? 0,        accent: false },
               ].map(({ label, value, accent }) => (
                 <div key={label} style={{ textAlign: 'center', padding: '10px 6px', borderRadius: 8, background: accent ? '#f0fdf4' : '#fff', border: '1px solid ' + (accent ? '#bbf7d0' : '#E8E6DF') }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 700, color: accent ? '#1D9E75' : '#1a1a18', lineHeight: 1 }}>{value}</div>
