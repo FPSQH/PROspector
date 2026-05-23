@@ -594,54 +594,69 @@ export default async function DashboardPage({
   const dpeMaisonTotal  = (dpeMaisonTotalRes as any)?.count ?? 0
   const dpeAppartTotal  = (dpeAppartTotalRes as any)?.count ?? 0
 
-  // ── DPE matchés (avec adresse_id) → pour zone / hors zone / boîtés ──────
-  // On récupère les lignes légères : adresse_id + type_batiment
-  let dpeMatchedQuery = adminDb
-    .from('dpe_logement')
-    .select('adresse_id, type_batiment')
-    .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
-    // adresse_id peut être null → compté comme hors zone dans le secteur
-  if (dpeDateDebut) {
-    dpeMatchedQuery = dpeMatchedQuery.gte('date_etablissement', dpeDateDebut) as any
+  // ── DPE zone/hors zone : JOIN direct dpe_logement → adresses(zone_id) ──
+  // Même méthode que /api/courriers — cohérence garantie des chiffres
+  const dpeZoneRows: { type_batiment: string | null; zone_id: string | null }[] = []
+  {
+    let dpePageFrom = 0
+    while (true) {
+      let q = adminDb
+        .from('dpe_logement')
+        .select('type_batiment, adresses(zone_id)')
+        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+        .not('etiquette_dpe', 'is', null)
+        .range(dpePageFrom, dpePageFrom + 999)
+      if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
+      const { data: batch } = await q
+      if (!batch?.length) break
+      for (const d of batch) {
+        dpeZoneRows.push({
+          type_batiment: (d as any).type_batiment ?? null,
+          zone_id:       (d as any).adresses?.zone_id ?? null,
+        })
+      }
+      if (batch.length < 1000) break
+      dpePageFrom += 1000
+    }
   }
-  const { data: dpeMatchedRows } = await dpeMatchedQuery.limit(5000)
 
-  // ── Adresse IDs dans les zones du commercial ────────────────────────────
-  const { data: zoneAdresseRows } = zoneIds.length > 0
-    ? await supabase.from('adresses').select('id').in('zone_id', zoneIds).limit(5000)
-    : { data: [] as { id: string }[] }
-
-  const zoneAdresseSet = new Set((zoneAdresseRows ?? []).map(r => r.id))
-
-  // ── Calcul zone / hors zone (client-side sur dpeMatchedRows) ────────────
-  const dpeMatched      = dpeMatchedRows ?? []
-  // DPE dans une zone : adresse_id non null ET appartenant à une zone du commercial
-  const dpeInZoneRows   = dpeMatched.filter(d => d.adresse_id && zoneAdresseSet.has(d.adresse_id))
-  // DPE hors zone dans le secteur : adresse_id null (non matché) OU adresse hors zone
-  const dpeHorsZoneRows = dpeMatched.filter(d => !d.adresse_id || !zoneAdresseSet.has(d.adresse_id))
+  const dpeInZoneRows    = dpeZoneRows.filter(d => d.zone_id && zoneIds.includes(d.zone_id))
+  const dpeHorsZoneRows  = dpeZoneRows.filter(d => !d.zone_id || !zoneIds.includes(d.zone_id))
 
   const dpeInZoneMaison  = dpeInZoneRows.filter(d => d.type_batiment === 'maison').length
-  const dpeInZoneAppart  = dpeInZoneRows.filter(d => d.type_batiment !== 'maison').length
+  const dpeInZoneAppart  = dpeInZoneRows.filter(d => d.type_batiment !== 'maison' && d.type_batiment != null).length
   const dpeInZoneTotal   = dpeInZoneRows.length
 
   const dpeHorsZoneMaison = dpeHorsZoneRows.filter(d => d.type_batiment === 'maison').length
-  const dpeHorsZoneAppart = dpeHorsZoneRows.filter(d => d.type_batiment !== 'maison').length
+  const dpeHorsZoneAppart = dpeHorsZoneRows.filter(d => d.type_batiment !== 'maison' && d.type_batiment != null).length
   const dpeHorsZoneTotal  = dpeHorsZoneRows.length
 
-  // ── DPE boîtés ────────────────────────────────────────────────────────────
-  // Adresses avec DPE qui ont reçu un courrier DPE ou un flyer lors d'une visite.
-  // Action visée : 'courrier_depose', 'courrier', 'boite', 'flyer_depose'
-  // On intersecte :
-  //   – allZonedSessionIds (toutes sessions réalisées du commercial)
-  //   – interactions avec action boitage
-  //   – adresse_id présent dans le set des DPE matchés
-  const dpeAdresseIdSet = new Set(dpeMatched.map(d => d.adresse_id))
+  // ── DPE boîtés : adresses DPE ayant reçu un boitage ─────────────────────
+  // Récupérer les adresse_id des DPE du secteur sur la période
+  const dpeAdresseIds: string[] = []
+  {
+    let q2From = 0
+    while (true) {
+      let q2 = adminDb
+        .from('dpe_logement')
+        .select('adresse_id')
+        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
+        .not('adresse_id', 'is', null)
+        .range(q2From, q2From + 999)
+      if (dpeDateDebut) q2 = (q2 as any).gte('date_etablissement', dpeDateDebut)
+      const { data: batch } = await q2
+      if (!batch?.length) break
+      dpeAdresseIds.push(...batch.map((d: any) => d.adresse_id).filter(Boolean))
+      if (batch.length < 1000) break
+      q2From += 1000
+    }
+  }
+  const dpeAdresseIdSet = new Set(dpeAdresseIds)
 
   const BOITAGE_ACTIONS = ['courrier_depose', 'courrier', 'boite', 'flyer_depose']
 
   let dpeBoites = 0
   if (allZonedSessionIds.length > 0 && dpeAdresseIdSet.size > 0) {
-    // Filtre période sur created_at des interactions (même dpe_periode)
     let boitageQuery = adminDb
       .from('interactions')
       .select('adresse_id')
@@ -651,12 +666,10 @@ export default async function DashboardPage({
       boitageQuery = boitageQuery.gte('created_at', dpeDateDebut) as any
     }
     const { data: boitageInts } = await boitageQuery.limit(5000)
-
-    // Compter les adresses DISTINCTES boîtées qui ont un DPE
     const boitedWithDpe = new Set(
       (boitageInts ?? [])
-        .map(i => i.adresse_id)
-        .filter(id => id && dpeAdresseIdSet.has(id))
+        .map((i: any) => i.adresse_id)
+        .filter((id: any) => id && dpeAdresseIdSet.has(id))
     )
     dpeBoites = boitedWithDpe.size
   }
