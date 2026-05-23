@@ -155,64 +155,80 @@ export async function PATCH(req: Request, { params }: Params) {
         .select('adresse_id, type_habitat, statut_adresse, resultat, action, presence, contact_id')
         .eq('session_id', params.id)
 
-      const allInts    = ints ?? []
-      const nb_vis     = allInts.length
+      const allInts = ints ?? []
 
-      // FIX : contacts = presence === true (le BottomSheet n'utilise pas resultat='contact')
-      const nb_contacts_int = allInts.filter((i: any) => i.presence === true).length
+      // ── PORTES : 1 interaction = 1 adresse visitée ──────────────
+      const nb_portes = allInts.length
 
-      const nb_flyers = allInts.filter((i: any) =>
+      // ── CONTACTS : presence=true OU resultat='contact' ──────────
+      const nb_contacts_interactions = allInts.filter((i: any) =>
+        i.presence === true || i.resultat === 'contact'
+      ).length
+
+      // Contacts CRM liés aux adresses visitées (créés depuis /contacts)
+      const adresseIdsSession = allInts.map((i: any) => i.adresse_id).filter(Boolean)
+      let nb_contacts_crm = 0
+      if (adresseIdsSession.length > 0) {
+        const { data: crmContacts } = await adminDb
+          .from('contacts')
+          .select('id')
+          .in('adresse_id', adresseIdsSession)
+          .eq('commercial_id', user.id)
+        nb_contacts_crm = crmContacts?.length ?? 0
+      }
+      const nb_contacts = Math.max(nb_contacts_interactions, nb_contacts_crm)
+
+      // ── BOITAGE : flyers + courriers + boîtage ──────────────────
+      const nb_boitage = allInts.filter((i: any) =>
         i.action === 'flyer_depose' || i.action === 'courrier_depose'
       ).length
-      const nb_maisons   = allInts.filter((i: any) => i.type_habitat === 'individuel').length
-      const nb_immeubles = allInts.filter((i: any) => i.type_habitat === 'collectif').length
-      const nb_supprimees = allInts.filter((i: any) => i.statut_adresse === 'supprimee').length
-      const nb_qualifs   = allInts.filter((i: any) =>
-        i.type_habitat && i.type_habitat !== 'inconnu'
-      ).length
+
+      // ── MAISONS qualifiées ───────────────────────────────────────
+      const nb_maisons = allInts.filter((i: any) => i.type_habitat === 'individuel').length
+
+      // ── COLLECTIF qualifié ───────────────────────────────────────
+      const nb_collectif = allInts.filter((i: any) => i.type_habitat === 'collectif').length
+
+      // ── COMMERCES / ACTIVITÉS recensés ──────────────────────────
+      const nb_commerces = allInts.filter((i: any) => i.type_habitat === 'activite').length
 
       // Syndics
       let nb_syndics = 0
-      const adresseIdsWithInt = allInts.map((i: any) => i.adresse_id).filter(Boolean)
-      if (adresseIdsWithInt.length > 0) {
+      if (adresseIdsSession.length > 0) {
         const { data: adrsSync } = await adminDb
           .from('adresses').select('id')
-          .in('id', adresseIdsWithInt)
+          .in('id', adresseIdsSession)
           .not('nom_syndic', 'is', null).neq('nom_syndic', '')
         nb_syndics = adrsSync?.length ?? 0
       }
 
-      // Contacts via fiche créée (contact_id lié à l'interaction)
-      const nb_fiches_contact = allInts.filter((i: any) => i.contact_id).length
-      const nb_contacts_val   = Math.max(nb_contacts_int, nb_fiches_contact)
-
       const rapport_json = {
-        nb_visites:             nb_vis,
-        nb_contacts:            nb_contacts_val,
-        nb_fiches_contact,
-        nb_flyers,
+        nb_visites:          nb_portes,
+        nb_contacts,
+        nb_boitage,
         nb_maisons,
-        nb_immeubles,
+        nb_collectif,
+        nb_commerces,
         nb_syndics,
-        nb_qualifications:      nb_qualifs,
-        nb_adresses_supprimees: nb_supprimees,
-        date_cloture:           new Date().toISOString(),
+        nb_contacts_terrain: nb_contacts_interactions,
+        nb_contacts_crm,
+        date_cloture:        new Date().toISOString(),
       }
 
       await supabase
         .from('sessions_prospection')
-        .update({ rapport_json, nb_portes: nb_vis })
+        .update({ rapport_json, nb_portes: nb_portes })
         .eq('id', params.id)
 
       await supabase.from('planning_sessions')
         .update({
           statut:                 'realisee',
-          nb_adresses_visitees:   nb_vis,
-          nb_contacts:            nb_contacts_val,
+          nb_adresses_visitees:   nb_portes,
+          nb_contacts:            nb_contacts,
           nb_maisons_qualifiees:  nb_maisons,
-          nb_immeubles_qualifies: nb_immeubles,
+          nb_immeubles_qualifies: nb_collectif,
           nb_syndics_qualifies:   nb_syndics,
-          nb_adresses_supprimees: nb_supprimees,
+          nb_adresses_supprimees: nb_commerces,
           updated_at:             new Date().toISOString(),
         })
         .eq('session_id', params.id)
