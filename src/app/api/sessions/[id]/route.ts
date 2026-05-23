@@ -161,8 +161,9 @@ export async function PATCH(req: Request, { params }: Params) {
       const nb_portes = allInts.length
 
       // ── CONTACTS : presence=true OU resultat='contact' ──────────
+      // presence=true OU resultat='contact_etabli' (valeur normalisée en base)
       const nb_contacts_interactions = allInts.filter((i: any) =>
-        i.presence === true || i.resultat === 'contact'
+        i.presence === true || i.resultat === 'contact_etabli'
       ).length
 
       // Contacts CRM liés aux adresses visitées (créés depuis /contacts)
