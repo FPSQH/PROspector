@@ -63,10 +63,8 @@ export function CollapsibleSection({
     }}>
       {/* ── Header (toujours visible) ── */}
       <div
-        onClick={toggle}
         style={{
           padding: '13px 18px',
-          cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -106,13 +104,28 @@ export function CollapsibleSection({
 
         {/* Droite : action (si ouvert) + chevron */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {/* Le sélecteur de période : stopPropagation inutile ici car
+              le toggle n'est plus sur le header, mais sécurité conservée */}
           {open && action}
-          <svg
-            width="15" height="15" viewBox="0 0 15 15" fill="none"
-            style={{ flexShrink: 0, transition: 'transform 0.2s ease', transform: open ? 'rotate(180deg)' : 'none' }}
+
+          {/* Seul le chevron déclenche le toggle */}
+          <button
+            onClick={toggle}
+            style={{
+              background: 'none', border: 'none', padding: '4px 6px',
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              borderRadius: 6, flexShrink: 0,
+              color: C_MUTED,
+            }}
+            aria-label={open ? 'Replier la section' : 'Déplier la section'}
           >
-            <path d="M3 5.5L7.5 10L12 5.5" stroke={C_MUTED} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+            <svg
+              width="15" height="15" viewBox="0 0 15 15" fill="none"
+              style={{ transition: 'transform 0.2s ease', transform: open ? 'rotate(180deg)' : 'none' }}
+            >
+              <path d="M3 5.5L7.5 10L12 5.5" stroke={C_MUTED} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
