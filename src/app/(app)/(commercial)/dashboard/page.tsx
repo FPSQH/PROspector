@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import PeriodeSelector    from './PeriodeSelector'
 import DpePeriodeSelector from './DpePeriodeSelector'
+import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const C = {
@@ -359,6 +360,11 @@ function fmtPct(n: number, d: number): string {
   if (d === 0) return '0 %'
   return (n / d * 100).toFixed(2) + ' %'
 }
+function trendPct(current: number, previous: number): string {
+  if (previous === 0) return current > 0 ? `+${current}` : '='
+  const pct = Math.round(((current - previous) / previous) * 100)
+  return (pct >= 0 ? '+' : '') + pct + '%'
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────
 export default async function DashboardPage({
@@ -405,6 +411,10 @@ export default async function DashboardPage({
   const sunDate    = new Date(now)
   sunDate.setDate(now.getDate() + (now.getDay() === 0 ? 0 : 7 - now.getDay()))
   const sundayStr  = sunDate.toISOString().split('T')[0]
+
+  // Mois précédent (pour tendances)
+  const lastMonthStart = new Date(year, month - 1, 1).toISOString().split('T')[0]
+  const lastMonthEnd   = new Date(year, month, 0).toISOString().split('T')[0]
 
   // Date -2 semaines pour le KPI "DPE récents"
   const twoWeeksAgo = new Date(now)
@@ -460,6 +470,10 @@ export default async function DashboardPage({
     upcomingRes,
     sessionEnCoursRes,
     nbAdressesRes,
+    // ── Tendances mois précédent ──
+    lastMonthSessionsRes,
+    // ── Contacts avec zone_id pour répartition ──
+    contactsZoneRes,
   ] = await Promise.all([
     supabase.from('zones_prospection')
       .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
@@ -497,6 +511,18 @@ export default async function DashboardPage({
     supabase.from('adresses')
       .select('id', { count: 'exact', head: true })
       .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__']),
+
+    // Sessions du mois précédent (pour tendances)
+    supabase.from('sessions_prospection')
+      .select('id')
+      .eq('commercial_id', uid).eq('statut', 'realisee')
+      .gte('date_session', lastMonthStart).lte('date_session', lastMonthEnd),
+
+    // Contacts avec leur zone (pour répartition par zone)
+    supabase.from('contacts')
+      .select('id, adresse_id, adresses(zone_id)')
+      .eq('commercial_id', uid)
+      .neq('statut_pipeline', 'perdu'),
   ])
 
   const zones            = zonesRes.data ?? []
@@ -507,6 +533,8 @@ export default async function DashboardPage({
   const upcoming         = upcomingRes.data ?? []
   const sessionEC        = (sessionEnCoursRes.data ?? [])[0] ?? null
   const nbAdresses       = nbAdressesRes.count ?? 0
+  const lastMonthSessions  = lastMonthSessionsRes.data ?? []
+  const contactsZone       = contactsZoneRes.data ?? []
 
   // ══════════════════════════════════════════════════════════════════════════
   // INTERACTIONS VIA adminDb
@@ -526,6 +554,22 @@ export default async function DashboardPage({
         .select('adresse_id, session_id')
         .in('session_id', allZonedSessionIds)
     : { data: [] as { adresse_id: string; session_id: string }[] }
+
+  // ── Tendances : interactions du mois précédent ─────────────────────────
+  const lastMonthSessionIds = lastMonthSessions.map(s => s.id)
+  const lastMonthPortes = lastMonthSessionIds.length > 0
+    ? ((await adminDb.from('interactions')
+        .select('id', { count: 'exact', head: true })
+        .in('session_id', lastMonthSessionIds)).count ?? 0)
+    : 0
+
+  // Mandats du mois précédent (pour tendance)
+  const { count: lastMonthMandatsCount } = await supabase.from('contacts')
+    .select('id', { count: 'exact', head: true })
+    .eq('commercial_id', uid)
+    .eq('statut_pipeline', 'mandat')
+    .gte('created_at', lastMonthStart)
+    .lte('created_at', lastMonthEnd + 'T23:59:59')
 
   // ══════════════════════════════════════════════════════════════════════════
   // DPE — REQUÊTES PARALLÈLES
@@ -595,7 +639,6 @@ export default async function DashboardPage({
   const dpeAppartTotal  = (dpeAppartTotalRes as any)?.count ?? 0
 
   // ── DPE zone/hors zone : JOIN direct dpe_logement → adresses(zone_id) ──
-  // Même méthode que /api/courriers — cohérence garantie des chiffres
   const dpeZoneRows: { type_batiment: string | null; zone_id: string | null }[] = []
   {
     let dpePageFrom = 0
@@ -632,7 +675,6 @@ export default async function DashboardPage({
   const dpeHorsZoneTotal  = dpeHorsZoneRows.length
 
   // ── DPE boîtés : adresses DPE ayant reçu un boitage ─────────────────────
-  // Récupérer les adresse_id des DPE du secteur sur la période
   const dpeAdresseIds: string[] = []
   {
     let q2From = 0
@@ -680,15 +722,11 @@ export default async function DashboardPage({
 
   const allMonthInts   = monthInts ?? []
   const nbPortes       = allMonthInts.length
-  // FIX : le BottomSheet enregistre presence=true pour les contacts
-  // Contacts terrain (presence=true via BottomSheet)
   const nbContactsPresence = allMonthInts.filter(i => i.presence === true).length
 
-  // Contacts CRM liés aux adresses des sessions de ce mois (créés hors terrain)
   const monthAdresseIds = [...new Set(allMonthInts.map(i => i.adresse_id).filter(Boolean))]
   let nbContactsCRM = 0
   if (monthAdresseIds.length > 0) {
-    // Récupérer en batches de 200 (limite Supabase .in())
     const batches = []
     for (let i = 0; i < monthAdresseIds.length; i += 200) {
       batches.push(monthAdresseIds.slice(i, i + 200))
@@ -716,7 +754,7 @@ export default async function DashboardPage({
       label:    `Sem. ${wk}`,
       sessions: weekSessIds.length,
       portes:   weekInts.length,
-      contacts: weekInts.filter(i => i.presence === true).length, // complété par nbContactsCRM global
+      contacts: weekInts.filter(i => i.presence === true).length,
       flyers:   weekInts.filter(i => i.action === 'flyer_depose' || i.action === 'courrier_depose').length,
     }
   })
@@ -749,6 +787,18 @@ export default async function DashboardPage({
     if (s.zone_id && !nextByZone[s.zone_id]) nextByZone[s.zone_id] = s.date_prevue
   }
 
+  // ── Contacts par zone ─────────────────────────────────────────────────
+  const contactsByZone = new Map<string, number>()
+  let nbContactsHorsZone = 0
+  for (const c of contactsZone) {
+    const zid = (c as any).adresses?.zone_id
+    if (zid && zoneIds.includes(zid)) {
+      contactsByZone.set(zid, (contactsByZone.get(zid) ?? 0) + 1)
+    } else {
+      nbContactsHorsZone++
+    }
+  }
+
   const zonesDisplay = zones.map((z, i) => {
     const total    = z.nb_adresses ?? 0
     const excluded = (z as any).nb_logements_sociaux ?? 0
@@ -762,6 +812,7 @@ export default async function DashboardPage({
     return {
       ...z, color, visited, remaining, excluded,
       total: Math.max(total, 1), pct, pctColor,
+      nbContacts: contactsByZone.get(z.id) ?? 0,
       lastLabel: lastD ? new Date(lastD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
       nextLabel: nextD ? new Date(nextD + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—',
     }
@@ -772,7 +823,6 @@ export default async function DashboardPage({
   // ══════════════════════════════════════════════════════════════════════════
 
   const nbContactsTotal = contacts.filter(c => c.statut_pipeline !== 'perdu').length
-  // 'qualification' = valeur DB pour l'étape Découverte
   const nbDecouvertes   = contacts.filter(c => ['qualification','estimation','mandat'].includes(c.statut_pipeline ?? '')).length
   const nbEstimations   = contacts.filter(c => ['estimation','mandat'].includes(c.statut_pipeline ?? '')).length
   const nbMandats       = contacts.filter(c => c.statut_pipeline === 'mandat').length
@@ -782,9 +832,27 @@ export default async function DashboardPage({
 
   const isManager = commercial.role === 'manager'
 
+  // ── Tendances vs mois précédent ────────────────────────────────────────
+  const trendSessions = trendPct(nbSessionsReal, lastMonthSessions.length)
+  const trendPortes   = trendPct(nbPortes,       lastMonthPortes ?? 0)
+  const trendMandats  = trendPct(nbMandats,       lastMonthMandatsCount ?? 0)
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: C.bg, minHeight: '100%', fontFamily: FONT }}>
+
+      {/* Responsive grid styles */}
+      <style>{`
+        .dash-kpi-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .dash-2col  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 900px) {
+          .dash-kpi-4 { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+          .dash-kpi-4 { grid-template-columns: 1fr 1fr; }
+          .dash-2col  { grid-template-columns: 1fr; }
+        }
+      `}</style>
 
       {/* Header */}
       <div style={{
@@ -807,11 +875,11 @@ export default async function DashboardPage({
         </Link>
       </div>
 
-      <div style={{ padding: '20px 22px' }}>
+      <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Bannière manager */}
         {isManager && (
-          <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <span style={{ fontWeight: 600, fontSize: 13, color: C.text }}>👥 Espace manager</span>
               <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>Gérez les comptes et les accès de votre équipe commerciale.</div>
@@ -824,7 +892,7 @@ export default async function DashboardPage({
 
         {/* Session en cours */}
         {sessionEC && (
-          <div style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 12, padding: '14px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ background: 'rgba(217,119,6,0.07)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.gold, boxShadow: `0 0 8px ${C.gold}`, flexShrink: 0 }} />
               <div>
@@ -843,36 +911,46 @@ export default async function DashboardPage({
         )}
 
         {/* ═══ 1. KPI STRIP ═══ */}
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Activité terrain</span>
-            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.dim }}>{monthBadge}</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 10 }}>
+        <CollapsibleSection
+          id="kpis"
+          title="Indicateurs clés"
+          badge={monthBadge}
+          summary={`${nbSessionsReal} sessions · ${nbPortes} portes · ${nbContactsSess} contacts · ${nbMandats} mandats`}
+          accentColor={C.gold}
+        >
+          <div className="dash-kpi-4" style={{ marginBottom: 10 }}>
             <KpiCard label="Sessions réalisées" value={String(nbSessionsReal)}
               sub={`sur ${nbSessionsTot} planifiées`} color={C.gold} variant="hero"
+              trend={trendSessions}
               sparkData={weeklyData.map(w => w.sessions)} />
             <KpiCard label="Portes frappées" value={String(nbPortes)}
               sub="interactions terrain" color={C.info} variant="accent"
+              trend={trendPortes}
               sparkData={weeklyData.map(w => w.portes)} />
             <KpiCard label="Contacts terrain" value={String(nbContactsSess)}
               sub="ce mois" color={C.success} variant="accent"
               sparkData={weeklyData.map(w => w.contacts)} />
             <KpiCard label="Taux de contact" value={tauxLabel} sub="portes → contacts" color={C.teal} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
+          <div className="dash-kpi-4">
             <KpiCard label="Contacts CRM" value={String(nbContactsTotal)} sub={periodeLabel} color={C.purple} />
             <KpiCard label="Estimations" value={String(nbEstimations)} sub={periodeLabel} color={C.info} />
-            <KpiCard label="Mandats signés" value={String(nbMandats)} sub={periodeLabel} color={C.gold} variant="accent" />
+            <KpiCard label="Mandats signés" value={String(nbMandats)} sub={periodeLabel} color={C.gold} variant="accent"
+              trend={periode === 'mois' ? trendMandats : undefined} />
             <KpiCard label="Flyers / courriers" value={String(nbFlyers)} sub="déposés ce mois" color={C.orange} />
           </div>
-        </div>
+        </CollapsibleSection>
 
         {/* ═══ 2 & 3. ACTIVITÉ + PERFORMANCE ═══ */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div className="dash-2col">
 
-          <Card>
-            <SectionTitle title="Activité terrain" badge={monthBadge} />
+          <CollapsibleSection
+            id="activite"
+            title="Activité terrain"
+            badge={monthBadge}
+            summary={`${nbSessionsReal} sessions · moy. ${avgPortes} portes/sess.`}
+            accentColor={C.info}
+          >
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontSize: 12, color: C.mid, fontWeight: 500 }}>Sessions réalisées / planifiées</span>
@@ -893,10 +971,16 @@ export default async function DashboardPage({
               <MiniKPI label="Sessions ce mois" value={String(nbSessionsReal)} color={C.gold} />
               <MiniKPI label="Flyers déposés" value={String(nbFlyers)} color={C.purple} />
             </div>
-          </Card>
+          </CollapsibleSection>
 
-          <Card>
-            <SectionTitle title="Performance commerciale" badge="Pipeline" right={<PeriodeSelector current={periode} />} />
+          <CollapsibleSection
+            id="performance"
+            title="Performance commerciale"
+            badge="Pipeline"
+            summary={`${nbMandats} mandats · ${nbDecouvertes} découvertes · ${nbRelRetard} retard${nbRelRetard > 1 ? 's' : ''}`}
+            action={<PeriodeSelector current={periode} />}
+            accentColor={C.gold}
+          >
             <ConversionFunnel steps={[
               { label: 'Contacts',    value: nbContactsTotal, color: C.success },
               { label: 'Découvertes', value: nbDecouvertes,   color: C.teal },
@@ -916,27 +1000,38 @@ export default async function DashboardPage({
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
-                  { label: 'Cette semaine', value: nbRelSemaine, color: C.info },
-                  { label: 'Ce mois',       value: nbRelMois,    color: C.gold },
-                  { label: 'En retard',     value: nbRelRetard,  color: C.danger },
+                  { label: 'Cette semaine', value: nbRelSemaine, color: C.info,    href: null },
+                  { label: 'Ce mois',       value: nbRelMois,    color: C.gold,    href: null },
+                  { label: 'En retard',     value: nbRelRetard,  color: C.danger,  href: '/contacts?filtre=relance' },
                 ].map((r, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 11, color: C.muted, fontWeight: 500, width: 95, flexShrink: 0 }}>{r.label}</span>
                     <div style={{ flex: 1 }}><HBar fill={nbContactsTotal > 0 ? r.value / nbContactsTotal : 0} color={r.color} h={5} /></div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: r.color, width: 22, textAlign: 'right' }}>{r.value}</span>
+                    {r.href ? (
+                      <Link href={r.href} style={{ textDecoration: 'none' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: r.color, width: 22, textAlign: 'right', display: 'block' }}>{r.value}</span>
+                      </Link>
+                    ) : (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: r.color, width: 22, textAlign: 'right' }}>{r.value}</span>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-          </Card>
+          </CollapsibleSection>
         </div>
 
         {/* ═══ 4 & 5. COUVERTURE + DPE ═══ */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div className="dash-2col">
 
           {/* Couverture territoriale */}
-          <Card>
-            <SectionTitle title="Couverture territoriale" badge={`${zones.length} zones`} />
+          <CollapsibleSection
+            id="couverture"
+            title="Couverture territoriale"
+            badge={`${zones.length} zones`}
+            summary={`${zonesDisplay.reduce((s, z) => s + z.visited, 0)} adresses visitées`}
+            accentColor={C.teal}
+          >
             <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
               {[
                 { label: 'Visitées',  color: C.success },
@@ -955,21 +1050,26 @@ export default async function DashboardPage({
                 <span style={{ fontSize: 13 }}>Aucune zone configurée</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 320 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 340 }}>
                 {zonesDisplay.map((z, i) => (
                   <div key={z.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '7px 4px',
-                    borderBottom: i < zonesDisplay.length - 1 ? `1px solid ${C.borderSub}` : 'none',
+                    borderBottom: `1px solid ${C.borderSub}`,
                   }}>
                     <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, background: z.color + '15', border: `1.5px solid ${z.color}35`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span style={{ fontSize: 9, fontWeight: 700, color: z.color }}>{z.numero}</span>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                         <span style={{ fontSize: 11, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.nom}</span>
                         <span style={{ fontSize: 11, fontWeight: 700, color: z.pctColor, flexShrink: 0, marginLeft: 8 }}>{z.pct}%</span>
                       </div>
                       <ZoneStackedBar visited={z.visited} remaining={z.remaining} excluded={z.excluded} total={z.total} />
+                      {z.nbContacts > 0 && (
+                        <span style={{ fontSize: 9, color: C.info, marginTop: 2, display: 'block' }}>
+                          {z.nbContacts} contact{z.nbContacts > 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0, width: 64 }}>
                       <span style={{ fontSize: 10, color: C.muted, display: 'block' }}>{z.remaining} rest.</span>
@@ -977,26 +1077,41 @@ export default async function DashboardPage({
                     </div>
                   </div>
                 ))}
+                {/* Hors zone */}
+                {nbContactsHorsZone > 0 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '7px 4px',
+                    borderBottom: 'none',
+                  }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, background: C.dim + '20', border: `1.5px solid ${C.dim}30`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: C.dim }}>—</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 11, fontWeight: 500, color: C.muted }}>Hors zone</span>
+                      <span style={{ fontSize: 9, color: C.orange, marginLeft: 6 }}>
+                        {nbContactsHorsZone} contact{nbContactsHorsZone > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </Card>
+          </CollapsibleSection>
 
           {/* ══ Intelligence DPE ══ */}
-          <Card>
-            <SectionTitle
-              title="Intelligence DPE"
-              badge="Secteur"
-              right={<DpePeriodeSelector current={dpePeriode} />}
-            />
-
+          <CollapsibleSection
+            id="dpe"
+            title="Intelligence DPE"
+            badge="Secteur"
+            summary={`${dpeTotal} DPE identifiés · ${dpeRecents} < 2 sem.`}
+            action={<DpePeriodeSelector current={dpePeriode} />}
+            accentColor={C.purple}
+          >
             {/* 3 KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
-              {/* KPI 1 : DPE total (filtré par dpe_periode) */}
-              <MiniKPI label="DPE total"              value={String(dpeTotal)} color={C.gold}    sub={dpePeriodeLabel} />
-              {/* KPI 2 : DPE récents < 2 semaines (JAMAIS filtré) */}
-              <MiniKPI label="DPE < 2 semaines"       value={String(dpeRecents)} color={C.info}  sub="Toujours actif" />
-              {/* KPI 3 : % adresses avec DPE (renommé) */}
-              <MiniKPI label="% adr. avec DPE"        value={dpePct + '%'}     color={C.success} sub="du secteur" />
+              <MiniKPI label="DPE total"        value={String(dpeTotal)}   color={C.gold}    sub={dpePeriodeLabel} />
+              <MiniKPI label="DPE < 2 semaines" value={String(dpeRecents)} color={C.info}    sub="Toujours actif" />
+              <MiniKPI label="% adr. avec DPE"  value={dpePct + '%'}       color={C.success} sub="du secteur" />
             </div>
 
             {/* Histogramme A→G */}
@@ -1007,48 +1122,37 @@ export default async function DashboardPage({
 
             {/* 4 lignes détaillées */}
             <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-
-              {/* Ligne 1 : DPE identifiés sur le secteur (tous, avec type) */}
               <DpeDetailRow
                 label="DPE identifiés sur le secteur"
-                maison={dpeMaisonTotal}
-                appart={dpeAppartTotal}
-                total={dpeTotal}
+                maison={dpeMaisonTotal} appart={dpeAppartTotal} total={dpeTotal}
                 color={C.info}
               />
-
-              {/* Ligne 2 : DPE dans une zone de prospection */}
               <DpeDetailRow
                 label="DPE dans une zone de prospection"
-                maison={dpeInZoneMaison}
-                appart={dpeInZoneAppart}
-                total={dpeInZoneTotal}
+                maison={dpeInZoneMaison} appart={dpeInZoneAppart} total={dpeInZoneTotal}
                 color={C.success}
               />
-
-              {/* Ligne 3 : DPE hors zone de prospection */}
               <DpeDetailRow
                 label="DPE hors zone de prospection"
-                maison={dpeHorsZoneMaison}
-                appart={dpeHorsZoneAppart}
-                total={dpeHorsZoneTotal}
+                maison={dpeHorsZoneMaison} appart={dpeHorsZoneAppart} total={dpeHorsZoneTotal}
                 color={C.orange}
               />
-
-              {/* Ligne 4 : DPE boîtés */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: C.purple + '08', border: `1px solid ${C.purple}15` }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, flexShrink: 0 }} />
                 <span style={{ fontSize: 11, color: C.purple, fontWeight: 500, flex: 1 }}>DPE boîtés (courrier/flyer déposé)</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: C.purple }}>{dpeBoites}</span>
               </div>
-
             </div>
-          </Card>
+          </CollapsibleSection>
         </div>
 
         {/* ═══ 6. TABLEAU DE PILOTAGE ═══ */}
-        <Card style={{ padding: 20 }}>
-          <SectionTitle title={`Tableau de pilotage — ${zones.length} zones`} action="Exporter" />
+        <CollapsibleSection
+          id="pilotage"
+          title={`Tableau de pilotage — ${zones.length} zones`}
+          summary={`${zones.length} zones configurées`}
+          accentColor={C.gold}
+        >
           {zones.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted }}>
               <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.4 }}>📊</div>
@@ -1059,7 +1163,7 @@ export default async function DashboardPage({
               <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: FONT, fontSize: 12 }}>
                 <thead>
                   <tr>
-                    {['Zone', '% couverture', 'Visitées', 'Restantes', 'Dernier passage', 'Retour prévu', 'Statut'].map((h, i) => (
+                    {['Zone', '% couverture', 'Visitées', 'Restantes', 'Contacts', 'Dernier passage', 'Retour prévu', 'Statut'].map((h, i) => (
                       <th key={i} style={{
                         padding: '10px', textAlign: i === 0 ? 'left' : 'center',
                         borderBottom: `1px solid ${C.borderL}`,
@@ -1094,6 +1198,13 @@ export default async function DashboardPage({
                         <span style={{ fontSize: 12, fontWeight: 600, color: C.mid }}>{z.remaining}</span>
                       </td>
                       <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
+                        {z.nbContacts > 0 ? (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.info }}>{z.nbContacts}</span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
                         <span style={{ fontSize: 11, color: C.muted }}>{z.lastLabel}</span>
                       </td>
                       <td style={{ padding: '10px', textAlign: 'center', borderBottom: `1px solid ${C.borderSub}` }}>
@@ -1117,11 +1228,47 @@ export default async function DashboardPage({
                       </td>
                     </tr>
                   ))}
+                  {/* Ligne Hors zone */}
+                  {nbContactsHorsZone > 0 && (
+                    <tr>
+                      <td style={{ padding: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, background: C.dim + '15', border: `1.5px solid ${C.dim}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: C.dim }}>—</span>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: C.muted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>Hors zone</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: C.orange }}>{nbContactsHorsZone}</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 11, color: C.dim }}>—</span>
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 10, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', color: C.orange }}>
+                          Hors zone
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           )}
-        </Card>
+        </CollapsibleSection>
 
       </div>
     </div>

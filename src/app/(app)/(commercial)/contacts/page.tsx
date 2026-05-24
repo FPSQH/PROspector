@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 const TYPE_LABELS: Record<string,string> = {
   interet_vente:  'Intérêt vente',
@@ -77,10 +78,14 @@ function downloadICS(c: any) {
 }
 
 export default function ContactsPage() {
+  const searchParams = useSearchParams()
   const [contacts,    setContacts]   = useState<any[]>([])
   const [loading,     setLoading]    = useState(true)
   const [selected,    setSelected]   = useState<any|null>(null)
-  const [filtre,      setFiltre]     = useState('tous')
+  const [filtre,      setFiltre]     = useState<string>(() => {
+    const f = searchParams.get('filtre')
+    return (f === 'relance' || f === 'tous') ? (f ?? 'tous') : 'tous'
+  })
   const [typeFiltre,  setTypeFiltre] = useState('')
   const [recherche,   setRecherche]  = useState('')
   const [form,        setForm]       = useState<any>({})
