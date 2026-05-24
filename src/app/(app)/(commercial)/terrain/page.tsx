@@ -79,13 +79,6 @@ export default function TerrainPage() {
   const [preLoading,       setPreLoading]        = useState(false)
   const [sheetOpen,        setSheetOpen]         = useState(false)
   const [selectedAdresse,  setSelectedAdresse]   = useState<Adresse | null>(null)
-  const [dpeFlags,         setDpeFlags]          = useState<string[]>([])
-  const [activeDpeFlags,   setActiveDpeFlags]    = useState<string[]>([])
-  const [dpeFrom,          setDpeFrom]           = useState('')
-  const [dpeTo,            setDpeTo]             = useState('')
-  const [pendingFrom,      setPendingFrom]       = useState('')
-  const [pendingTo,        setPendingTo]         = useState('')
-  const [showDpeFilter,    setShowDpeFilter]     = useState(false)
   const [adresseFilter,    setAdresseFilter]     = useState<'all'|'a_faire'|'contact'|'boite'|'supprimee'>('all')
 
   // Détection desktop/mobile
@@ -95,16 +88,6 @@ export default function TerrainPage() {
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
-
-  // DPE flags
-  useEffect(() => {
-    if (!dpeFrom && !dpeTo) { setDpeFlags([]); return }
-    const from = dpeFrom ? new Date(dpeFrom) : new Date(0)
-    const to   = dpeTo   ? new Date(dpeTo + 'T23:59:59') : new Date()
-    setDpeFlags(preAdresses
-      .filter((a: any) => { if (!a.latest_dpe_date) return false; const d = new Date(a.latest_dpe_date); return d >= from && d <= to })
-      .map((a: any) => a.id))
-  }, [preAdresses, dpeFrom, dpeTo])
 
   const loadSessionData = useCallback(async (sessionId: string) => {
     const res  = await fetch(`/api/sessions/${sessionId}`)
@@ -148,7 +131,7 @@ setAppState('choix_zone')
           if (autostartParam === '1' && !sessEnCours) {
             await handleStartSession(zone)
           } else {
-            handleZonePreviewInner(zone, zodesData)
+            handleZonePreviewInner(zone, zonesData)
           }
         }
       }
@@ -196,7 +179,7 @@ setAppState('choix_zone')
 
   // ── Démarrer session zone ─────────────────────────────────────────────────
   const handleStartSession = async (zone: Zone) => {
-    setActiveDpeFlags(dpeFlags); setLoading(true)
+    setLoading(true)
     try {
       const res  = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zone_id: zone.id }) })
       const data = await res.json()
@@ -285,10 +268,7 @@ setAppState('choix_zone')
   }
 
   const handleZonePreviewInner = async (zone: Zone, _zones?: Zone[]) => {
-    setPreZone(zone); setDpeFlags([]); setPreAdresses([]); setAppState('pre_session'); setPreLoading(true)
-    const now = new Date(), toDate = now.toISOString().split('T')[0]
-    const fromDate = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
-    setDpeTo(toDate); setDpeFrom(fromDate); setPendingTo(toDate); setPendingFrom(fromDate)
+    setPreZone(zone); setPreAdresses([]); setAppState('pre_session'); setPreLoading(true)
     try {
       const res = await fetch(`/api/zones/${zone.id}/adresses`), data = await res.json()
       setPreAdresses(data.adresses ?? [])
@@ -450,11 +430,6 @@ setAppState('choix_zone')
   // ── PRÉ-SESSION ZONE
   // ══════════════════════════════════════════════════════════════════════════
   if (appState === 'pre_session' && preZone) {
-    const applyFilter = (from: string, to: string) => { setDpeFrom(from); setDpeTo(to); setPendingFrom(from); setPendingTo(to) }
-    const quickSet = (days: number) => {
-      const now = new Date(), to = now.toISOString().split('T')[0]
-      applyFilter(new Date(now.getTime() - days * 86400000).toISOString().split('T')[0], to)
-    }
     const preAdressesForMap = preAdresses.map((a: any, i: number) => ({ ...a, statut_carte: 'a_faire' as const, ordre: i, prospectable: a.prospectable !== false }))
 
     return (
@@ -467,28 +442,10 @@ setAppState('choix_zone')
             <span style={{ fontSize: '0.75rem', color: '#9b9b96' }}>{preZone.nb_prospectables} adresses</span>
           </div>
         </div>
-        <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '10px 16px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: showDpeFilter ? 8 : 0 }}>
-            <button onClick={() => setShowDpeFilter(v => !v)} style={{ fontSize: '0.78rem', fontWeight: 600, color: '#5F5E5A', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>⚡ DPE récents {showDpeFilter ? '▲' : '▼'}</button>
-            {dpeFlags.length > 0 && <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{dpeFlags.length} DPE</span>}
-          </div>
-          {showDpeFilter && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              {[7,14,30,90].map(d => <button key={d} onClick={() => quickSet(d)} style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', cursor: 'pointer' }}>{d}j</button>)}
-              <input type="date" value={pendingFrom} onChange={e => setPendingFrom(e.target.value)} style={{ padding: '3px 6px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: '0.72rem' }} />
-              <span style={{ fontSize: '0.72rem', color: '#9b9b96' }}>→</span>
-              <input type="date" value={pendingTo} onChange={e => setPendingTo(e.target.value)} style={{ padding: '3px 6px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: '0.72rem' }} />
-              <button onClick={() => applyFilter(pendingFrom, pendingTo)} disabled={!pendingFrom && !pendingTo}
-                style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: (pendingFrom || pendingTo) ? '#1D9E75' : '#e8e7e0', color: '#fff', border: 'none', cursor: (pendingFrom || pendingTo) ? 'pointer' : 'not-allowed' }}>
-                Appliquer
-              </button>
-            </div>
-          )}
-        </div>
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {preLoading
             ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f7f4', fontSize: '0.875rem', color: '#9b9b96' }}>Chargement…</div>
-            : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} dpeFlags={dpeFlags} dpeFilterFrom={dpeFrom} dpeFilterTo={dpeTo} />}
+            : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} />}
         </div>
         <div style={{ padding: '12px 16px', background: '#fff', borderTop: '1px solid #e8e7e0', flexShrink: 0 }}>
           <button onClick={() => handleStartSession(preZone)} disabled={loading}
@@ -659,7 +616,7 @@ setAppState('choix_zone')
             )}
           </div>
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-            <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={prochaineAdresseId} onAdresseClick={handleAdresseClick} dpeFlags={activeDpeFlags} />
+            <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={prochaineAdresseId} onAdresseClick={handleAdresseClick} />
             {legendeMap}
           </div>
         </div>
@@ -674,7 +631,7 @@ setAppState('choix_zone')
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#1a1a18' }}>
       {sessionHeader}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={prochaineAdresseId} onAdresseClick={handleAdresseClick} dpeFlags={activeDpeFlags} />
+        <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={prochaineAdresseId} onAdresseClick={handleAdresseClick} />
         {!sheetOpen && legendeMap}
         {isHorsZone && !sheetOpen && (
           <div style={{ position: 'absolute', bottom: 16, right: 12, background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: '8px 12px', fontSize: '0.75rem', color: '#374151', border: '1px solid #e8e7e0', fontWeight: 600 }}>

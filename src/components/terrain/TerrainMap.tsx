@@ -24,14 +24,10 @@ interface Props {
   zonePolygon:        any
   prochaineAdresseId: string | null
   onAdresseClick:     (adresse: Adresse) => void
-  dpeFlags?:          string[]
-  dpeFilterFrom?:     string
-  dpeFilterTo?:       string
 }
 
 export default function TerrainMap({
   adresses, zonePolygon, prochaineAdresseId, onAdresseClick,
-  dpeFlags = [], dpeFilterFrom, dpeFilterTo,
 }: Props) {
   const containerRef      = useRef<HTMLDivElement>(null)
   const mapRef            = useRef<any>(null)
@@ -44,6 +40,7 @@ export default function TerrainMap({
   const [satellite,  setSatellite]  = useState(false)
   const [gpsActive,  setGpsActive]  = useState(false)
   const [gpsError,   setGpsError]   = useState(false)
+  const [showDpe,    setShowDpe]    = useState(false)
 
   useEffect(() => { adressesRef.current = adresses },     [adresses])
   useEffect(() => { onClickRef.current  = onAdresseClick }, [onAdresseClick])
@@ -106,24 +103,6 @@ export default function TerrainMap({
           paint: { 'circle-radius': 18, 'circle-color': 'transparent', 'circle-opacity': 0 },
         })
 
-        // Aura DPE récent
-        map.addLayer({
-          id: 'dpe-aura', type: 'circle', source: 'adresses',
-          filter: ['in', ['get', 'dpe_signal'], ['literal', ['hot', 'warm', 'recent']]],
-          paint: {
-            'circle-radius': ['case', ['==', ['get', 'dpe_signal'], 'hot'], 22, ['==', ['get', 'dpe_signal'], 'warm'], 18, 14],
-            'circle-color':  ['case', ['==', ['get', 'dpe_signal'], 'hot'], '#F97316', '#ef4444'],
-            'circle-opacity': 0.35,
-          },
-        })
-
-        // Halo DPE filtré
-        map.addLayer({
-          id: 'dpe-flag-ring', type: 'circle', source: 'adresses',
-          filter: ['==', ['get', 'flagged'], true],
-          paint: { 'circle-radius': 20, 'circle-color': '#f59e0b', 'circle-opacity': 0.5, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#d97706' },
-        })
-
         // Points principaux
         map.addLayer({
           id: 'adresses-circle', type: 'circle', source: 'adresses',
@@ -131,17 +110,10 @@ export default function TerrainMap({
             'circle-radius': [
               'case',
               ['==', ['get', 'prochaine'], true], 16,
-              ['==', ['get', 'dpe_signal'], 'hot'], 14,
               ['>=', ['get', 'score'], 80], 9,
               8,
             ],
-            'circle-color': [
-              'case',
-              ['==', ['get', 'dpe_signal'], 'hot'],    '#22c55e',
-              ['==', ['get', 'dpe_signal'], 'warm'],   '#22c55e',
-              ['==', ['get', 'dpe_signal'], 'recent'], '#22c55e',
-              ['get', 'couleur'],
-            ],
+            'circle-color': ['get', 'couleur'],
             'circle-stroke-width': ['case', ['==', ['get', 'prochaine'], true], 3, 2],
             'circle-stroke-color': '#fff',
             'circle-opacity': [
@@ -202,31 +174,32 @@ export default function TerrainMap({
 
     const pId = prochaineAdresseId
 
-    const features = adresses.filter(a => a.lat && a.lon).map(a => ({
-      type: 'Feature' as const,
-      properties: {
-        id:           a.id,
-        statut:       a.statut_carte,
-        couleur:      STATUT_COLOR[a.statut_carte] ?? '#9b9b96',
-        prospectable: a.prospectable !== false,
-        label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
-        prochaine:    a.id === pId,
-        score:        a.score ?? 50,
-        flagged:      dpeFlags.includes(a.id),
-        dpe_signal:   (() => {
-          if (a.statut_carte === 'supprimee') return null
-          if (!a.latest_dpe_date) return null
-          const dpeMs = new Date(a.latest_dpe_date).getTime()
-          if (dpeFilterFrom) {
-            const fromMs = new Date(dpeFilterFrom).getTime()
-            const toMs   = dpeFilterTo ? new Date(dpeFilterTo).getTime() : Date.now()
-            return (dpeMs >= fromMs && dpeMs <= toMs) ? 'hot' : null
-          }
-          return (Date.now() - dpeMs) / 86400000 <= 30 ? 'hot' : null
-        })(),
-      },
-      geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-    }))
+    const features = adresses.filter(a => a.lat && a.lon).map(a => {
+      const dpe_cat = (() => {
+        if (a.statut_carte === 'supprimee' || !a.latest_dpe_date) return null
+        const days = (Date.now() - new Date(a.latest_dpe_date).getTime()) / 86400000
+        if (days <= 30)  return 'chaud'
+        if (days <= 365) return 'tiede'
+        return 'ancien'
+      })()
+      const couleur = showDpe && dpe_cat
+        ? (dpe_cat === 'chaud' ? '#22c55e' : dpe_cat === 'tiede' ? '#86efac' : '#fb923c')
+        : (STATUT_COLOR[a.statut_carte] ?? '#9b9b96')
+      return {
+        type: 'Feature' as const,
+        properties: {
+          id:           a.id,
+          statut:       a.statut_carte,
+          couleur,
+          prospectable: a.prospectable !== false,
+          label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
+          prochaine:    a.id === pId,
+          score:        a.score ?? 50,
+          dpe_cat,
+        },
+        geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
+      }
+    })
 
     try {
       ;(map.getSource('adresses') as any)?.setData({ type: 'FeatureCollection', features })
@@ -263,7 +236,7 @@ export default function TerrainMap({
       console.warn('[TerrainMap] setData erreur:', err)
     }
 
-  }, [adresses, prochaineAdresseId, mapLoaded, dpeFlags, dpeFilterFrom, dpeFilterTo])
+  }, [adresses, prochaineAdresseId, mapLoaded, showDpe])
 
   // ── GPS ────────────────────────────────────────────────────────────────────
   const startGps = () => {
@@ -334,6 +307,32 @@ export default function TerrainMap({
       }}>
         {gpsError ? '⚠️ GPS' : gpsActive ? '📍 Actif' : '📍 GPS'}
       </button>
+
+      {/* DPE toggle */}
+      <button onClick={() => setShowDpe(v => !v)} style={{
+        position: 'absolute', bottom: 160, right: 10, zIndex: 10,
+        padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+        background: showDpe ? '#E63946' : 'rgba(255,255,255,0.95)',
+        color: showDpe ? '#fff' : '#374151',
+        border: '1px solid ' + (showDpe ? '#E63946' : '#e8e7e0'),
+        cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+      }}>
+        📋 DPE
+      </button>
+
+      {/* DPE legend */}
+      {showDpe && (
+        <div style={{
+          position: 'absolute', bottom: 202, right: 10, zIndex: 10,
+          background: 'rgba(255,255,255,0.95)', borderRadius: 8,
+          padding: '6px 10px', fontSize: 11, lineHeight: 1.9,
+          border: '1px solid #e8e7e0', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        }}>
+          <div><span style={{ color: '#22c55e', marginRight: 4 }}>●</span>&lt;1 mois</div>
+          <div><span style={{ color: '#86efac', marginRight: 4 }}>●</span>1–12 mois</div>
+          <div><span style={{ color: '#fb923c', marginRight: 4 }}>●</span>&gt;12 mois</div>
+        </div>
+      )}
     </div>
   )
 }

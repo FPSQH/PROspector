@@ -31,11 +31,11 @@ export async function GET(req: Request) {
     .gte('date_etablissement', sinceStr)
 
   const now = Date.now()
-  const sixMoisMs = 6 * 30 * 24 * 60 * 60 * 1000
+  const oneMoisMs = 30 * 24 * 60 * 60 * 1000
 
   const points = (dpeRows ?? []).map((dpe: any) => {
     const ageMs = now - new Date(dpe.date_etablissement).getTime()
-    const anciennete = ageMs <= sixMoisMs ? 'chaud' : 'tiede'
+    const anciennete = ageMs <= oneMoisMs ? 'chaud' : 'tiede'
     return {
       lat:         dpe.adresses?.lat,
       lon:         dpe.adresses?.lon,
