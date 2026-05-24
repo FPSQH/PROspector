@@ -110,6 +110,7 @@ export async function GET(request: Request) {
       lon:                d.lon ?? null,
       zone_id:            zoneId,
       zone_nom:           zoneNom,
+      needs_audit:        isRed && !hasAud,
       has_audit:          hasAud,
       audit: hasAud ? {
         n_audit:    d.audit_n,

@@ -67,19 +67,30 @@ export async function GET(_req: Request, { params }: Params) {
   const itinMap  = new Map(itineraire.map((i: any) => [i.adresse_id, i.ordre]))
 
   const adresseIds = allAdresses.map((a: any) => a.id)
-  const dpeMap: Record<string, { date: string; etiquette: string | null }> = {}
+  const dpeMap: Record<string, {
+    date:           string
+    etiquette:      string | null
+    has_audit:      boolean
+    audit_n:        string | null
+    audit_date:     string | null
+    audit_scenarios: any[] | null
+  }> = {}
   if (adresseIds.length > 0) {
     const { data: dpes } = await supabase
       .from('dpe_logement')
-      .select('adresse_id, date_etablissement, etiquette_dpe')
+      .select('adresse_id, date_etablissement, etiquette_dpe, has_audit, audit_n, audit_date, audit_scenarios')
       .in('adresse_id', adresseIds)
       .not('etiquette_dpe', 'is', null)
       .order('date_etablissement', { ascending: false })
     for (const d of (dpes ?? [])) {
       if (!dpeMap[d.adresse_id]) {
         dpeMap[d.adresse_id] = {
-          date:      d.date_etablissement,
-          etiquette: (d.etiquette_dpe ?? '').toUpperCase() || null,
+          date:            d.date_etablissement,
+          etiquette:       (d.etiquette_dpe ?? '').toUpperCase() || null,
+          has_audit:       !!d.has_audit,
+          audit_n:         d.audit_n        ?? null,
+          audit_date:      d.audit_date     ?? null,
+          audit_scenarios: d.audit_scenarios ?? null,
         }
       }
     }
@@ -97,8 +108,12 @@ export async function GET(_req: Request, { params }: Params) {
     return {
       ...a, statut_carte: statut, interaction: inter ?? null,
       ordre: itinMap.get(a.id) ?? 9999, score: 50,
-      latest_dpe_date: dpeMap[a.id]?.date      ?? null,
-      dpe_etiquette:   dpeMap[a.id]?.etiquette ?? null,
+      latest_dpe_date:  dpeMap[a.id]?.date            ?? null,
+      dpe_etiquette:    dpeMap[a.id]?.etiquette        ?? null,
+      has_audit:        dpeMap[a.id]?.has_audit        ?? false,
+      audit_n:          dpeMap[a.id]?.audit_n          ?? null,
+      audit_date:       dpeMap[a.id]?.audit_date       ?? null,
+      audit_scenarios:  dpeMap[a.id]?.audit_scenarios  ?? null,
     }
   }).sort((a, b) => a.ordre - b.ordre)
 

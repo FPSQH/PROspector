@@ -2,13 +2,21 @@
 
 import { useState, useEffect } from 'react'
 
+interface AuditScenario {
+  categorie?:    string
+  classe_apres?: string
+  cout_travaux?: number
+  gain_pct?:     number
+}
+
 interface Adresse {
   id: string; numero?: string; nom_voie?: string; code_postal?: string; commune?: string
   type_bien?: string; nb_bal?: number; has_commerce?: boolean
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   interaction?: { resultat?: string; action?: string; type_habitat?: string }
-  score?: number; latest_dpe_date?: string | null; dpe_etiquette?: string | null;
-  has_audit?: boolean; audit_n?: string | null; nom_syndic?: string
+  score?: number; latest_dpe_date?: string | null; dpe_etiquette?: string | null
+  has_audit?: boolean; audit_n?: string | null; audit_date?: string | null
+  audit_scenarios?: AuditScenario[] | null; nom_syndic?: string
 }
 
 export default function BottomSheet({
@@ -192,16 +200,19 @@ const intRes = await fetch('/api/interactions', {
             </div>
           )}
 
-          {/* Badge DPE si disponible */}
+          {/* Badge DPE + audit si disponible */}
           {adresse.latest_dpe_date && adresse.dpe_etiquette && (() => {
-            const etiq = adresse.dpe_etiquette.toUpperCase()
-            const col = dpeColors[etiq] ?? { bg: '#9b9b96', fg: '#fff' }
+            const etiq    = adresse.dpe_etiquette.toUpperCase()
+            const col     = dpeColors[etiq] ?? { bg: '#9b9b96', fg: '#fff' }
+            const isRed   = ['E', 'F', 'G'].includes(etiq)
             const dateStr = new Date(adresse.latest_dpe_date).toLocaleDateString('fr-FR', {
               day: 'numeric', month: 'long', year: 'numeric'
             })
-            const showAudit = ['E', 'F', 'G'].includes(etiq) && adresse.has_audit
+            const scenarios = (adresse.audit_scenarios ?? [])
+              .filter(sc => !/états*initial/i.test(sc.categorie ?? ''))
             return (
               <div style={{ margin: '8px 16px 0' }}>
+                {/* Badge DPE */}
                 <div style={{ padding: '8px 12px', borderRadius: 8, background: '#f8f7f4', border: '1px solid #e8e7e0', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 6, background: col.bg, color: col.fg, fontWeight: 900, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {etiq}
@@ -211,10 +222,37 @@ const intRes = await fetch('/api/interactions', {
                     <div style={{ fontSize: 10, color: '#9b9b96' }}>Établi le {dateStr}</div>
                   </div>
                 </div>
-                {showAudit && (
-                  <div style={{ marginTop: 4, padding: '5px 10px', borderRadius: 6, background: '#FFF3CD', border: '1px solid #FBBF24', fontSize: 11, fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    🔍 Audit énergétique disponible
-                    {adresse.audit_n && <span style={{ fontWeight: 400, fontSize: 10 }}>· n° {adresse.audit_n}</span>}
+
+                {/* Audit disponible avec scenarios */}
+                {isRed && adresse.has_audit && (
+                  <div style={{ marginTop: 4, borderRadius: 8, border: '1px solid #FCD34D', overflow: 'hidden' }}>
+                    <div style={{ padding: '6px 10px', background: '#FFFBEB', fontSize: 11, fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      🔍 Audit énergétique
+                      {adresse.audit_n && <span style={{ fontWeight: 400, fontSize: 10 }}>· n° {adresse.audit_n}</span>}
+                      {adresse.audit_date && <span style={{ fontWeight: 400, fontSize: 10 }}>· {new Date(adresse.audit_date).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}</span>}
+                    </div>
+                    {scenarios.length > 0 && (
+                      <div style={{ padding: '6px 10px', background: '#fff', borderTop: '1px solid #FCD34D' }}>
+                        {scenarios.slice(0, 3).map((sc, i) => (
+                          <div key={i} style={{ fontSize: 11, color: '#1a1a18', lineHeight: 1.6, display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                            <span style={{ color: '#92400E', flexShrink: 0 }}>→</span>
+                            <span>
+                              <strong>{(sc.categorie ?? 'Scénario').replace(/principale?/gi, '').trim()}</strong>
+                              {' '}→ DPE <strong style={{ color: '#1D9E75' }}>{sc.classe_apres ?? '?'}</strong>
+                              {sc.cout_travaux ? <span style={{ color: '#5F5E5A' }}>{' '}(~{Number(sc.cout_travaux).toLocaleString('fr-FR')} €)</span> : null}
+                              {sc.gain_pct ? <span style={{ color: '#059669', fontWeight: 600 }}>{' '}−{sc.gain_pct}%</span> : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Alerte audit manquant pour E/F/G */}
+                {isRed && !adresse.has_audit && (
+                  <div style={{ marginTop: 4, padding: '5px 10px', borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: 11, color: '#B91C1C' }}>
+                    ⚠️ Aucun audit enregistré pour ce DPE {etiq}
                   </div>
                 )}
               </div>

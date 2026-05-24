@@ -17,7 +17,8 @@ interface Adresse {
   statut_carte: 'a_faire' | 'contact' | 'boite' | 'visite' | 'supprimee'
   interaction?: any; ordre: number; score?: number
   latest_dpe_date?: string | null; dpe_etiquette?: string | null
-  has_audit?: boolean; audit_n?: string | null
+  has_audit?: boolean; audit_n?: string | null; audit_date?: string | null
+  audit_scenarios?: { categorie?: string; classe_apres?: string; cout_travaux?: number; gain_pct?: number }[] | null
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   nom_syndic?: string; nb_acces_observe?: number
   courrier_cible_possible?: boolean; commentaire_adresse?: string
