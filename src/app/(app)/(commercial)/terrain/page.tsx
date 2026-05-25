@@ -7,6 +7,21 @@ import BottomSheet from '@/components/terrain/BottomSheet'
 
 const TerrainMap = dynamic(() => import('@/components/terrain/TerrainMap'), { ssr: false })
 
+/* ── Design tokens ───────────────────────────────────────────────── */
+const C = {
+  bg:      '#0C0C0E',
+  card:    '#141416',
+  border:  'rgba(255,255,255,0.06)',
+  borderl: 'rgba(255,255,255,0.10)',
+  text:    '#F0F0F2',
+  mid:     '#9A9AA8',
+  muted:   '#6B6B7B',
+  dim:     '#4A4A58',
+  primary: '#1D9E75',
+  success: '#22C55E',
+  danger:  '#EF4444',
+}
+
 interface Zone    { id: string; nom: string; couleur: string; numero: number; nb_prospectables: number }
 interface Commune { id: string; nom: string; code_insee: string }
 
@@ -81,7 +96,6 @@ export default function TerrainPage() {
   const [selectedAdresse,  setSelectedAdresse]   = useState<Adresse | null>(null)
   const [adresseFilter,    setAdresseFilter]     = useState<'all'|'a_faire'|'contact'|'boite'|'supprimee'>('all')
 
-  // Détection desktop/mobile
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 768)
     check()
@@ -101,7 +115,6 @@ export default function TerrainPage() {
     setIdxCourant(0)
   }, [])
 
-  // ── Init : zones + communes + détection session en cours ──────────────────
   useEffect(() => {
     const init = async () => {
       const [zonesRes, communesRes, sessRes] = await Promise.all([
@@ -121,7 +134,7 @@ export default function TerrainPage() {
         return
       }
 
-setAppState('choix_zone')
+      setAppState('choix_zone')
 
       const zoneIdParam    = searchParams.get('zone_id')
       const autostartParam = searchParams.get('autostart')
@@ -139,7 +152,6 @@ setAppState('choix_zone')
     init()
   }, []) // eslint-disable-line
 
-  // ── Reprendre une session en cours ────────────────────────────────────────
   const reprendreSession = async () => {
     if (!sessionActive) return
     setLoading(true)
@@ -151,7 +163,6 @@ setAppState('choix_zone')
     } finally { setLoading(false) }
   }
 
-  // ── Clôturer une session en cours puis redémarrer ────────────────────────
   const cloturerEtContinuer = async (cb: () => void) => {
     if (!sessionActive) { cb(); return }
     setLoading(true)
@@ -177,7 +188,6 @@ setAppState('choix_zone')
     } finally { setLoading(false) }
   }
 
-  // ── Démarrer session zone ─────────────────────────────────────────────────
   const handleStartSession = async (zone: Zone) => {
     setLoading(true)
     try {
@@ -191,7 +201,6 @@ setAppState('choix_zone')
     finally { setLoading(false) }
   }
 
-  // ── Démarrer session libre ────────────────────────────────────────────────
   const handleStartSessionLibre = async () => {
     if (!communeSelectee) return
     setLoading(true)
@@ -282,25 +291,25 @@ setAppState('choix_zone')
   const isHorsZone         = !session?.zone_id
   const adressesFiltrees   = adresseFilter === 'all' ? adresses : adresses.filter(a => a.statut_carte === adresseFilter)
 
-  // ── Bannière session en cours ──────────────────────────────────────────────
+  /* ── Bannière session en cours ─────────────────────────────────── */
   const BanniereSessionActive = sessionActive ? (
-    <div style={{ background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+    <div style={{ background: 'rgba(217,119,6,0.08)', border: '1.5px solid rgba(217,119,6,0.2)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
       <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>⚠️</span>
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400e', marginBottom: 4 }}>Session en cours non clôturée</div>
-        <div style={{ fontSize: '0.8rem', color: '#78350f', marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FBBF24', marginBottom: 4 }}>Session en cours non clôturée</div>
+        <div style={{ fontSize: '0.8rem', color: C.mid, marginBottom: 12 }}>
           {sessionActive.zones_prospection
             ? `Zone ${sessionActive.zones_prospection.numero} — ${sessionActive.zones_prospection.nom}`
             : sessionActive.commune_nom ?? 'Session libre'
           } · démarrée le {new Date(sessionActive.date_session).toLocaleDateString('fr-FR')} à {sessionActive.heure_debut?.slice(0, 5)}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={reprendreSession} disabled={loading}
-            style={{ padding: '8px 16px', borderRadius: 8, background: '#1D9E75', color: '#fff', fontWeight: 700, fontSize: '0.82rem', border: 'none', cursor: 'pointer' }}>
+            style={{ padding: '8px 16px', borderRadius: 8, background: C.primary, color: '#fff', fontWeight: 700, fontSize: '0.82rem', border: 'none', cursor: 'pointer' }}>
             ▶ Reprendre la session
           </button>
           <button onClick={() => cloturerEtContinuer(() => {})} disabled={loading}
-            style={{ padding: '8px 16px', borderRadius: 8, background: '#fff', color: '#92400e', fontWeight: 600, fontSize: '0.82rem', border: '1px solid #fde68a', cursor: 'pointer' }}>
+            style={{ padding: '8px 16px', borderRadius: 8, background: 'rgba(255,255,255,0.06)', color: '#FBBF24', fontWeight: 600, fontSize: '0.82rem', border: '1px solid rgba(217,119,6,0.25)', cursor: 'pointer' }}>
             ✓ Clôturer sans reprendre
           </button>
         </div>
@@ -308,43 +317,43 @@ setAppState('choix_zone')
     </div>
   ) : null
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── INIT
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── INIT
+   * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'init') {
     return (
-      <div style={{ minHeight: '100dvh', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b9b96', fontSize: '0.875rem' }}>
+      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: '0.875rem' }}>
         Chargement…
       </div>
     )
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── CHOIX DE ZONE
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── CHOIX DE ZONE
+   * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'choix_zone') {
     return (
-      <div style={{ minHeight: '100dvh', background: '#f8f7f4', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: '#9b9b96', cursor: 'pointer', fontSize: '0.9rem' }}>←</button>
-          <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1a1a18' }}>Démarrer une tournée</span>
+      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: C.mid, cursor: 'pointer', fontSize: '0.9rem' }}>←</button>
+          <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: C.text }}>Démarrer une tournée</span>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', maxWidth: 600, width: '100%', margin: '0 auto' }}>
 
           {BanniereSessionActive}
 
-          <p style={{ fontSize: '0.82rem', color: '#9b9b96', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <p style={{ fontSize: '0.82rem', color: C.muted, marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Zones de prospection
           </p>
 
           {sessionActive && (
-            <div style={{ padding: '12px', borderRadius: 8, background: '#f9f9f9', border: '1px solid #e5e7eb', marginBottom: 12, fontSize: '0.8rem', color: '#9b9b96', textAlign: 'center' }}>
+            <div style={{ padding: '12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, marginBottom: 12, fontSize: '0.8rem', color: C.muted, textAlign: 'center' }}>
               Clôturez ou reprenez la session en cours pour démarrer une nouvelle tournée
             </div>
           )}
 
           {zones.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#9b9b96' }}>
+            <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
               <div style={{ fontSize: '2rem', marginBottom: 12 }}>🗺️</div>
               <p style={{ fontSize: '0.875rem' }}>Aucune zone configurée</p>
             </div>
@@ -354,32 +363,32 @@ setAppState('choix_zone')
                 <button key={zone.id}
                   onClick={() => sessionActive ? undefined : handleZonePreview(zone)}
                   disabled={!!sessionActive || loading}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e8e7e0', borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.borderl}`, borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%' }}>
                   <div style={{ width: 12, height: 12, borderRadius: '50%', background: zone.couleur, flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a1a18' }}>{zone.nom}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#9b9b96', marginTop: 2 }}>{zone.nb_prospectables} adresses</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: C.text }}>{zone.nom}</div>
+                    <div style={{ fontSize: '0.75rem', color: C.muted, marginTop: 2 }}>{zone.nb_prospectables} adresses</div>
                   </div>
-                  <div style={{ color: '#1D9E75', fontSize: '1.1rem' }}>→</div>
+                  <div style={{ color: C.primary, fontSize: '1.1rem' }}>→</div>
                 </button>
               ))}
             </div>
           )}
 
-          <div style={{ borderTop: '1px solid #e8e7e0', paddingTop: 24 }}>
-            <p style={{ fontSize: '0.82rem', color: '#9b9b96', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 24 }}>
+            <p style={{ fontSize: '0.82rem', color: C.muted, marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Prospection libre
             </p>
             <button
               onClick={() => sessionActive ? undefined : setAppState('pre_libre')}
               disabled={!!sessionActive || loading}
-              style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1.5px dashed #e8e7e0', borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%', opacity: sessionActive ? 0.4 : 1 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>🚶</div>
+              style={{ display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1.5px dashed ${C.borderl}`, borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%', opacity: sessionActive ? 0.4 : 1 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>🚶</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a1a18' }}>Prospection hors zone</div>
-                <div style={{ fontSize: '0.75rem', color: '#9b9b96', marginTop: 2 }}>Prospecter librement dans une commune</div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: C.text }}>Prospection hors zone</div>
+                <div style={{ fontSize: '0.75rem', color: C.muted, marginTop: 2 }}>Prospecter librement dans une commune</div>
               </div>
-              <div style={{ color: '#9b9b96', fontSize: '1.1rem' }}>→</div>
+              <div style={{ color: C.mid, fontSize: '1.1rem' }}>→</div>
             </button>
           </div>
         </div>
@@ -387,38 +396,38 @@ setAppState('choix_zone')
     )
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── PRÉ-SESSION LIBRE
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── PRÉ-SESSION LIBRE
+   * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'pre_libre') {
     return (
-      <div style={{ minHeight: '100dvh', background: '#f8f7f4', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => { setAppState('choix_zone'); setCommuneSelectee(null) }} style={{ background: 'none', border: 'none', color: '#9b9b96', cursor: 'pointer', fontSize: '0.9rem' }}>←</button>
-          <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1a1a18' }}>Prospection libre hors zone</span>
+      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => { setAppState('choix_zone'); setCommuneSelectee(null) }} style={{ background: 'none', border: 'none', color: C.mid, cursor: 'pointer', fontSize: '0.9rem' }}>←</button>
+          <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: C.text }}>Prospection libre hors zone</span>
         </div>
         <div style={{ flex: 1, padding: '24px 16px', maxWidth: 520, width: '100%', margin: '0 auto' }}>
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e8e7e0', padding: '14px 18px', marginBottom: 24, fontSize: '0.82rem', color: '#5F5E5A', lineHeight: 1.6 }}>
-            Cette session n&apos;est pas rattachée à une zone planifiée. Elle apparaîtra dans votre planning comme une <strong>prospection libre</strong> du jour.
+          <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, padding: '14px 18px', marginBottom: 24, fontSize: '0.82rem', color: C.mid, lineHeight: 1.6 }}>
+            Cette session n&apos;est pas rattachée à une zone planifiée. Elle apparaîtra dans votre planning comme une <strong style={{ color: C.text }}>prospection libre</strong> du jour.
           </div>
-          <p style={{ fontSize: '0.82rem', color: '#9b9b96', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Commune prospectée</p>
+          <p style={{ fontSize: '0.82rem', color: C.muted, marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Commune prospectée</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
             {communes.map(c => (
               <button key={c.id} onClick={() => setCommuneSelectee(c)}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer', background: communeSelectee?.id === c.id ? '#f0fdf4' : '#fff', border: '1.5px solid ' + (communeSelectee?.id === c.id ? '#1D9E75' : '#e8e7e0') }}>
-                <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: communeSelectee?.id === c.id ? '#1D9E75' : '#f3f4f6', border: '2px solid ' + (communeSelectee?.id === c.id ? '#1D9E75' : '#e5e7eb'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer', background: communeSelectee?.id === c.id ? 'rgba(29,158,117,0.1)' : C.card, border: '1.5px solid ' + (communeSelectee?.id === c.id ? 'rgba(29,158,117,0.4)' : C.borderl) }}>
+                <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: communeSelectee?.id === c.id ? C.primary : 'rgba(255,255,255,0.08)', border: '2px solid ' + (communeSelectee?.id === c.id ? C.primary : C.borderl), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {communeSelectee?.id === c.id && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1a1a18' }}>{c.nom}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#9b9b96' }}>{c.code_insee}</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: C.text }}>{c.nom}</div>
+                  <div style={{ fontSize: '0.72rem', color: C.muted }}>{c.code_insee}</div>
                 </div>
-                {communeSelectee?.id === c.id && <span style={{ color: '#1D9E75' }}>✓</span>}
+                {communeSelectee?.id === c.id && <span style={{ color: C.primary }}>✓</span>}
               </button>
             ))}
           </div>
           <button onClick={handleStartSessionLibre} disabled={!communeSelectee || loading}
-            style={{ width: '100%', padding: '14px', borderRadius: 12, background: !communeSelectee || loading ? '#e5e7eb' : '#1D9E75', color: '#fff', fontWeight: 700, fontSize: '1rem', border: 'none', cursor: !communeSelectee || loading ? 'not-allowed' : 'pointer' }}>
+            style={{ width: '100%', padding: '14px', borderRadius: 12, background: !communeSelectee || loading ? C.dim : C.primary, color: '#fff', fontWeight: 700, fontSize: '1rem', border: 'none', cursor: !communeSelectee || loading ? 'not-allowed' : 'pointer' }}>
             {loading ? 'Démarrage…' : communeSelectee ? `Prospecter à ${communeSelectee.nom} →` : 'Choisissez une commune'}
           </button>
         </div>
@@ -426,30 +435,30 @@ setAppState('choix_zone')
     )
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── PRÉ-SESSION ZONE
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── PRÉ-SESSION ZONE
+   * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'pre_session' && preZone) {
     const preAdressesForMap = preAdresses.map((a: any, i: number) => ({ ...a, statut_carte: 'a_faire' as const, ordre: i, prospectable: a.prospectable !== false }))
 
     return (
-      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#f8f7f4' }}>
-        <div style={{ background: '#fff', borderBottom: '1px solid #e8e7e0', padding: '0 16px', height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => setAppState('choix_zone')} style={{ background: 'none', border: 'none', color: '#9b9b96', cursor: 'pointer', fontSize: '1rem' }}>←</button>
+      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: C.bg }}>
+        <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 16px', height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => setAppState('choix_zone')} style={{ background: 'none', border: 'none', color: C.mid, cursor: 'pointer', fontSize: '1rem' }}>←</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: preZone.couleur, flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, color: '#1a1a18', fontSize: '0.9375rem' }}>{preZone.nom}</span>
-            <span style={{ fontSize: '0.75rem', color: '#9b9b96' }}>{preZone.nb_prospectables} adresses</span>
+            <span style={{ fontWeight: 600, color: C.text, fontSize: '0.9375rem' }}>{preZone.nom}</span>
+            <span style={{ fontSize: '0.75rem', color: C.muted }}>{preZone.nb_prospectables} adresses</span>
           </div>
         </div>
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {preLoading
-            ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f7f4', fontSize: '0.875rem', color: '#9b9b96' }}>Chargement…</div>
+            ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
             : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} />}
         </div>
-        <div style={{ padding: '12px 16px', background: '#fff', borderTop: '1px solid #e8e7e0', flexShrink: 0 }}>
+        <div style={{ padding: '12px 16px', background: C.card, borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
           <button onClick={() => handleStartSession(preZone)} disabled={loading}
-            style={{ width: '100%', padding: '14px', borderRadius: 12, background: loading ? '#9b9b96' : '#1D9E75', color: '#fff', fontWeight: 700, fontSize: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            style={{ width: '100%', padding: '14px', borderRadius: 12, background: loading ? C.dim : C.primary, color: '#fff', fontWeight: 700, fontSize: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
             {loading ? 'Démarrage…' : 'Démarrer la tournée →'}
           </button>
         </div>
@@ -457,24 +466,24 @@ setAppState('choix_zone')
     )
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── TERMINÉE
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── TERMINÉE
+   * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'terminee') {
     const rapport = session?.rapport_json ?? {}
     const zoneName = session?.zones_prospection?.nom ?? session?.commune_nom ?? 'Session libre'
 
     return (
-      <div style={{ minHeight: '100dvh', background: '#f8f7f4', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e8e7e0', padding: '28px', width: '100%', maxWidth: 420 }}>
+      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+        <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.borderl}`, padding: '28px', width: '100%', maxWidth: 420 }}>
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>✅</div>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1a1a18', marginBottom: 4 }}>Session terminée !</h2>
-            <div style={{ fontSize: '0.82rem', color: '#9b9b96' }}>{zoneName}</div>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: C.text, marginBottom: 4 }}>Session terminée !</h2>
+            <div style={{ fontSize: '0.82rem', color: C.muted }}>{zoneName}</div>
           </div>
-          <div style={{ background: '#f8f7f4', borderRadius: 10, padding: '16px', marginBottom: 20 }}>
-            <div style={{ fontSize: '0.72rem', color: '#9b9b96', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Rapport de prospection</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '16px', marginBottom: 20 }}>
+            <div style={{ fontSize: '0.72rem', color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Rapport de prospection</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {[
                 { label: 'Portes',     value: rapport.nb_visites  ?? nbVisites, accent: true  },
                 { label: 'Contacts',   value: rapport.nb_contacts ?? 0,         accent: false },
@@ -483,25 +492,25 @@ setAppState('choix_zone')
                 { label: 'Collectif',  value: rapport.nb_collectif ?? rapport.nb_immeubles ?? 0, accent: false },
                 { label: 'Commerces',  value: rapport.nb_commerces ?? 0,        accent: false },
               ].map(({ label, value, accent }) => (
-                <div key={label} style={{ textAlign: 'center', padding: '10px 6px', borderRadius: 8, background: accent ? '#f0fdf4' : '#fff', border: '1px solid ' + (accent ? '#bbf7d0' : '#E8E6DF') }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: accent ? '#1D9E75' : '#1a1a18', lineHeight: 1 }}>{value}</div>
-                  <div style={{ fontSize: '0.68rem', color: '#9b9b96', marginTop: 4, textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
+                <div key={label} style={{ textAlign: 'center', padding: '10px 6px', borderRadius: 8, background: accent ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (accent ? 'rgba(29,158,117,0.3)' : C.border) }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: accent ? C.primary : C.text, lineHeight: 1 }}>{value}</div>
+                  <div style={{ fontSize: '0.68rem', color: C.muted, marginTop: 4, textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
                 </div>
               ))}
             </div>
             {rapport.nb_syndics > 0 && (
-              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: '#fff', border: '1px solid #E8E6DF', fontSize: '0.82rem', color: '#374151', textAlign: 'center' }}>
+              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, fontSize: '0.82rem', color: C.mid, textAlign: 'center' }}>
                 🏢 {rapport.nb_syndics} syndic{rapport.nb_syndics > 1 ? 's' : ''} identifié{rapport.nb_syndics > 1 ? 's' : ''}
               </div>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => router.push('/planning')}
-              style={{ flex: 1, padding: '11px', borderRadius: 10, background: '#f3f4f6', color: '#374151', fontWeight: 600, fontSize: '0.875rem', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+              style={{ flex: 1, padding: '11px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 600, fontSize: '0.875rem', border: `1px solid ${C.border}`, cursor: 'pointer' }}>
               Planning
             </button>
             <button onClick={() => router.push('/dashboard')}
-              style={{ flex: 1, padding: '11px', borderRadius: 10, background: '#1D9E75', color: '#fff', fontWeight: 600, fontSize: '0.875rem', border: 'none', cursor: 'pointer' }}>
+              style={{ flex: 1, padding: '11px', borderRadius: 10, background: C.primary, color: '#fff', fontWeight: 600, fontSize: '0.875rem', border: 'none', cursor: 'pointer' }}>
               Dashboard
             </button>
           </div>
@@ -510,37 +519,37 @@ setAppState('choix_zone')
     )
   }
 
-  // ── Header session en cours ───────────────────────────────────────────────
+  /* ── Header session en cours ───────────────────────────────────── */
   const sessionHeader = (
-    <div style={{ height: 52, background: '#fff', borderBottom: '1px solid #e8e7e0', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
+    <div style={{ height: 52, background: C.card, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
         {isHorsZone ? <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚶</span>
-          : session?.zones_prospection && <div style={{ width: 10, height: 10, borderRadius: '50%', background: session.zones_prospection.couleur ?? '#1D9E75', flexShrink: 0 }} />}
+          : session?.zones_prospection && <div style={{ width: 10, height: 10, borderRadius: '50%', background: session.zones_prospection.couleur ?? C.primary, flexShrink: 0 }} />}
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1a1a18', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.875rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {isHorsZone ? `Libre — ${session?.commune_nom ?? 'Hors zone'}` : (session?.zones_prospection?.nom ?? 'Session en cours')}
           </div>
-          <div style={{ fontSize: '0.7rem', color: '#9b9b96' }}>
+          <div style={{ fontSize: '0.7rem', color: C.muted }}>
             {isHorsZone ? 'Prospection libre hors zone' : `${nbVisites}/${nbTotal} · ${pctCouvert}% · ${aFaireCount} restantes`}
           </div>
         </div>
       </div>
       {!isHorsZone && (
         <>
-          <button onClick={allerAdresseSuivante} style={{ padding: '5px 10px', borderRadius: 7, background: '#f0fdf4', color: '#1D9E75', fontWeight: 600, fontSize: '0.78rem', border: '1px solid #bbf7d0', cursor: 'pointer', flexShrink: 0 }}>Suivante →</button>
-          <button onClick={ouvrirGoogleMaps}      style={{ padding: '5px 10px', borderRadius: 7, background: '#f8f7f4', color: '#374151', fontWeight: 600, fontSize: '0.78rem', border: '1px solid #e8e7e0', cursor: 'pointer', flexShrink: 0 }}>🗺</button>
+          <button onClick={allerAdresseSuivante} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(29,158,117,0.12)', color: C.success, fontWeight: 600, fontSize: '0.78rem', border: '1px solid rgba(29,158,117,0.25)', cursor: 'pointer', flexShrink: 0 }}>Suivante →</button>
+          <button onClick={ouvrirGoogleMaps}      style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 600, fontSize: '0.78rem', border: `1px solid ${C.border}`, cursor: 'pointer', flexShrink: 0 }}>🗺</button>
         </>
       )}
       <button onClick={handleEndSession} disabled={loading}
-        style={{ padding: '5px 10px', borderRadius: 7, background: loading ? '#e5e7eb' : '#ef4444', color: '#fff', fontWeight: 600, fontSize: '0.78rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
+        style={{ padding: '5px 10px', borderRadius: 7, background: loading ? C.dim : C.danger, color: '#fff', fontWeight: 600, fontSize: '0.78rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
         Terminer
       </button>
     </div>
   )
 
   const legendeMap = (
-    <div style={{ position: 'absolute', bottom: 16, left: 12, background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: '6px 10px', fontSize: '0.68rem', color: '#5F5E5A', border: '1px solid #e8e7e0', pointerEvents: 'none' }}>
-      {[{color:'#ef4444',label:'À faire'},{color:'#3b82f6',label:'Boîté'},{color:'#22c55e',label:'Contact'},{color:'#9b9b96',label:'Autre'},{color:'#1a1a18',label:'Supprimée'}].map(item => (
+    <div style={{ position: 'absolute', bottom: 16, left: 12, background: 'rgba(12,12,14,0.92)', borderRadius: 8, padding: '6px 10px', fontSize: '0.68rem', color: C.mid, border: `1px solid ${C.borderl}`, pointerEvents: 'none' }}>
+      {[{color:'#ef4444',label:'À faire'},{color:'#3b82f6',label:'Boîté'},{color:'#22c55e',label:'Contact'},{color:'#9b9b96',label:'Autre'},{color:'#4A4A58',label:'Supprimée'}].map(item => (
         <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} /><span>{item.label}</span>
         </div>
@@ -548,22 +557,22 @@ setAppState('choix_zone')
     </div>
   )
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── EN COURS DESKTOP
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── EN COURS DESKTOP
+   * ══════════════════════════════════════════════════════════════════ */
   if (isDesktop && appState === 'en_cours') {
     return (
-      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: C.bg }}>
         {sessionHeader}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          <div style={{ width: 360, display: 'flex', flexDirection: 'column', background: '#fff', borderRight: '1px solid #e8e7e0', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ width: 360, display: 'flex', flexDirection: 'column', background: C.card, borderRight: `1px solid ${C.border}`, overflow: 'hidden', flexShrink: 0 }}>
             {sheetOpen && selectedAdresse ? (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #F0EDE6', display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 }}>
-                  <button onClick={() => { setSheetOpen(false); setSelectedAdresse(null) }} style={{ background: 'none', border: 'none', fontSize: 18, color: '#9b9b96', cursor: 'pointer', padding: 0, marginTop: 2 }}>←</button>
+                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 }}>
+                  <button onClick={() => { setSheetOpen(false); setSelectedAdresse(null) }} style={{ background: 'none', border: 'none', fontSize: 18, color: C.mid, cursor: 'pointer', padding: 0, marginTop: 2 }}>←</button>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1a18' }}>{[selectedAdresse.numero, selectedAdresse.nom_voie].filter(Boolean).join(' ') || 'Adresse'}</div>
-                    <div style={{ fontSize: 12, color: '#9b9b96', marginTop: 2 }}>{selectedAdresse.code_postal} {selectedAdresse.commune}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{[selectedAdresse.numero, selectedAdresse.nom_voie].filter(Boolean).join(' ') || 'Adresse'}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{selectedAdresse.code_postal} {selectedAdresse.commune}</div>
                   </div>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -572,11 +581,11 @@ setAppState('choix_zone')
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <div style={{ padding: '10px 12px', borderBottom: '1px solid #F0EDE6', flexShrink: 0 }}>
+                <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {(['all','a_faire','contact','boite','supprimee'] as const).map(f => (
                       <button key={f} onClick={() => setAdresseFilter(f)}
-                        style={{ padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: adresseFilter===f ? '#1D9E75' : '#f3f4f6', color: adresseFilter===f ? '#fff' : '#6b7280', border: adresseFilter===f ? 'none' : '1px solid #e5e7eb' }}>
+                        style={{ padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: adresseFilter===f ? C.primary : 'rgba(255,255,255,0.06)', color: adresseFilter===f ? '#fff' : C.mid, border: adresseFilter===f ? 'none' : `1px solid ${C.border}` }}>
                         {f === 'all' ? `Toutes (${adresses.length})` : `${STATUT_LABEL[f]} (${adresses.filter(a=>a.statut_carte===f).length})`}
                       </button>
                     ))}
@@ -584,29 +593,29 @@ setAppState('choix_zone')
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                   {isHorsZone && adresses.length === 0 ? (
-                    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:32, textAlign:'center', color:'#9b9b96' }}>
+                    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:32, textAlign:'center', color: C.muted }}>
                       <div style={{ fontSize:'3rem', marginBottom:12 }}>🚶</div>
-                      <div style={{ fontWeight:600, fontSize:'0.9rem', color:'#1a1a18', marginBottom:6 }}>Mode libre</div>
+                      <div style={{ fontWeight:600, fontSize:'0.9rem', color: C.text, marginBottom:6 }}>Mode libre</div>
                       <div style={{ fontSize:'0.82rem', lineHeight:1.6 }}>Prospection sans itinéraire pré-défini.<br/>Les adresses de la commune sont chargées sur la carte.</div>
                     </div>
                   ) : adressesFiltrees.map(a => {
                     const isProchaine = a.id === prochaineAdresseId
                     return (
                       <div key={a.id} onClick={() => handleAdresseClick(a)}
-                        style={{ padding: '10px 14px', borderBottom: '1px solid #F0EDE6', cursor: 'pointer', background: isProchaine ? '#f0fdf4' : 'white', borderLeft: `3px solid ${isProchaine ? '#1D9E75' : STATUT_COLOR[a.statut_carte] ?? '#e5e7eb'}` }}>
+                        style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: isProchaine ? 'rgba(29,158,117,0.08)' : 'transparent', borderLeft: `3px solid ${isProchaine ? C.primary : STATUT_COLOR[a.statut_carte] ?? C.border}` }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUT_COLOR[a.statut_carte], flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, color: '#1a1a18', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {[a.numero, a.nom_voie].filter(Boolean).join(' ')}
                             </div>
-                            <div style={{ fontSize: 11, color: '#9b9b96', display: 'flex', gap: 6, marginTop: 2 }}>
+                            <div style={{ fontSize: 11, color: C.muted, display: 'flex', gap: 6, marginTop: 2 }}>
                               <span>{STATUT_LABEL[a.statut_carte]}</span>
                               {a.type_habitat && <span>· {a.type_habitat === 'individuel' ? '🏠' : a.type_habitat === 'collectif' ? '🏢' : '🏪'}</span>}
-                              {isProchaine && <span style={{ color: '#1D9E75', fontWeight: 700 }}>← Suivante</span>}
+                              {isProchaine && <span style={{ color: C.success, fontWeight: 700 }}>← Suivante</span>}
                             </div>
                           </div>
-                          <span style={{ fontSize: 12, color: '#9b9b96' }}>›</span>
+                          <span style={{ fontSize: 12, color: C.muted }}>›</span>
                         </div>
                       </div>
                     )
@@ -624,17 +633,17 @@ setAppState('choix_zone')
     )
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── EN COURS MOBILE
-  // ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════
+   * ── EN COURS MOBILE
+   * ══════════════════════════════════════════════════════════════════ */
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#1a1a18' }}>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: C.bg }}>
       {sessionHeader}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <TerrainMap adresses={adresses} zonePolygon={null} prochaineAdresseId={prochaineAdresseId} onAdresseClick={handleAdresseClick} />
         {!sheetOpen && legendeMap}
         {isHorsZone && !sheetOpen && (
-          <div style={{ position: 'absolute', bottom: 16, right: 12, background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: '8px 12px', fontSize: '0.75rem', color: '#374151', border: '1px solid #e8e7e0', fontWeight: 600 }}>
+          <div style={{ position: 'absolute', bottom: 16, right: 12, background: 'rgba(12,12,14,0.92)', borderRadius: 8, padding: '8px 12px', fontSize: '0.75rem', color: C.text, border: `1px solid ${C.borderl}`, fontWeight: 600 }}>
             🚶 {session?.commune_nom}
           </div>
         )}
