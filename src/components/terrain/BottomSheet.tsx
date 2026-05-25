@@ -112,17 +112,18 @@ const intRes = await fetch('/api/interactions', {
       const cRes = await fetch('/api/contacts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          adresse_id:   adresse.id,
-          nom:          contact.nom         || null,
-          prenom:       contact.prenom      || null,
-          tel1:         contact.tel1        || null,
-          email1:       contact.email1      || null,
-          date_relance: contact.date_relance || null,
-          note:         note                || null,
-          type_contact: typeProjet.includes('vente')       ? 'interet_vente'
-                      : typeProjet.includes('location')    ? 'projet_moyen'
-                      : typeProjet.includes('reflexion')   ? 'projet_long'
-                      : null,
+          adresse_id:      adresse.id,
+          interaction_id:  interactionId,
+          nom:             contact.nom          || null,
+          prenom:          contact.prenom       || null,
+          tel1:            contact.tel1         || null,
+          email1:          contact.email1       || null,
+          date_relance:    contact.date_relance || null,
+          notes:           note                 || null,
+          type_contact:    typeProjet.includes('vente')     ? 'interet_vente'
+                         : typeProjet.includes('location')  ? 'projet_moyen'
+                         : typeProjet.includes('reflexion') ? 'projet_long'
+                         : null,
           statut_pipeline: 'prospect',
         }),
       })

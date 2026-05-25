@@ -37,6 +37,12 @@ const STATUT: Record<string,{label:string;color:string;bg:string}> = {
   perdu:         { label:'Perdu',      color:'#F87171', bg:'rgba(239,68,68,0.12)'   },
 }
 
+const EMPTY_FORM = {
+  prenom: '', nom: '', tel1: '', email1: '',
+  type_contact: '', statut_pipeline: 'prospect',
+  date_relance: '', notes: '', horizon_vente: '',
+}
+
 function addr(a: any) {
   return a ? [a.numero, a.nom_voie, a.code_postal, a.commune].filter(Boolean).join(' ') : ''
 }
@@ -112,12 +118,18 @@ export default function ContactsPage() {
   })
   const [typeFiltre,  setTypeFiltre] = useState('')
   const [recherche,   setRecherche]  = useState('')
-  const [form,        setForm]       = useState<any>({})
+  const [form,        setForm]       = useState<any>({...EMPTY_FORM})
   const [saving,      setSaving]     = useState(false)
   const [saveOk,      setSaveOk]     = useState(false)
   const [saveErr,     setSaveErr]    = useState('')
   const [isMobile,    setIsMobile]   = useState(false)
-  const [mobileView,  setMobileView] = useState<'list'|'detail'>('list')
+  const [mobileView,  setMobileView] = useState<'list'|'detail'|'create'>('list')
+
+  // ── Création manuelle ──────────────────────────────────────────────
+  const [createMode,   setCreateMode]   = useState(false)
+  const [createForm,   setCreateForm]   = useState<any>({...EMPTY_FORM})
+  const [creating,     setCreating]     = useState(false)
+  const [createErr,    setCreateErr]    = useState('')
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -140,6 +152,7 @@ export default function ContactsPage() {
 
   const selectContact = (c: any) => {
     setSelected(c)
+    setCreateMode(false)
     setForm({
       prenom:          c.prenom          ?? '',
       nom:             c.nom             ?? '',
@@ -153,6 +166,14 @@ export default function ContactsPage() {
     })
     setSaveOk(false); setSaveErr('')
     if (isMobile) setMobileView('detail')
+  }
+
+  const openCreate = () => {
+    setSelected(null)
+    setCreateForm({...EMPTY_FORM})
+    setCreateErr('')
+    setCreateMode(true)
+    if (isMobile) setMobileView('create')
   }
 
   const isRelance = (c: any) => c.date_relance && c.date_relance <= new Date().toISOString().split('T')[0]
@@ -205,6 +226,58 @@ export default function ContactsPage() {
     }
   }
 
+  const create = async () => {
+    if (!createForm.nom && !createForm.prenom) {
+      setCreateErr('Saisissez au moins un nom ou prénom')
+      return
+    }
+    setCreating(true); setCreateErr('')
+    try {
+      const r = await fetch('/api/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nom:             createForm.nom          || null,
+          prenom:          createForm.prenom       || null,
+          tel1:            createForm.tel1         || null,
+          email1:          createForm.email1       || null,
+          type_contact:    createForm.type_contact || null,
+          statut_pipeline: createForm.statut_pipeline || 'prospect',
+          date_relance:    createForm.date_relance || null,
+          notes:           createForm.notes        || null,
+          horizon_vente:   createForm.horizon_vente || null,
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok || d.error) {
+        setCreateErr(d.error ?? 'Erreur lors de la création')
+      } else {
+        // Recharger la liste et sélectionner le nouveau contact
+        await loadContacts()
+        setCreateMode(false)
+        if (d.contact) {
+          setSelected(d.contact)
+          setForm({
+            prenom:          d.contact.prenom          ?? '',
+            nom:             d.contact.nom             ?? '',
+            tel1:            d.contact.tel1            ?? '',
+            email1:          d.contact.email1          ?? '',
+            type_contact:    d.contact.type_contact    ?? '',
+            statut_pipeline: d.contact.statut_pipeline ?? 'prospect',
+            date_relance:    d.contact.date_relance    ?? '',
+            notes:           d.contact.notes           ?? '',
+            horizon_vente:   d.contact.horizon_vente   ?? '',
+          })
+          if (isMobile) setMobileView('detail')
+        }
+      }
+    } catch(e) {
+      setCreateErr('Erreur réseau')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const del = async () => {
     if (!selected || !confirm('Supprimer ce contact ?')) return
     await fetch('/api/contacts/' + selected.id, { method: 'DELETE' })
@@ -227,6 +300,10 @@ export default function ContactsPage() {
               </span>
             )}
             <span style={{ fontSize:12, color: C.muted }}>{contacts.length}</span>
+            <button onClick={openCreate}
+              style={{ padding:'5px 12px', borderRadius:8, border:'none', background: C.primary, color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              + Nouveau
+            </button>
           </div>
         </div>
         <input placeholder="Rechercher…" value={recherche} onChange={e => setRecherche(e.target.value)}
@@ -253,12 +330,16 @@ export default function ContactsPage() {
         ) : contacts.length === 0 ? (
           <div style={{ padding:40, textAlign:'center', color: C.muted }}>
             <div style={{ fontSize:32, marginBottom:8 }}>👤</div>
-            <div>Aucun contact</div>
+            <div style={{ marginBottom:16 }}>Aucun contact</div>
+            <button onClick={openCreate}
+              style={{ padding:'9px 20px', borderRadius:9, border:'none', background: C.primary, color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+              + Créer le premier contact
+            </button>
           </div>
         ) : contacts.map(c => {
           const r = isRelance(c)
           const s = st(c.statut_pipeline)
-          const isSelected = selected?.id === c.id
+          const isSelected = selected?.id === c.id && !createMode
           return (
             <div key={c.id} onClick={() => selectContact(c)}
               style={{ padding:'12px 16px', cursor:'pointer', borderBottom:`1px solid ${C.border}`, background: isSelected ? 'rgba(29,158,117,0.06)' : r ? 'rgba(249,115,22,0.04)' : 'transparent', borderLeft: isSelected ? `3px solid ${C.primary}` : r ? '3px solid #F97316' : '3px solid transparent' }}>
@@ -276,6 +357,96 @@ export default function ContactsPage() {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+
+  /* ── Formulaire partagé (détail + création) ──────────────────────── */
+  function FormFields({ f, setF, inp }: { f: any; setF: (v: any) => void; inp: React.CSSProperties }) {
+    return (
+      <>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+          <div>
+            <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>PRÉNOM</div>
+            <input style={inp} value={f.prenom} onChange={e => setF((p:any) => ({ ...p, prenom: e.target.value }))} />
+          </div>
+          <div>
+            <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>NOM</div>
+            <input style={inp} value={f.nom} onChange={e => setF((p:any) => ({ ...p, nom: e.target.value }))} />
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>TÉLÉPHONE</div>
+          <input style={inp} type="tel" value={f.tel1} onChange={e => setF((p:any) => ({ ...p, tel1: e.target.value }))} />
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>EMAIL</div>
+          <input style={inp} type="email" value={f.email1} onChange={e => setF((p:any) => ({ ...p, email1: e.target.value }))} />
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>TYPE DE CONTACT</div>
+          <select style={inp} value={f.type_contact} onChange={e => setF((p:any) => ({ ...p, type_contact: e.target.value }))}>
+            <option value="">— Non renseigné</option>
+            {Object.entries(TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>STATUT PIPELINE</div>
+          <select style={inp} value={f.statut_pipeline} onChange={e => setF((p:any) => ({ ...p, statut_pipeline: e.target.value }))}>
+            {Object.entries(STATUT).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>HORIZON DE VENTE</div>
+          <select style={inp} value={f.horizon_vente} onChange={e => setF((p:any) => ({ ...p, horizon_vente: e.target.value }))}>
+            <option value="">— Non renseigné</option>
+            <option value="moins_6_mois">Moins de 6 mois</option>
+            <option value="6_12_mois">6 à 12 mois</option>
+            <option value="1_2_ans">1 à 2 ans</option>
+            <option value="plus_2_ans">Plus de 2 ans</option>
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>DATE DE RELANCE</div>
+          <input style={inp} type="date" value={f.date_relance} onChange={e => setF((p:any) => ({ ...p, date_relance: e.target.value }))} />
+        </div>
+        <div>
+          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>NOTES</div>
+          <textarea style={{ ...inp, minHeight:90, resize:'vertical', fontFamily:'inherit' } as React.CSSProperties}
+            value={f.notes} onChange={e => setF((p:any) => ({ ...p, notes: e.target.value }))} />
+          <div style={{ fontSize:11, color: C.dim, marginTop:4 }}>Note limitée au projet immobilier (RGPD)</div>
+        </div>
+      </>
+    )
+  }
+
+  /* ── Panel création ──────────────────────────────────────────────── */
+  const createPanel = (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background: C.card }}>
+      <div style={{ padding:'14px 16px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+        <button onClick={() => { setCreateMode(false); if(isMobile) setMobileView('list') }}
+          style={{ background:'none', border:'none', cursor:'pointer', fontSize:20, color: C.mid, padding:0, flexShrink:0 }}>←</button>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700, fontSize:15, color: C.text }}>Nouveau contact</div>
+          <div style={{ fontSize:11, color: C.muted }}>Saisie manuelle — hors session de prospection</div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:12 }}>
+        <FormFields f={createForm} setF={setCreateForm} inp={inp} />
+      </div>
+
+      {createErr && (
+        <div style={{ padding:'8px 16px', background:'rgba(239,68,68,0.12)', color:'#F87171', fontSize:12, fontWeight:600, flexShrink:0 }}>
+          ⚠️ {createErr}
+        </div>
+      )}
+
+      <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
+        <button onClick={create} disabled={creating}
+          style={{ width:'100%', padding:'11px', borderRadius:9, fontWeight:700, fontSize:14, border:'none', cursor:creating?'not-allowed':'pointer', background: creating ? C.dim : C.primary, color:'#fff' }}>
+          {creating ? 'Enregistrement…' : 'Créer le contact'}
+        </button>
       </div>
     </div>
   )
@@ -309,66 +480,7 @@ export default function ContactsPage() {
           ✉️ Envoyer par mail
         </a>
 
-        {/* Identité */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-          <div>
-            <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>PRÉNOM</div>
-            <input style={inp} value={form.prenom} onChange={e => setForm((f:any) => ({ ...f, prenom: e.target.value }))} />
-          </div>
-          <div>
-            <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>NOM</div>
-            <input style={inp} value={form.nom} onChange={e => setForm((f:any) => ({ ...f, nom: e.target.value }))} />
-          </div>
-        </div>
-
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>TÉLÉPHONE</div>
-          <input style={inp} type="tel" value={form.tel1} onChange={e => setForm((f:any) => ({ ...f, tel1: e.target.value }))} />
-        </div>
-
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>EMAIL</div>
-          <input style={inp} type="email" value={form.email1} onChange={e => setForm((f:any) => ({ ...f, email1: e.target.value }))} />
-        </div>
-
-        {/* Qualification */}
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>TYPE DE CONTACT</div>
-          <select style={inp} value={form.type_contact} onChange={e => setForm((f:any) => ({ ...f, type_contact: e.target.value }))}>
-            <option value="">— Non renseigné</option>
-            {Object.entries(TYPE_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>STATUT PIPELINE</div>
-          <select style={inp} value={form.statut_pipeline} onChange={e => setForm((f:any) => ({ ...f, statut_pipeline: e.target.value }))}>
-            {Object.entries(STATUT).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>HORIZON DE VENTE</div>
-          <select style={inp} value={form.horizon_vente} onChange={e => setForm((f:any) => ({ ...f, horizon_vente: e.target.value }))}>
-            <option value="">— Non renseigné</option>
-            <option value="moins_6_mois">Moins de 6 mois</option>
-            <option value="6_12_mois">6 à 12 mois</option>
-            <option value="1_2_ans">1 à 2 ans</option>
-            <option value="plus_2_ans">Plus de 2 ans</option>
-          </select>
-        </div>
-
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>DATE DE RELANCE</div>
-          <input style={inp} type="date" value={form.date_relance} onChange={e => setForm((f:any) => ({ ...f, date_relance: e.target.value }))} />
-        </div>
-
-        <div>
-          <div style={{ fontSize:11, color: C.muted, fontWeight:600, marginBottom:4 }}>NOTES</div>
-          <textarea style={{ ...inp, minHeight:90, resize:'vertical', fontFamily:'inherit' } as React.CSSProperties}
-            value={form.notes} onChange={e => setForm((f:any) => ({ ...f, notes: e.target.value }))} />
-          <div style={{ fontSize:11, color: C.dim, marginTop:4 }}>Note limitée au projet immobilier (RGPD)</div>
-        </div>
+        <FormFields f={form} setF={setForm} inp={inp} />
 
         {/* Calendrier si relance */}
         {form.date_relance && (
@@ -403,22 +515,26 @@ export default function ContactsPage() {
   if (isMobile) {
     return (
       <div style={{ height:'100dvh', overflow:'hidden', background: C.bg }}>
-        {mobileView === 'list' || !selected
-          ? <div style={{ height:'100%' }}>{listPanel}</div>
-          : <div style={{ height:'100%' }}>{detailPanel}</div>
+        {mobileView === 'list'   ? <div style={{ height:'100%' }}>{listPanel}</div>
+        : mobileView === 'create' ? <div style={{ height:'100%' }}>{createPanel}</div>
+        : selected               ? <div style={{ height:'100%' }}>{detailPanel}</div>
+        : <div style={{ height:'100%' }}>{listPanel}</div>
         }
       </div>
     )
   }
 
+  // Détermine ce qui s'affiche dans le panel droit
+  const rightPanel = createMode ? createPanel : selected ? detailPanel : null
+
   return (
     <div style={{ display:'flex', height:'100dvh', overflow:'hidden', background: C.bg }}>
-      <div style={{ width:selected?380:520, maxWidth:selected?380:680, flexShrink:0, borderRight:`1px solid ${C.border}`, height:'100%' }}>
+      <div style={{ width: rightPanel ? 380 : 520, maxWidth: rightPanel ? 380 : 680, flexShrink:0, borderRight:`1px solid ${C.border}`, height:'100%' }}>
         {listPanel}
       </div>
-      {selected && (
+      {rightPanel && (
         <div style={{ flex:1, height:'100%', overflow:'hidden' }}>
-          {detailPanel}
+          {rightPanel}
         </div>
       )}
     </div>
