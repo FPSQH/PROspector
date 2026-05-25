@@ -6,6 +6,21 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { generateLetterHTML, generateLetterText } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const C = {
+  bg:      '#0C0C0E',
+  card:    '#141416',
+  border:  'rgba(255,255,255,0.06)',
+  borderl: 'rgba(255,255,255,0.10)',
+  text:    '#F0F0F2',
+  mid:     '#9A9AA8',
+  muted:   '#6B6B7B',
+  dim:     '#4A4A58',
+  primary: '#1D9E75',
+  success: '#22C55E',
+  danger:  '#EF4444',
+}
+
 // ── Couleurs DPE ──────────────────────────────────────────────────────────────
 const DPE_COLORS: Record<string, string> = {
   A: '#319834', B: '#51A351', C: '#B0CC30', D: '#F0D30A',
@@ -30,7 +45,6 @@ export default function CourriersPage() {
   const markers   = useRef<maplibregl.Marker[]>([])
   const [mapReady, setMapReady] = useState(false)
 
-  // Détection mobile
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
@@ -105,7 +119,6 @@ export default function CourriersPage() {
       if (!a.lat || !a.lon) continue
       const dpe = (a.dpe_etiquette ?? '?').toUpperCase()
       const color = DPE_COLORS[dpe] ?? '#999'
-      // Pin SVG coloré par étiquette DPE
       const el = document.createElement('div')
       el.innerHTML = `<svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
         <path d="M14 0C6.27 0 0 6.27 0 14c0 9.33 14 22 14 22S28 23.33 28 14C28 6.27 21.73 0 14 0z" fill="${color}" stroke="white" stroke-width="1.5"/>
@@ -156,7 +169,7 @@ export default function CourriersPage() {
     if (!toGen.length) return
     setGenerating(true)
     try {
-      const letters = toGen.map(a => ({ ...a })) // Objet complet pour buildLetter
+      const letters = toGen.map(a => ({ ...a }))
       const r = await fetch('/api/courriers/docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,18 +189,34 @@ export default function CourriersPage() {
   const villes = [...new Set(adresses.map(a => a.nom_commune).filter(Boolean))] as string[]
   const types   = [...new Set(adresses.map(a => a.type_bien).filter(Boolean))] as string[]
 
-  // ── Rendu ─────────────────────────────────────────────────────────────────────
-  // ── Barre de navigation mobile ──────────────────────────────────────────
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '5px 8px',
+    border: `1px solid ${C.borderl}`, borderRadius: 6,
+    fontSize: '0.8rem', boxSizing: 'border-box',
+    background: 'rgba(255,255,255,0.05)', color: C.text, outline: 'none',
+  }
+  const selectStyle: React.CSSProperties = {
+    flex: 1, padding: '5px 6px', fontSize: '0.72rem',
+    border: `1px solid ${C.borderl}`, borderRadius: 6,
+    background: 'rgba(255,255,255,0.05)', color: C.text, outline: 'none',
+  }
+
+  // ── Barre de navigation mobile ────────────────────────────────────────────────
   const mobileNavBar = isMobile ? (
-    <div style={{ display:'flex', background:'#fff', borderTop:'1px solid #E8E6DF', flexShrink:0 }}>
+    <div style={{ display:'flex', background: C.card, borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
       {[
-        { key:'list',   label:'📋 Liste',  },
-        { key:'map',    label:'🗺 Carte',  },
+        { key:'list',   label:'📋 Liste' },
+        { key:'map',    label:'🗺 Carte' },
         { key:'detail', label:'📄 Détail', disabled: !selected },
       ].map(tab => (
-        <button key={tab.key} onClick={() => { if(!tab.disabled) setMobileView(tab.key as any) }}
-          disabled={tab.disabled}
-          style={{ flex:1, padding:'10px 4px', border:'none', background:'transparent', fontSize:12, fontWeight:600, cursor:tab.disabled?'not-allowed':'pointer', color:mobileView===tab.key?'#1D9E75':tab.disabled?'#ccc':'#6b7280', borderTop:mobileView===tab.key?'2px solid #1D9E75':'2px solid transparent' }}>
+        <button key={tab.key} onClick={() => { if(!(tab as any).disabled) setMobileView(tab.key as any) }}
+          disabled={(tab as any).disabled}
+          style={{
+            flex:1, padding:'10px 4px', border:'none', background:'transparent',
+            fontSize:12, fontWeight:600, cursor:(tab as any).disabled?'not-allowed':'pointer',
+            color: mobileView===tab.key ? C.primary : (tab as any).disabled ? C.dim : C.muted,
+            borderTop: mobileView===tab.key ? `2px solid ${C.primary}` : '2px solid transparent',
+          }}>
           {tab.label}
         </button>
       ))}
@@ -195,32 +224,38 @@ export default function CourriersPage() {
   ) : null
 
   return (
-    <div style={{ display:'flex', flexDirection: isMobile ? 'column' : 'row', height:'100dvh', overflow:'hidden', background:'#f8f7f4' }}>
+    <div style={{ display:'flex', flexDirection: isMobile ? 'column' : 'row', height:'100dvh', overflow:'hidden', background: C.bg }}>
 
       {/* ── Panel gauche ───────────────────────────────────────────────── */}
-      <div style={{ width: isMobile ? '100%' : 340, flexShrink:0, display: isMobile && mobileView !== 'list' ? 'none' : 'flex', flexDirection:'column', borderRight:'1px solid #E8E6DF', background:'#fff', height: isMobile ? 'calc(100dvh - 44px)' : '100%', overflow:'hidden' }}>
+      <div style={{
+        width: isMobile ? '100%' : 340, flexShrink:0,
+        display: isMobile && mobileView !== 'list' ? 'none' : 'flex',
+        flexDirection:'column',
+        borderRight:`1px solid ${C.border}`,
+        background: C.card,
+        height: isMobile ? 'calc(100dvh - 44px)' : '100%',
+        overflow:'hidden',
+      }}>
 
         {/* Header */}
-        <div style={{ padding:'16px 16px 0', borderBottom:'1px solid #E8E6DF', paddingBottom:12 }}>
+        <div style={{ padding:'16px 16px 12px', borderBottom:`1px solid ${C.border}` }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
             <span style={{ fontSize:'1.2rem' }}>✉️</span>
             <div>
-              <div style={{ fontWeight:700, fontSize:'0.9375rem', color:'#1a1a18' }}>Courriers DPE</div>
-              <div style={{ fontSize:'0.72rem', color:'#9b9b96' }}>{filtered.length} DPE sur {adresses.length} total</div>
+              <div style={{ fontWeight:700, fontSize:'0.9375rem', color: C.text }}>Courriers DPE</div>
+              <div style={{ fontSize:'0.72rem', color: C.muted }}>{filtered.length} DPE sur {adresses.length} total</div>
             </div>
           </div>
 
           {/* Dates */}
           <div style={{ display:'flex', gap:6, marginBottom:8 }}>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:'0.7rem', color:'#9b9b96', marginBottom:2 }}>Du</div>
-              <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)}
-                style={{ width:'100%', padding:'5px 8px', border:'1px solid #E8E6DF', borderRadius:6, fontSize:'0.8rem', boxSizing:'border-box' }} />
+              <div style={{ fontSize:'0.7rem', color: C.muted, marginBottom:2 }}>Du</div>
+              <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} style={inputStyle} />
             </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:'0.7rem', color:'#9b9b96', marginBottom:2 }}>Au</div>
-              <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)}
-                style={{ width:'100%', padding:'5px 8px', border:'1px solid #E8E6DF', borderRadius:6, fontSize:'0.8rem', boxSizing:'border-box' }} />
+              <div style={{ fontSize:'0.7rem', color: C.muted, marginBottom:2 }}>Au</div>
+              <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} style={inputStyle} />
             </div>
           </div>
 
@@ -228,19 +263,19 @@ export default function CourriersPage() {
           <div style={{ display:'flex', gap:4, marginBottom:10 }}>
             {[['1 mois', 30], ['3 mois', 90], ['6 mois', 180]].map(([label, days]) => (
               <button key={label as string} onClick={() => { setDateDebut(daysAgo(days as number)); setDateFin(today()) }}
-                style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:'1px solid #E8E6DF', borderRadius:6, background:'#F8F7F4', cursor:'pointer', color:'#5F5E5A' }}>
+                style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:`1px solid ${C.borderl}`, borderRadius:6, background:'rgba(255,255,255,0.06)', cursor:'pointer', color: C.mid }}>
                 {label}
               </button>
             ))}
             <button onClick={load} disabled={loading}
-              style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:'none', borderRadius:6, background:'#1D9E75', cursor:'pointer', color:'#fff' }}>
+              style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:'none', borderRadius:6, background: loading ? C.dim : C.primary, cursor: loading ? 'not-allowed' : 'pointer', color:'#fff' }}>
               {loading ? '...' : 'Chercher'}
             </button>
           </div>
 
           {/* Stats */}
           {stats && (
-            <div style={{ background:'#F8F7F4', borderRadius:8, padding:'8px 10px', marginBottom:10 }}>
+            <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'8px 10px', marginBottom:10, border:`1px solid ${C.border}` }}>
               <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:6 }}>
                 {DPE_ORDER.map(l => stats.byLettre[l] > 0 && (
                   <span key={l} style={{ background:DPE_COLORS[l], color:'#fff', borderRadius:4, padding:'2px 6px', fontSize:'0.7rem', fontWeight:700 }}>
@@ -248,9 +283,9 @@ export default function CourriersPage() {
                   </span>
                 ))}
               </div>
-              <div style={{ display:'flex', gap:8, fontSize:'0.7rem', color:'#5F5E5A', flexWrap:'wrap' }}>
+              <div style={{ display:'flex', gap:8, fontSize:'0.7rem', color: C.muted, flexWrap:'wrap' }}>
                 <span>🔍 {stats.nbAudit} audits</span>
-                {stats.nbSansAudit > 0 && <span style={{ color:'#E24B4A' }}>⚠️ {stats.nbSansAudit} sans audit E/F/G</span>}
+                {stats.nbSansAudit > 0 && <span style={{ color:'#FCA5A5' }}>⚠️ {stats.nbSansAudit} sans audit E/F/G</span>}
                 {stats.nbHorsZone > 0 && <span>📍 {stats.nbHorsZone} hors zone</span>}
               </div>
             </div>
@@ -258,18 +293,15 @@ export default function CourriersPage() {
 
           {/* Filtres */}
           <div style={{ display:'flex', gap:4, marginBottom:6 }}>
-            <select value={filterVille} onChange={e => setFilterVille(e.target.value)}
-              style={{ flex:1, padding:'5px 6px', fontSize:'0.72rem', border:'1px solid #E8E6DF', borderRadius:6, background:'#fff' }}>
+            <select value={filterVille} onChange={e => setFilterVille(e.target.value)} style={selectStyle}>
               <option value="">Toutes villes</option>
               {villes.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
-            <select value={filterType} onChange={e => setFilterType(e.target.value)}
-              style={{ flex:1, padding:'5px 6px', fontSize:'0.72rem', border:'1px solid #E8E6DF', borderRadius:6, background:'#fff' }}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={selectStyle}>
               <option value="">Tous types</option>
               {types.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-            <select value={sortField} onChange={e => setSortField(e.target.value as SortField)}
-              style={{ flex:1, padding:'5px 6px', fontSize:'0.72rem', border:'1px solid #E8E6DF', borderRadius:6, background:'#fff' }}>
+            <select value={sortField} onChange={e => setSortField(e.target.value as SortField)} style={selectStyle}>
               <option value="date">↓ Date</option>
               <option value="ville">A-Z Ville</option>
               <option value="type">A-Z Type</option>
@@ -277,13 +309,13 @@ export default function CourriersPage() {
           </div>
 
           {/* Actions */}
-          <div style={{ display:'flex', gap:4, paddingBottom:10 }}>
+          <div style={{ display:'flex', gap:4, paddingBottom:2 }}>
             <button onClick={toggleAll}
-              style={{ flex:1, padding:'6px 0', fontSize:'0.72rem', fontWeight:600, border:'1px solid #E8E6DF', borderRadius:6, background:'#fff', cursor:'pointer', color:'#5F5E5A' }}>
+              style={{ flex:1, padding:'6px 0', fontSize:'0.72rem', fontWeight:600, border:`1px solid ${C.borderl}`, borderRadius:6, background:'rgba(255,255,255,0.06)', cursor:'pointer', color: C.mid }}>
               {checked.size === filtered.length && filtered.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
             <button onClick={() => generateDocx()} disabled={generating || filtered.length === 0}
-              style={{ flex:1, padding:'6px 0', fontSize:'0.72rem', fontWeight:600, border:'none', borderRadius:6, background: generating ? '#B4B2A9' : '#1D9E75', cursor:'pointer', color:'#fff' }}>
+              style={{ flex:1, padding:'6px 0', fontSize:'0.72rem', fontWeight:600, border:'none', borderRadius:6, background: generating ? C.dim : C.primary, cursor: generating || filtered.length === 0 ? 'not-allowed' : 'pointer', color:'#fff' }}>
               {generating ? 'Génération...' : checked.size > 0 ? `DOCX (${checked.size})` : `DOCX (tous)`}
             </button>
           </div>
@@ -291,15 +323,15 @@ export default function CourriersPage() {
 
         {/* Liste DPE */}
         <div style={{ flex:1, overflowY:'auto' }}>
-          {loading && <div style={{ padding:20, textAlign:'center', color:'#9b9b96', fontSize:'0.85rem' }}>Chargement...</div>}
+          {loading && <div style={{ padding:20, textAlign:'center', color: C.muted, fontSize:'0.85rem' }}>Chargement...</div>}
           {!loading && filtered.length === 0 && adresses.length === 0 && (
-            <div style={{ padding:20, textAlign:'center', color:'#9b9b96', fontSize:'0.85rem' }}>
+            <div style={{ padding:20, textAlign:'center', color: C.muted, fontSize:'0.85rem' }}>
               <div>Aucun DPE sur cette période.</div>
-              <div style={{ marginTop:8, fontSize:'0.75rem' }}>Essayez d&apos;élargir la période ou cliquez sur <strong>6 mois</strong>.</div>
+              <div style={{ marginTop:8, fontSize:'0.75rem' }}>Essayez d&apos;élargir la période ou cliquez sur <strong style={{ color: C.mid }}>6 mois</strong>.</div>
             </div>
           )}
           {!loading && filtered.length === 0 && adresses.length > 0 && (
-            <div style={{ padding:20, textAlign:'center', color:'#9b9b96', fontSize:'0.85rem' }}>Aucun résultat avec ces filtres</div>
+            <div style={{ padding:20, textAlign:'center', color: C.muted, fontSize:'0.85rem' }}>Aucun résultat avec ces filtres</div>
           )}
           {filtered.map(a => {
             const dpe = (a.dpe_etiquette ?? '?').toUpperCase()
@@ -308,36 +340,42 @@ export default function CourriersPage() {
             return (
               <div key={a.id} style={{
                 display:'flex', alignItems:'flex-start', gap:8, padding:'10px 12px',
-                borderBottom:'1px solid #F2F1EE', cursor:'pointer',
-                background: isSelected ? '#F0FDF4' : 'transparent',
+                borderBottom:`1px solid ${C.border}`, cursor:'pointer',
+                background: isSelected ? 'rgba(29,158,117,0.10)' : 'transparent',
               }}>
                 <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(a.id)}
                   onClick={e => e.stopPropagation()}
-                  style={{ marginTop:4, flexShrink:0 }} />
+                  style={{ marginTop:4, flexShrink:0, accentColor: C.primary }} />
                 <div style={{ flex:1, minWidth:0 }} onClick={() => {
-                setSelected(a); if(isMobile) setMobileView('detail')
-                const map = mapInst.current
-                if (map && a.lat && a.lon) {
-                  map.flyTo({ center: [a.lon, a.lat], zoom: 16, duration: 600 })
-                }
-              }}>
+                  setSelected(a); if(isMobile) setMobileView('detail')
+                  const map = mapInst.current
+                  if (map && a.lat && a.lon) map.flyTo({ center: [a.lon, a.lat], zoom: 16, duration: 600 })
+                }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4, flexWrap:'wrap' }}>
                     <span style={{ background:DPE_COLORS[dpe]??'#999', color:'#fff', borderRadius:3, padding:'1px 6px', fontSize:'0.7rem', fontWeight:700 }}>{dpe}</span>
-                    <span style={{ fontSize:'0.7rem', color:'#9b9b96' }}>{a.type_bien ?? 'inconnu'}</span>
-                    {(a as any).has_audit && <span style={{ fontSize:'0.65rem', background:'#E8F7F2', color:'#0F6E56', borderRadius:8, padding:'1px 5px' }}>Audit ✓</span>}
-                    {(a as any).needs_audit && <span style={{ fontSize:'0.65rem', background:'#FEF2F2', color:'#B91C1C', borderRadius:8, padding:'1px 5px' }}>Sans audit</span>}
-                    {(a as any).hors_zone && <span style={{ fontSize:'0.65rem', background:'#F3F4F6', color:'#6B7280', borderRadius:8, padding:'1px 5px' }}>Hors zone</span>}
-                    {(a as any).zone_nom && <span style={{ fontSize:'0.65rem', background:'#EEF2FF', color:'#4338CA', borderRadius:8, padding:'1px 5px' }}>{(a as any).zone_nom}</span>}
+                    <span style={{ fontSize:'0.7rem', color: C.muted }}>{a.type_bien ?? 'inconnu'}</span>
+                    {(a as any).has_audit && (
+                      <span style={{ fontSize:'0.65rem', background:'rgba(34,197,94,0.1)', color:'#4ADE80', borderRadius:8, padding:'1px 5px' }}>Audit ✓</span>
+                    )}
+                    {(a as any).needs_audit && (
+                      <span style={{ fontSize:'0.65rem', background:'rgba(239,68,68,0.1)', color:'#FCA5A5', borderRadius:8, padding:'1px 5px' }}>Sans audit</span>
+                    )}
+                    {(a as any).hors_zone && (
+                      <span style={{ fontSize:'0.65rem', background:'rgba(255,255,255,0.06)', color: C.muted, borderRadius:8, padding:'1px 5px' }}>Hors zone</span>
+                    )}
+                    {(a as any).zone_nom && (
+                      <span style={{ fontSize:'0.65rem', background:'rgba(59,130,246,0.12)', color:'#93C5FD', borderRadius:8, padding:'1px 5px' }}>{(a as any).zone_nom}</span>
+                    )}
                     {(a as any).deja_contacte && (
-                      <span style={{ fontSize:'0.65rem', background:(a as any).deja_contacte.avant_dpe ? '#FEF9C3' : '#DCFCE7', color:(a as any).deja_contacte.avant_dpe ? '#92400E' : '#14532D', borderRadius:8, padding:'1px 5px' }}>
+                      <span style={{ fontSize:'0.65rem', background:(a as any).deja_contacte.avant_dpe ? 'rgba(251,191,36,0.1)' : 'rgba(34,197,94,0.1)', color:(a as any).deja_contacte.avant_dpe ? '#FBBF24' : '#4ADE80', borderRadius:8, padding:'1px 5px' }}>
                         {(a as any).deja_contacte.avant_dpe ? '⚠️ Contacté avant DPE' : '✓ Contacté'}
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize:'0.8rem', fontWeight:500, color:'#1a1a18', lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  <div style={{ fontSize:'0.8rem', fontWeight:500, color: C.text, lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {a.adresse_brute}
                   </div>
-                  <div style={{ fontSize:'0.7rem', color:'#9b9b96', marginTop:2, display:'flex', gap:8 }}>
+                  <div style={{ fontSize:'0.7rem', color: C.muted, marginTop:2, display:'flex', gap:8 }}>
                     <span>{a.code_postal} {(a as any).nom_commune}</span>
                     {a.latest_dpe_date && <span>{new Date(a.latest_dpe_date).toLocaleDateString('fr-FR')}</span>}
                   </div>
@@ -354,16 +392,16 @@ export default function CourriersPage() {
         {/* Carte */}
         <div ref={mapRef} style={{ flex: isMobile ? '1' : '0 0 40%', position:'relative', display: isMobile && mobileView !== 'map' ? 'none' : undefined }}>
           {adresses.length === 0 && !loading && (
-            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'#f0ede8', zIndex:1 }}>
-              <span style={{ color:'#9b9b96', fontSize:'0.85rem' }}>Lancez une recherche pour afficher les DPE sur la carte</span>
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(12,12,14,0.85)', zIndex:1 }}>
+              <span style={{ color: C.muted, fontSize:'0.85rem' }}>Lancez une recherche pour afficher les DPE sur la carte</span>
             </div>
           )}
         </div>
 
         {/* Detail */}
-        <div style={{ flex:1, overflowY:'auto', borderTop:'1px solid #E8E6DF' }}>
+        <div style={{ flex:1, overflowY:'auto', borderTop:`1px solid ${C.border}`, background: C.bg, display: isMobile && mobileView !== 'detail' ? 'none' : undefined }}>
           {!selected ? (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:8, color:'#9b9b96' }}>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:8, color: C.muted }}>
               <span style={{ fontSize:'2rem' }}>👆</span>
               <span style={{ fontSize:'0.85rem' }}>Cliquez sur un DPE pour voir le détail et la lettre</span>
             </div>
@@ -376,16 +414,16 @@ export default function CourriersPage() {
                     <span style={{ background:DPE_COLORS[selected.dpe_etiquette?.toUpperCase()??'?']??'#999', color:'#fff', borderRadius:4, padding:'2px 8px', fontWeight:700, fontSize:'0.85rem' }}>
                       DPE {selected.dpe_etiquette?.toUpperCase()}
                     </span>
-                    <span style={{ fontSize:'0.85rem', color:'#5F5E5A' }}>{selected.adresse_brute}</span>
+                    <span style={{ fontSize:'0.85rem', color: C.mid }}>{selected.adresse_brute}</span>
                   </div>
-                  <div style={{ fontSize:'0.75rem', color:'#9b9b96' }}>
+                  <div style={{ fontSize:'0.75rem', color: C.muted }}>
                     {(selected as any).nom_commune} · {selected.type_bien} · {selected.surface_habitable ? selected.surface_habitable + ' m²' : ''}
                     {(selected as any).hors_zone ? ' · Hors zone de prospection' : (selected as any).zone_nom ? ` · Zone: ${(selected as any).zone_nom}` : ''}
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={() => generateDocx([selected.id])} disabled={generating}
-                    style={{ padding:'7px 14px', borderRadius:7, border:'none', background:'#1D9E75', color:'#fff', fontSize:'0.8rem', fontWeight:600, cursor:'pointer' }}>
+                    style={{ padding:'7px 14px', borderRadius:7, border:'none', background: generating ? C.dim : C.primary, color:'#fff', fontSize:'0.8rem', fontWeight:600, cursor: generating ? 'not-allowed' : 'pointer' }}>
                     🖨️ DOCX
                   </button>
                 </div>
@@ -393,26 +431,26 @@ export default function CourriersPage() {
 
               {/* Info DPE */}
               {(selected.conso_ep_m2 || selected.cout_annuel) && (
-                <div style={{ background:'#F8F7F4', borderRadius:8, padding:'10px 14px', marginBottom:16, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                  {selected.conso_ep_m2 && <div><span style={{ fontSize:'0.7rem', color:'#9b9b96' }}>Consommation</span><br/><strong style={{ fontSize:'0.85rem' }}>{selected.conso_ep_m2} kWhep/m²/an</strong></div>}
-                  {selected.cout_annuel && <div><span style={{ fontSize:'0.7rem', color:'#9b9b96' }}>Coût annuel</span><br/><strong style={{ fontSize:'0.85rem' }}>{Math.round(selected.cout_annuel).toLocaleString('fr-FR')} €</strong></div>}
-                  {selected.energie_principale && <div><span style={{ fontSize:'0.7rem', color:'#9b9b96' }}>Énergie</span><br/><strong style={{ fontSize:'0.85rem' }}>{selected.energie_principale}</strong></div>}
-                  {selected.ges_m2 && <div><span style={{ fontSize:'0.7rem', color:'#9b9b96' }}>GES</span><br/><strong style={{ fontSize:'0.85rem' }}>{selected.ges_m2} kgeqCO₂/m²/an</strong></div>}
+                <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'10px 14px', marginBottom:16, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, border:`1px solid ${C.border}` }}>
+                  {selected.conso_ep_m2 && <div><span style={{ fontSize:'0.7rem', color: C.muted }}>Consommation</span><br/><strong style={{ fontSize:'0.85rem', color: C.text }}>{selected.conso_ep_m2} kWhep/m²/an</strong></div>}
+                  {selected.cout_annuel && <div><span style={{ fontSize:'0.7rem', color: C.muted }}>Coût annuel</span><br/><strong style={{ fontSize:'0.85rem', color: C.text }}>{Math.round(selected.cout_annuel).toLocaleString('fr-FR')} €</strong></div>}
+                  {selected.energie_principale && <div><span style={{ fontSize:'0.7rem', color: C.muted }}>Énergie</span><br/><strong style={{ fontSize:'0.85rem', color: C.text }}>{selected.energie_principale}</strong></div>}
+                  {selected.ges_m2 && <div><span style={{ fontSize:'0.7rem', color: C.muted }}>GES</span><br/><strong style={{ fontSize:'0.85rem', color: C.text }}>{selected.ges_m2} kgeqCO₂/m²/an</strong></div>}
                 </div>
               )}
 
-              {/* Info audit */}
+              {/* Info audit manquant */}
               {(selected as any).needs_audit && (
-                <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:'0.8rem', color:'#B91C1C' }}>
+                <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:'0.8rem', color:'#FCA5A5' }}>
                   ⚠️ Ce bien est classé {selected.dpe_etiquette?.toUpperCase()} mais <strong>aucun audit énergétique</strong> n&apos;a été réalisé ou enregistré.
                 </div>
               )}
               {(selected as any).has_audit && (selected as any).audit && (
-                <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:8, padding:'10px 14px', marginBottom:16 }}>
-                  <div style={{ fontSize:'0.75rem', fontWeight:700, color:'#0F6E56', marginBottom:6 }}>Audit énergétique n° {(selected as any).audit.n_audit}</div>
+                <div style={{ background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:8, padding:'10px 14px', marginBottom:16 }}>
+                  <div style={{ fontSize:'0.75rem', fontWeight:700, color:'#4ADE80', marginBottom:6 }}>Audit énergétique n° {(selected as any).audit.n_audit}</div>
                   {((selected as any).audit.scenarios ?? []).filter((s: any) => !/états*initial/i.test(s.categorie ?? '')).slice(0,3).map((sc: any, i: number) => (
-                    <div key={i} style={{ fontSize:'0.75rem', color:'#1a1a18', marginBottom:4 }}>
-                      → <strong>{(sc.categorie ?? '').replace(/principale?/gi,'').trim()}</strong> : atteindre DPE <strong>{sc.classe_apres ?? '?'}</strong>
+                    <div key={i} style={{ fontSize:'0.75rem', color: C.mid, marginBottom:4 }}>
+                      → <strong style={{ color: C.text }}>{(sc.categorie ?? '').replace(/principale?/gi,'').trim()}</strong> : atteindre DPE <strong style={{ color: C.text }}>{sc.classe_apres ?? '?'}</strong>
                       {sc.cout_travaux ? ` pour ~${Number(sc.cout_travaux).toLocaleString('fr-FR')} €` : ''}
                       {sc.gain_pct ? ` — gain : ${sc.gain_pct}%` : ''}
                     </div>
@@ -420,10 +458,10 @@ export default function CourriersPage() {
                 </div>
               )}
 
-              {/* Prévisualisation lettre */}
-              <div style={{ borderTop:'1px solid #E8E6DF', paddingTop:20 }}>
-                <div style={{ fontSize:'0.75rem', fontWeight:700, color:'#B4B2A9', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Prévisualisation courrier</div>
-                <div style={{ background:'#fff', borderRadius:8, padding:'32px 40px', boxShadow:'0 2px 12px rgba(0,0,0,0.06)', fontFamily:'Georgia, serif' }}
+              {/* Prévisualisation lettre (fond blanc intentionnel — rendu print) */}
+              <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:20 }}>
+                <div style={{ fontSize:'0.75rem', fontWeight:700, color: C.dim, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Prévisualisation courrier</div>
+                <div style={{ background:'#fff', borderRadius:8, padding:'32px 40px', boxShadow:'0 2px 12px rgba(0,0,0,0.3)', fontFamily:'Georgia, serif' }}
                   dangerouslySetInnerHTML={{ __html: letterHTML }} />
               </div>
             </div>

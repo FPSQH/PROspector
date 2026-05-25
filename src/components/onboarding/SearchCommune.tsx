@@ -12,27 +12,36 @@ interface CommuneResult {
 
 interface Props {
   onAdd: (communes: CommuneResult[]) => Promise<void>
-  communesExistantes: string[] // code_insee déjà ajoutés
+  communesExistantes: string[]
+}
+
+const C = {
+  card:    '#141416',
+  border:  'rgba(255,255,255,0.08)',
+  borderl: 'rgba(255,255,255,0.12)',
+  text:    '#F0F0F2',
+  mid:     '#9A9AA8',
+  muted:   '#6B6B7B',
+  primary: '#1D9E75',
+  success: '#22C55E',
 }
 
 export function SearchCommune({ onAdd, communesExistantes }: Props) {
-  const [query, setQuery]             = useState('')
-  const [results, setResults]         = useState<CommuneResult[]>([])
+  const [query, setQuery]               = useState('')
+  const [results, setResults]           = useState<CommuneResult[]>([])
   const [isCodePostal, setIsCodePostal] = useState(false)
-  const [loading, setLoading]         = useState(false)
-  const [open, setOpen]               = useState(false)
-  const [selected, setSelected]       = useState<Set<string>>(new Set()) // code_insee sélectionnés
-  const [adding, setAdding]           = useState(false)
-  const inputRef  = useRef<HTMLInputElement>(null)
-  const dropRef   = useRef<HTMLDivElement>(null)
-  const timerRef  = useRef<NodeJS.Timeout>()
+  const [loading, setLoading]           = useState(false)
+  const [open, setOpen]                 = useState(false)
+  const [selected, setSelected]         = useState<Set<string>>(new Set())
+  const [adding, setAdding]             = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const dropRef  = useRef<HTMLDivElement>(null)
+  const timerRef = useRef<NodeJS.Timeout>()
 
-  // Fermer si clic extérieur
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
-        setOpen(false)
-        setSelected(new Set())
+        setOpen(false); setSelected(new Set())
       }
     }
     document.addEventListener('mousedown', handler)
@@ -47,84 +56,45 @@ export function SearchCommune({ onAdd, communesExistantes }: Props) {
       const data = await res.json()
       setResults(data.communes ?? [])
       setIsCodePostal(data.is_code_postal ?? false)
-      setSelected(new Set()) // reset sélection à chaque nouvelle recherche
+      setSelected(new Set())
       setOpen(true)
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value
-    setQuery(v)
+    const v = e.target.value; setQuery(v)
     clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => search(v), 300)
   }
 
   const toggleSelect = (code: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      next.has(code) ? next.delete(code) : next.add(code)
-      return next
-    })
+    setSelected(prev => { const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n })
   }
 
   const handleAddSelected = async () => {
-    const toAdd = results.filter(
-      (c) => selected.has(c.code_insee) && !communesExistantes.includes(c.code_insee)
-    )
-    if (toAdd.length === 0) return
+    const toAdd = results.filter(c => selected.has(c.code_insee) && !communesExistantes.includes(c.code_insee))
+    if (!toAdd.length) return
     setAdding(true)
-    try {
-      await onAdd(toAdd)
-      setQuery('')
-      setResults([])
-      setOpen(false)
-      setSelected(new Set())
-    } finally {
-      setAdding(false)
-    }
+    try { await onAdd(toAdd); setQuery(''); setResults([]); setOpen(false); setSelected(new Set()) }
+    finally { setAdding(false) }
   }
 
   const handleAddSingle = async (commune: CommuneResult) => {
     if (communesExistantes.includes(commune.code_insee)) return
     setAdding(true)
-    try {
-      await onAdd([commune])
-      setQuery('')
-      setResults([])
-      setOpen(false)
-      setSelected(new Set())
-    } finally {
-      setAdding(false)
-    }
+    try { await onAdd([commune]); setQuery(''); setResults([]); setOpen(false); setSelected(new Set()) }
+    finally { setAdding(false) }
   }
 
-  // Communes disponibles (pas encore ajoutées)
-  const disponibles = results.filter((c) => !communesExistantes.includes(c.code_insee))
-  const nbSelected  = [...selected].filter(
-    (code) => !communesExistantes.includes(code)
-  ).length
+  const disponibles = results.filter(c => !communesExistantes.includes(c.code_insee))
+  const nbSelected  = [...selected].filter(code => !communesExistantes.includes(code)).length
 
   return (
     <div ref={dropRef} style={{ position: 'relative' }}>
-      {/* Champ de recherche */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        border: '1.5px solid #e8e7e0', borderRadius: 10,
-        background: '#fff', padding: '0 12px',
-        transition: 'border-color 0.15s',
-      }}
-        onFocus={() => {}}
-      >
+      <div style={{ display:'flex', alignItems:'center', gap:8, border:`1.5px solid ${C.borderl}`, borderRadius:10, background:'rgba(255,255,255,0.05)', padding:'0 12px' }}>
         {loading
-          ? <div style={{
-              width: 16, height: 16, borderRadius: '50%',
-              border: '2px solid #1D9E75', borderTopColor: 'transparent',
-              animation: 'spin 0.7s linear infinite', flexShrink: 0,
-            }}/>
-          : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="#9b9b96" strokeWidth="2" strokeLinecap="round">
+          ? <div style={{ width:16, height:16, borderRadius:'50%', border:`2px solid ${C.primary}`, borderTopColor:'transparent', animation:'spin 0.7s linear infinite', flexShrink:0 }}/>
+          : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
         }
@@ -134,69 +104,32 @@ export function SearchCommune({ onAdd, communesExistantes }: Props) {
           onChange={handleChange}
           onFocus={() => results.length > 0 && setOpen(true)}
           placeholder="Nom de commune ou code postal…"
-          style={{
-            flex: 1, border: 'none', outline: 'none',
-            padding: '10px 0', fontSize: '0.9rem',
-            background: 'transparent', color: '#1a1a18',
-          }}
+          style={{ flex:1, border:'none', outline:'none', padding:'10px 0', fontSize:'0.9rem', background:'transparent', color: C.text }}
         />
         {query && (
           <button onClick={() => { setQuery(''); setResults([]); setOpen(false) }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer',
-              color: '#9b9b96', padding: 0, fontSize: '1rem' }}>
-            ✕
-          </button>
+            style={{ background:'none', border:'none', cursor:'pointer', color: C.muted, padding:0, fontSize:'1rem' }}>✕</button>
         )}
       </div>
 
-      {/* Dropdown résultats */}
       {open && results.length > 0 && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-          background: '#fff', borderRadius: 10,
-          border: '1.5px solid #e8e7e0',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
-          zIndex: 100,
-          overflow: 'hidden',
-        }}>
-          {/* Header mode code postal */}
+        <div style={{ position:'absolute', top:'calc(100% + 6px)', left:0, right:0, background: C.card, borderRadius:10, border:`1.5px solid ${C.borderl}`, boxShadow:'0 8px 30px rgba(0,0,0,0.4)', zIndex:100, overflow:'hidden' }}>
           {isCodePostal && disponibles.length > 1 && (
-            <div style={{
-              padding: '10px 14px',
-              borderBottom: '1px solid #f0efeb',
-              background: '#f8f7f4',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <div style={{ fontSize: '0.78rem', color: '#5F5E5A' }}>
-                <strong>{disponibles.length} communes</strong> pour ce code postal
-                {nbSelected > 0 && (
-                  <span style={{ color: '#1D9E75', marginLeft: 8 }}>
-                    · {nbSelected} sélectionnée{nbSelected > 1 ? 's' : ''}
-                  </span>
-                )}
+            <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}`, background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ fontSize:'0.78rem', color: C.mid }}>
+                <strong style={{ color: C.text }}>{disponibles.length} communes</strong> pour ce code postal
+                {nbSelected > 0 && <span style={{ color: C.primary, marginLeft:8 }}>· {nbSelected} sélectionnée{nbSelected > 1 ? 's' : ''}</span>}
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display:'flex', gap:6 }}>
                 {nbSelected < disponibles.length && (
-                  <button
-                    onClick={() => setSelected(new Set(disponibles.map((c) => c.code_insee)))}
-                    style={{
-                      fontSize: '0.72rem', padding: '3px 8px',
-                      borderRadius: 6, border: '1px solid #1D9E75',
-                      background: '#f0fdf4', color: '#1D9E75',
-                      cursor: 'pointer', fontWeight: 500,
-                    }}>
+                  <button onClick={() => setSelected(new Set(disponibles.map(c => c.code_insee)))}
+                    style={{ fontSize:'0.72rem', padding:'3px 8px', borderRadius:6, border:`1px solid rgba(29,158,117,0.4)`, background:'rgba(29,158,117,0.1)', color: C.primary, cursor:'pointer', fontWeight:500 }}>
                     Tout sélectionner
                   </button>
                 )}
                 {nbSelected > 0 && (
-                  <button
-                    onClick={() => setSelected(new Set())}
-                    style={{
-                      fontSize: '0.72rem', padding: '3px 8px',
-                      borderRadius: 6, border: '1px solid #e8e7e0',
-                      background: '#fff', color: '#9b9b96',
-                      cursor: 'pointer',
-                    }}>
+                  <button onClick={() => setSelected(new Set())}
+                    style={{ fontSize:'0.72rem', padding:'3px 8px', borderRadius:6, border:`1px solid ${C.border}`, background:'rgba(255,255,255,0.04)', color: C.mid, cursor:'pointer' }}>
                     Désélectionner
                   </button>
                 )}
@@ -204,122 +137,55 @@ export function SearchCommune({ onAdd, communesExistantes }: Props) {
             </div>
           )}
 
-          {/* Liste scrollable */}
-          <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-            {results.map((commune) => {
+          <div style={{ maxHeight:280, overflowY:'auto' }}>
+            {results.map(commune => {
               const existe  = communesExistantes.includes(commune.code_insee)
               const checked = selected.has(commune.code_insee)
-
               return (
-                <div
-                  key={commune.code_insee}
+                <div key={commune.code_insee}
                   onClick={() => {
                     if (existe) return
-                    if (isCodePostal && disponibles.length > 1) {
-                      toggleSelect(commune.code_insee)
-                    } else {
-                      handleAddSingle(commune)
-                    }
+                    if (isCodePostal && disponibles.length > 1) toggleSelect(commune.code_insee)
+                    else handleAddSingle(commune)
                   }}
-                  style={{
-                    padding: '9px 14px',
-                    borderBottom: '1px solid #f8f7f4',
-                    cursor: existe ? 'default' : 'pointer',
-                    background: checked ? '#f0fdf4' : existe ? '#fafaf8' : 'transparent',
-                    opacity: existe ? 0.5 : 1,
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    transition: 'background 0.1s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!existe && !checked)
-                      (e.currentTarget as HTMLDivElement).style.background = '#f8f7f4'
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!checked)
-                      (e.currentTarget as HTMLDivElement).style.background =
-                        existe ? '#fafaf8' : 'transparent'
-                  }}
+                  style={{ padding:'9px 14px', borderBottom:`1px solid ${C.border}`, cursor:existe?'default':'pointer', background: checked ? 'rgba(29,158,117,0.1)' : existe ? 'rgba(255,255,255,0.02)' : 'transparent', opacity: existe ? 0.5 : 1, display:'flex', alignItems:'center', gap:10 }}
+                  onMouseEnter={e => { if (!existe && !checked) (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)' }}
+                  onMouseLeave={e => { if (!checked) (e.currentTarget as HTMLDivElement).style.background = existe ? 'rgba(255,255,255,0.02)' : 'transparent' }}
                 >
-                  {/* Checkbox en mode multi-select */}
                   {isCodePostal && disponibles.length > 1 && (
-                    <div style={{
-                      width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                      border: checked ? '2px solid #1D9E75' : '2px solid #d0cfc9',
-                      background: checked ? '#1D9E75' : '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {checked && (
-                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2"
-                            strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
+                    <div style={{ width:16, height:16, borderRadius:4, flexShrink:0, border: checked ? `2px solid ${C.primary}` : `2px solid ${C.borderl}`, background: checked ? C.primary : 'transparent', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {checked && <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </div>
                   )}
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: 500, fontSize: '0.875rem', color: '#1a1a18',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                    }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:500, fontSize:'0.875rem', color: C.text, display:'flex', alignItems:'center', gap:6 }}>
                       {commune.nom}
-                      {existe && (
-                        <span style={{
-                          fontSize: '0.65rem', background: '#f0fdf4',
-                          color: '#16a34a', padding: '1px 5px',
-                          borderRadius: 4, fontWeight: 600,
-                        }}>
-                          Déjà ajoutée
-                        </span>
-                      )}
+                      {existe && <span style={{ fontSize:'0.65rem', background:'rgba(34,197,94,0.1)', color:'#4ADE80', padding:'1px 5px', borderRadius:4, fontWeight:600 }}>Déjà ajoutée</span>}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#9b9b96', marginTop: 1 }}>
+                    <div style={{ fontSize:'0.75rem', color: C.mid, marginTop:1 }}>
                       {commune.code_postal} · Dép. {commune.departement}
-                      {commune.population > 0 && (
-                        <> · {commune.population.toLocaleString('fr-FR')} hab.</>
-                      )}
+                      {commune.population > 0 && <> · {commune.population.toLocaleString('fr-FR')} hab.</>}
                     </div>
                   </div>
-
-                  {/* Flèche en mode simple */}
                   {(!isCodePostal || disponibles.length === 1) && !existe && (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                      stroke="#9b9b96" strokeWidth="2" strokeLinecap="round">
-                      <path d="M5 12h14M12 5l7 7-7 7"/>
-                    </svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   )}
                 </div>
               )
             })}
           </div>
 
-          {/* Bouton "Ajouter X communes" en mode multi-select */}
           {isCodePostal && disponibles.length > 1 && nbSelected > 0 && (
-            <div style={{
-              padding: '10px 14px',
-              borderTop: '1px solid #f0efeb',
-              background: '#fff',
-            }}>
-              <button
-                onClick={handleAddSelected}
-                disabled={adding}
-                style={{
-                  width: '100%', padding: '9px',
-                  borderRadius: 8, border: 'none',
-                  background: adding ? '#9b9b96' : '#1D9E75',
-                  color: '#fff', fontWeight: 600,
-                  fontSize: '0.875rem', cursor: adding ? 'not-allowed' : 'pointer',
-                }}>
-                {adding
-                  ? 'Ajout en cours…'
-                  : `Ajouter ${nbSelected} commune${nbSelected > 1 ? 's' : ''}`}
+            <div style={{ padding:'10px 14px', borderTop:`1px solid ${C.border}`, background:'rgba(255,255,255,0.02)' }}>
+              <button onClick={handleAddSelected} disabled={adding}
+                style={{ width:'100%', padding:'9px', borderRadius:8, border:'none', background: adding ? '#4A4A58' : C.primary, color:'#fff', fontWeight:600, fontSize:'0.875rem', cursor: adding ? 'not-allowed' : 'pointer' }}>
+                {adding ? 'Ajout en cours…' : `Ajouter ${nbSelected} commune${nbSelected > 1 ? 's' : ''}`}
               </button>
             </div>
           )}
 
-          {/* Aucun résultat dispo */}
           {disponibles.length === 0 && (
-            <div style={{ padding: '14px', fontSize: '0.8rem', color: '#9b9b96', textAlign: 'center' }}>
+            <div style={{ padding:'14px', fontSize:'0.8rem', color: C.muted, textAlign:'center' }}>
               Toutes les communes trouvées sont déjà dans votre secteur
             </div>
           )}
