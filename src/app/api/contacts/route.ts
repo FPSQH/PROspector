@@ -35,7 +35,7 @@ export async function GET(req: Request) {
       horizon_vente, horizon_qualification_date, horizon_echeance_date,
       adresse_libre, adresse_lat, adresse_lon, zone_id, hors_secteur,
       created_at, updated_at,
-      adresses ( id, numero, nom_voie, code_postal, commune, lat, lon ),
+      adresses ( id, numero, nom_voie, code_postal, commune, lat, lon, zone_id, zones_prospection ( id, nom, couleur ) ),
       zones_prospection ( id, nom, couleur )
     `)
     .eq('commercial_id', user.id)

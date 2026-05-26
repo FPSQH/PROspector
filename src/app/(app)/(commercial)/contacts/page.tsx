@@ -166,10 +166,11 @@ export default function ContactsPage() {
       adresse_libre:   c.adresse_libre   ?? '',
       adresse_lat:     c.adresse_lat     ?? c.adresses?.lat     ?? null,
       adresse_lon:     c.adresse_lon     ?? c.adresses?.lon     ?? null,
-      zone_id:         c.zone_id         ?? c.zones_prospection?.id ?? null,
+      // zone : priorité contact.zone_id → zones_prospection direct, sinon fallback sur l'adresse
+      zone_id:         c.zone_id         ?? c.adresses?.zone_id ?? null,
       _adresse_text:   c.adresses        ? addrText(c.adresses) : (c.adresse_libre ?? ''),
-      _zone_nom:       c.zones_prospection?.nom     ?? '',
-      _zone_couleur:   c.zones_prospection?.couleur ?? C.primary,
+      _zone_nom:       (c.zones_prospection ?? c.adresses?.zones_prospection)?.nom     ?? '',
+      _zone_couleur:   (c.zones_prospection ?? c.adresses?.zones_prospection)?.couleur ?? C.primary,
       horizon_qualification_date: c.horizon_qualification_date ?? '',
       horizon_echeance_date:      c.horizon_echeance_date      ?? '',
     })
@@ -316,7 +317,7 @@ export default function ContactsPage() {
     const lat = c.adresse_lat ?? c.adresses?.lat ?? null
     const lon = c.adresse_lon ?? c.adresses?.lon ?? null
     if (!lat || !lon) return []
-    return [{ id: c.id, lat, lon, prenom: c.prenom, nom: c.nom, statut_pipeline: c.statut_pipeline, zone_nom: c.zones_prospection?.nom }]
+    return [{ id: c.id, lat, lon, prenom: c.prenom, nom: c.nom, statut_pipeline: c.statut_pipeline, zone_nom: (c.zones_prospection ?? c.adresses?.zones_prospection)?.nom }]
   })
 
   // ── Composants réutilisables ──────────────────────────────────────────────
@@ -576,7 +577,7 @@ export default function ContactsPage() {
           </div>
         ) : contacts.map(c => {
           const isActive = (selected?.id === c.id && !createMode) || false
-          const zp = c.zones_prospection
+          const zp   = c.zones_prospection ?? c.adresses?.zones_prospection ?? null
           const addr = c.adresses ? addrText(c.adresses) : (c.adresse_libre ?? '')
           const sc = STATUT_COLORS[c.statut_pipeline ?? 'prospect'] ?? C.mid
           const isLate = c.date_relance && new Date(c.date_relance) < new Date()
