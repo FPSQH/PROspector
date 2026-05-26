@@ -22,8 +22,21 @@ const C = {
   danger:  '#EF4444',
 }
 
+const DPE_COLORS: Record<string, string> = {
+  A: '#059669', B: '#16a34a', C: '#84cc16',
+  D: '#ca8a04', E: '#d97706', F: '#ea580c', G: '#dc2626',
+}
+
 interface Zone    { id: string; nom: string; couleur: string; numero: number; nb_prospectables: number }
 interface Commune { id: string; nom: string; code_insee: string }
+interface ZoneStat {
+  couverture_mois_pct:   number
+  couverture_mois_nb:    number
+  dpe_recents_nb:        number
+  derniere_session_date: string | null
+  sessions_mois_nb:      number
+  nb_contacts:           number
+}
 
 interface Adresse {
   id: string; lat: number; lon: number
@@ -44,6 +57,18 @@ const STATUT_COLOR: Record<string, string> = {
 }
 const STATUT_LABEL: Record<string, string> = {
   a_faire: 'À faire', boite: 'Boîté', contact: 'Contact', visite: 'Visité', supprimee: 'Supprimée',
+}
+
+function formatDateCourte(dateStr: string | null): string {
+  if (!dateStr) return '–'
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
+function formatMoisAnnee(dateStr: string | null): string {
+  if (!dateStr) return '–'
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('fr-FR', { month: '2-digit', year: '2-digit' })
 }
 
 function calculerItineraire(adresses: Adresse[]): string[] {
@@ -78,6 +103,7 @@ export default function TerrainPage() {
   const [appState,         setAppState]         = useState<AppState>('init')
   const [isDesktop,        setIsDesktop]         = useState(false)
   const [zones,            setZones]             = useState<Zone[]>([])
+  const [zoneStats,        setZoneStats]         = useState<Record<string, ZoneStat>>({})
   const [communes,         setCommunes]          = useState<Commune[]>([])
   const [communeSelectee,  setCommuneSelectee]   = useState<Commune | null>(null)
   const [session,          setSession]           = useState<any>(null)
@@ -117,15 +143,17 @@ export default function TerrainPage() {
 
   useEffect(() => {
     const init = async () => {
-      const [zonesRes, communesRes, sessRes] = await Promise.all([
+      const [zonesRes, communesRes, sessRes, statsRes] = await Promise.all([
         fetch('/api/zones').then(r => r.json()),
         fetch('/api/communes').then(r => r.json()),
         fetch('/api/sessions?statut=en_cours').then(r => r.json()),
+        fetch('/api/zones/stats').then(r => r.json()),
       ])
 
       const zonesData = zonesRes.zones ?? []
       setZones(zonesData)
       setCommunes(communesRes.communes ?? [])
+      setZoneStats(statsRes.stats ?? {})
 
       const sessEnCours = sessRes.sessions?.[0] ?? null
       if (sessEnCours) {
@@ -359,19 +387,46 @@ export default function TerrainPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28, opacity: sessionActive ? 0.4 : 1 }}>
-              {zones.map(zone => (
-                <button key={zone.id}
-                  onClick={() => sessionActive ? undefined : handleZonePreview(zone)}
-                  disabled={!!sessionActive || loading}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.borderl}`, borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%' }}>
-                  <div style={{ width: 12, height: 12, borderRadius: '50%', background: zone.couleur, flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: C.text }}>{zone.nom}</div>
-                    <div style={{ fontSize: '0.75rem', color: C.muted, marginTop: 2 }}>{zone.nb_prospectables} adresses</div>
-                  </div>
-                  <div style={{ color: C.primary, fontSize: '1.1rem' }}>→</div>
-                </button>
-              ))}
+              {zones.map(zone => {
+                const stat = zoneStats[zone.id]
+                return (
+                  <button key={zone.id}
+                    onClick={() => sessionActive ? undefined : handleZonePreview(zone)}
+                    disabled={!!sessionActive || loading}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 14, background: C.card, border: `1px solid ${C.borderl}`, borderRadius: 12, padding: '14px 16px', cursor: sessionActive ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%' }}>
+                    <div style={{ width: 12, height: 12, borderRadius: '50%', background: zone.couleur, flexShrink: 0, marginTop: 4 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: C.text }}>{zone.nom}</div>
+                      <div style={{ fontSize: '0.75rem', color: C.muted, marginTop: 2 }}>{zone.nb_prospectables} adresses prospectables</div>
+                      {stat && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                          {/* Couverture mois */}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600, background: stat.couverture_mois_pct > 0 ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.05)', color: stat.couverture_mois_pct > 0 ? C.primary : C.muted, border: `1px solid ${stat.couverture_mois_pct > 0 ? 'rgba(29,158,117,0.25)' : C.border}` }}>
+                            📊 {stat.couverture_mois_pct}% ce mois
+                          </span>
+                          {/* DPE récents */}
+                          {stat.dpe_recents_nb > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600, background: 'rgba(251,191,36,0.1)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.2)' }}>
+                              🏠 {stat.dpe_recents_nb} DPE récents
+                            </span>
+                          )}
+                          {/* Dernière session */}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600, background: 'rgba(255,255,255,0.05)', color: C.mid, border: `1px solid ${C.border}` }}>
+                            📅 {stat.derniere_session_date ? formatDateCourte(stat.derniere_session_date) : 'Jamais'}
+                          </span>
+                          {/* Contacts */}
+                          {stat.nb_contacts > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600, background: 'rgba(255,255,255,0.05)', color: C.mid, border: `1px solid ${C.border}` }}>
+                              👥 {stat.nb_contacts} contact{stat.nb_contacts > 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ color: C.primary, fontSize: '1.1rem', flexShrink: 0, marginTop: 2 }}>→</div>
+                  </button>
+                )
+              })}
             </div>
           )}
 
@@ -436,11 +491,130 @@ export default function TerrainPage() {
   }
 
   /* ══════════════════════════════════════════════════════════════════
-   * ── PRÉ-SESSION ZONE
+   * ── PRÉ-SESSION ZONE  (split layout)
    * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'pre_session' && preZone) {
     const preAdressesForMap = preAdresses.map((a: any, i: number) => ({ ...a, statut_carte: 'a_faire' as const, ordre: i, prospectable: a.prospectable !== false }))
+    const stat = zoneStats[preZone.id]
 
+    /* ── Panneau stats ── */
+    const StatItem = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: '0.8rem', color: C.muted }}>{label}</span>
+        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: accent ? C.primary : C.text }}>{value}</span>
+      </div>
+    )
+
+    const statsPanel = (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+        {/* Zone info */}
+        <div style={{ padding: '16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: preZone.couleur }} />
+            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: C.text }}>{preZone.nom}</span>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: C.muted }}>{preZone.nb_prospectables} adresses prospectables</div>
+        </div>
+
+        <div style={{ flex: 1, padding: '0 16px', overflowY: 'auto' }}>
+          {/* Couverture mois */}
+          <div style={{ paddingTop: 14, paddingBottom: 4 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>📊 Ce mois</div>
+            {stat ? (
+              <>
+                <StatItem
+                  label="Couverture"
+                  value={`${stat.couverture_mois_pct}% (${stat.couverture_mois_nb} / ${preZone.nb_prospectables})`}
+                  accent={stat.couverture_mois_pct > 0}
+                />
+                {/* Barre de progression */}
+                <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, margin: '8px 0 4px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(stat.couverture_mois_pct, 100)}%`, background: C.primary, borderRadius: 2, transition: 'width 0.5s ease' }} />
+                </div>
+                <StatItem label="Sessions ce mois" value={stat.sessions_mois_nb > 0 ? `${stat.sessions_mois_nb} session${stat.sessions_mois_nb > 1 ? 's' : ''}` : 'Aucune'} />
+              </>
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: C.dim, paddingBottom: 8 }}>Chargement…</div>
+            )}
+          </div>
+
+          {/* DPE récents */}
+          <div style={{ paddingTop: 14, paddingBottom: 4 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>🏠 Signaux DPE</div>
+            {stat ? (
+              <StatItem
+                label="DPE récents (< 2 mois)"
+                value={stat.dpe_recents_nb > 0 ? `${stat.dpe_recents_nb} adresses` : 'Aucun'}
+                accent={stat.dpe_recents_nb > 0}
+              />
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: C.dim, paddingBottom: 8 }}>Chargement…</div>
+            )}
+          </div>
+
+          {/* Historique */}
+          <div style={{ paddingTop: 14, paddingBottom: 4 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>📅 Historique</div>
+            {stat ? (
+              <StatItem
+                label="Dernière session"
+                value={stat.derniere_session_date ? formatDateCourte(stat.derniere_session_date) : 'Jamais prospecté'}
+              />
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: C.dim, paddingBottom: 8 }}>Chargement…</div>
+            )}
+          </div>
+
+          {/* Contacts */}
+          <div style={{ paddingTop: 14, paddingBottom: 14 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>👥 Contacts</div>
+            {stat ? (
+              <StatItem
+                label="Contacts rattachés"
+                value={stat.nb_contacts > 0 ? `${stat.nb_contacts} contact${stat.nb_contacts > 1 ? 's' : ''}` : 'Aucun'}
+                accent={stat.nb_contacts > 0}
+              />
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: C.dim }}>Chargement…</div>
+            )}
+          </div>
+        </div>
+
+        {/* Bouton démarrer */}
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <button onClick={() => handleStartSession(preZone)} disabled={loading}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, background: loading ? C.dim : C.primary, color: '#fff', fontWeight: 700, fontSize: '0.975rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? 'Démarrage…' : 'Démarrer la tournée →'}
+          </button>
+        </div>
+      </div>
+    )
+
+    /* ── Desktop : split map + stats ── */
+    if (isDesktop) {
+      return (
+        <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: C.bg }}>
+          <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 16px', height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => setAppState('choix_zone')} style={{ background: 'none', border: 'none', color: C.mid, cursor: 'pointer', fontSize: '1rem' }}>←</button>
+            <span style={{ fontWeight: 600, color: C.text, fontSize: '0.9375rem' }}>Préparer la tournée</span>
+          </div>
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* Carte */}
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+              {preLoading
+                ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
+                : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} />}
+            </div>
+            {/* Panneau stats */}
+            <div style={{ width: 340, background: C.card, borderLeft: `1px solid ${C.border}`, flexShrink: 0 }}>
+              {statsPanel}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    /* ── Mobile : stats compact + carte ── */
     return (
       <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: C.bg }}>
         <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '0 16px', height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -451,11 +625,39 @@ export default function TerrainPage() {
             <span style={{ fontSize: '0.75rem', color: C.muted }}>{preZone.nb_prospectables} adresses</span>
           </div>
         </div>
+
+        {/* Stats compactes mobile */}
+        {stat && (
+          <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: '10px 16px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: stat.couverture_mois_pct > 0 ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.06)', color: stat.couverture_mois_pct > 0 ? C.primary : C.muted, border: `1px solid ${stat.couverture_mois_pct > 0 ? 'rgba(29,158,117,0.3)' : C.border}` }}>
+                📊 {stat.couverture_mois_pct}% ce mois
+              </span>
+              {stat.dpe_recents_nb > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: 'rgba(251,191,36,0.1)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.2)' }}>
+                  🏠 {stat.dpe_recents_nb} DPE
+                </span>
+              )}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: C.mid, border: `1px solid ${C.border}` }}>
+                📅 {stat.derniere_session_date ? formatDateCourte(stat.derniere_session_date) : 'Jamais'}
+              </span>
+              {stat.nb_contacts > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: C.mid, border: `1px solid ${C.border}` }}>
+                  👥 {stat.nb_contacts}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Carte */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {preLoading
             ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
             : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} />}
         </div>
+
+        {/* Bouton démarrer */}
         <div style={{ padding: '12px 16px', background: C.card, borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
           <button onClick={() => handleStartSession(preZone)} disabled={loading}
             style={{ width: '100%', padding: '14px', borderRadius: 12, background: loading ? C.dim : C.primary, color: '#fff', fontWeight: 700, fontSize: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer' }}>
@@ -521,30 +723,43 @@ export default function TerrainPage() {
 
   /* ── Header session en cours ───────────────────────────────────── */
   const sessionHeader = (
-    <div style={{ height: 52, background: C.card, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-        {isHorsZone ? <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚶</span>
-          : session?.zones_prospection && <div style={{ width: 10, height: 10, borderRadius: '50%', background: session.zones_prospection.couleur ?? C.primary, flexShrink: 0 }} />}
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.875rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {isHorsZone ? `Libre — ${session?.commune_nom ?? 'Hors zone'}` : (session?.zones_prospection?.nom ?? 'Session en cours')}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: C.muted }}>
-            {isHorsZone ? 'Prospection libre hors zone' : `${nbVisites}/${nbTotal} · ${pctCouvert}% · ${aFaireCount} restantes`}
+    <>
+      <div style={{ height: 52, background: C.card, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+          {isHorsZone ? <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚶</span>
+            : session?.zones_prospection && <div style={{ width: 10, height: 10, borderRadius: '50%', background: session.zones_prospection.couleur ?? C.primary, flexShrink: 0 }} />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: '0.875rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {isHorsZone ? `Libre — ${session?.commune_nom ?? 'Hors zone'}` : (session?.zones_prospection?.nom ?? 'Session en cours')}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: C.muted }}>
+              {isHorsZone ? 'Prospection libre hors zone' : `${nbVisites}/${nbTotal} · ${pctCouvert}% · ${aFaireCount} restantes`}
+            </div>
           </div>
         </div>
+        {!isHorsZone && (
+          <>
+            <button onClick={allerAdresseSuivante} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(29,158,117,0.12)', color: C.success, fontWeight: 600, fontSize: '0.78rem', border: '1px solid rgba(29,158,117,0.25)', cursor: 'pointer', flexShrink: 0 }}>Suivante →</button>
+            <button onClick={ouvrirGoogleMaps}      style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 600, fontSize: '0.78rem', border: `1px solid ${C.border}`, cursor: 'pointer', flexShrink: 0 }}>🗺</button>
+          </>
+        )}
+        <button onClick={handleEndSession} disabled={loading}
+          style={{ padding: '5px 10px', borderRadius: 7, background: loading ? C.dim : C.danger, color: '#fff', fontWeight: 600, fontSize: '0.78rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
+          Terminer
+        </button>
       </div>
+      {/* Barre de progression mince */}
       {!isHorsZone && (
-        <>
-          <button onClick={allerAdresseSuivante} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(29,158,117,0.12)', color: C.success, fontWeight: 600, fontSize: '0.78rem', border: '1px solid rgba(29,158,117,0.25)', cursor: 'pointer', flexShrink: 0 }}>Suivante →</button>
-          <button onClick={ouvrirGoogleMaps}      style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 600, fontSize: '0.78rem', border: `1px solid ${C.border}`, cursor: 'pointer', flexShrink: 0 }}>🗺</button>
-        </>
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', flexShrink: 0 }}>
+          <div style={{
+            height: '100%',
+            width: `${Math.min(pctCouvert, 100)}%`,
+            background: pctCouvert >= 80 ? C.success : C.primary,
+            transition: 'width 0.5s ease',
+          }} />
+        </div>
       )}
-      <button onClick={handleEndSession} disabled={loading}
-        style={{ padding: '5px 10px', borderRadius: 7, background: loading ? C.dim : C.danger, color: '#fff', fontWeight: 600, fontSize: '0.78rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
-        Terminer
-      </button>
-    </div>
+    </>
   )
 
   const legendeMap = (
@@ -556,6 +771,23 @@ export default function TerrainPage() {
       ))}
     </div>
   )
+
+  /* ── Badge DPE ──────────────────────────────────────────────────── */
+  function DpeBadge({ etiquette, date }: { etiquette?: string | null; date?: string | null }) {
+    if (!etiquette) return null
+    const color = DPE_COLORS[etiquette.toUpperCase()] ?? C.dim
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 2,
+        padding: '1px 5px', borderRadius: 4,
+        fontSize: '0.67rem', fontWeight: 700,
+        background: color + '22', color, border: '1px solid ' + color + '44',
+        flexShrink: 0,
+      }}>
+        {etiquette.toUpperCase()}{date ? ` ${formatMoisAnnee(date)}` : ''}
+      </span>
+    )
+  }
 
   /* ══════════════════════════════════════════════════════════════════
    * ── EN COURS DESKTOP
@@ -609,9 +841,10 @@ export default function TerrainPage() {
                             <div style={{ fontWeight: 600, fontSize: 13, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {[a.numero, a.nom_voie].filter(Boolean).join(' ')}
                             </div>
-                            <div style={{ fontSize: 11, color: C.muted, display: 'flex', gap: 6, marginTop: 2 }}>
+                            <div style={{ fontSize: 11, color: C.muted, display: 'flex', gap: 6, marginTop: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                               <span>{STATUT_LABEL[a.statut_carte]}</span>
                               {a.type_habitat && <span>· {a.type_habitat === 'individuel' ? '🏠' : a.type_habitat === 'collectif' ? '🏢' : '🏪'}</span>}
+                              {DpeBadge({ etiquette: a.dpe_etiquette, date: a.latest_dpe_date })}
                               {isProchaine && <span style={{ color: C.success, fontWeight: 700 }}>← Suivante</span>}
                             </div>
                           </div>
