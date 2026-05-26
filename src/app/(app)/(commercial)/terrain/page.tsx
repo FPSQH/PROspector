@@ -29,6 +29,7 @@ const DPE_COLORS: Record<string, string> = {
 
 interface Zone    { id: string; nom: string; couleur: string; numero: number; nb_prospectables: number }
 interface Commune { id: string; nom: string; code_insee: string }
+interface ContactPoint { id: string; lat: number; lon: number; prenom?: string|null; nom?: string|null; statut_pipeline?: string|null }
 interface ZoneStat {
   couverture_mois_pct:   number
   couverture_mois_nb:    number
@@ -111,6 +112,7 @@ export default function TerrainPage() {
   const [preZone,          setPreZone]           = useState<Zone | null>(null)
   const [adresses,         setAdresses]          = useState<Adresse[]>([])
   const [preAdresses,      setPreAdresses]       = useState<any[]>([])
+  const [preContacts,      setPreContacts]       = useState<ContactPoint[]>([])
   const [itineraire,       setItineraire]        = useState<string[]>([])
   const [idxCourant,       setIdxCourant]        = useState(0)
   const [nbTotal,          setNbTotal]           = useState(0)
@@ -305,10 +307,25 @@ export default function TerrainPage() {
   }
 
   const handleZonePreviewInner = async (zone: Zone, _zones?: Zone[]) => {
-    setPreZone(zone); setPreAdresses([]); setAppState('pre_session'); setPreLoading(true)
+    setPreZone(zone); setPreAdresses([]); setPreContacts([]); setAppState('pre_session'); setPreLoading(true)
     try {
-      const res = await fetch(`/api/zones/${zone.id}/adresses`), data = await res.json()
-      setPreAdresses(data.adresses ?? [])
+      const [adrRes, ctRes] = await Promise.all([
+        fetch(`/api/zones/${zone.id}/adresses`).then(r => r.json()),
+        fetch(`/api/contacts?zone_id=${zone.id}`).then(r => r.json()),
+      ])
+      setPreAdresses(adrRes.adresses ?? [])
+      // Contacts avec coordonnées (adresse directe ou via adresses join)
+      const mapped: ContactPoint[] = (ctRes.contacts ?? [])
+        .map((c: any) => ({
+          id:              c.id,
+          lat:             c.adresse_lat ?? c.adresses?.lat ?? null,
+          lon:             c.adresse_lon ?? c.adresses?.lon ?? null,
+          prenom:          c.prenom,
+          nom:             c.nom,
+          statut_pipeline: c.statut_pipeline,
+        }))
+        .filter((c: ContactPoint) => c.lat && c.lon)
+      setPreContacts(mapped)
     } finally { setPreLoading(false) }
   }
 
@@ -496,6 +513,8 @@ export default function TerrainPage() {
   if (appState === 'pre_session' && preZone) {
     const preAdressesForMap = preAdresses.map((a: any, i: number) => ({ ...a, statut_carte: 'a_faire' as const, ordre: i, prospectable: a.prospectable !== false }))
     const stat = zoneStats[preZone.id]
+    const twoMonthsAgo = Date.now() - 60 * 24 * 3600 * 1000
+    const dpeHotCount  = preAdresses.filter((a: any) => a.latest_dpe_date && new Date(a.latest_dpe_date).getTime() >= twoMonthsAgo).length
 
     /* ── Panneau stats ── */
     const StatItem = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
@@ -514,6 +533,31 @@ export default function TerrainPage() {
             <span style={{ fontWeight: 700, fontSize: '0.95rem', color: C.text }}>{preZone.nom}</span>
           </div>
           <div style={{ fontSize: '0.75rem', color: C.muted }}>{preZone.nb_prospectables} adresses prospectables</div>
+        </div>
+
+        {/* ── Légende carte ── */}
+        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)', flexShrink: 0 }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 7 }}>📍 Sur la carte</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#F59E0B', flexShrink: 0, display: 'inline-block' }} />
+              <span style={{ fontSize: '0.78rem', color: C.text, flex: 1 }}>DPE &lt; 2 mois</span>
+              {dpeHotCount > 0 && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#F59E0B' }}>{dpeHotCount}</span>}
+              {dpeHotCount === 0 && !preLoading && <span style={{ fontSize: '0.72rem', color: C.dim }}>Aucun</span>}
+              {preLoading && <span style={{ fontSize: '0.72rem', color: C.dim }}>…</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#4ADE80', flexShrink: 0, display: 'inline-block', border: '2px solid rgba(255,255,255,0.3)' }} />
+              <span style={{ fontSize: '0.78rem', color: C.text, flex: 1 }}>Contacts CRM</span>
+              {preContacts.length > 0 && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#4ADE80' }}>{preContacts.length}</span>}
+              {preContacts.length === 0 && !preLoading && <span style={{ fontSize: '0.72rem', color: C.dim }}>Aucun</span>}
+              {preLoading && <span style={{ fontSize: '0.72rem', color: C.dim }}>…</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#6B6B7B', flexShrink: 0, display: 'inline-block' }} />
+              <span style={{ fontSize: '0.78rem', color: C.muted }}>Autres adresses</span>
+            </div>
+          </div>
         </div>
 
         <div style={{ flex: 1, padding: '0 16px', overflowY: 'auto' }}>
@@ -603,7 +647,7 @@ export default function TerrainPage() {
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
               {preLoading
                 ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
-                : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} />}
+                : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} contacts={preContacts} defaultShowDpe={true} />}
             </div>
             {/* Panneau stats */}
             <div style={{ width: 340, background: C.card, borderLeft: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -654,7 +698,7 @@ export default function TerrainPage() {
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {preLoading
             ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
-            : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} />}
+            : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} contacts={preContacts} defaultShowDpe={true} />}
         </div>
 
         {/* Bouton démarrer */}

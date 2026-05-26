@@ -26,6 +26,7 @@ export async function GET(req: Request) {
   const filtre       = searchParams.get('filtre')       ?? 'tous'
   const recherche    = searchParams.get('recherche')    ?? ''
   const type_contact = searchParams.get('type_contact') ?? ''
+  const zone_id      = searchParams.get('zone_id')      ?? ''
 
   let query = supabase
     .from('contacts')
@@ -44,6 +45,7 @@ export async function GET(req: Request) {
   if (filtre === 'relance') {
     query = query.not('date_relance', 'is', null).lte('date_relance', new Date().toISOString().split('T')[0])
   }
+  if (zone_id)      query = query.eq('zone_id', zone_id)
   if (type_contact) query = query.eq('type_contact', type_contact)
   if (recherche)    query = query.or(`nom.ilike.%${recherche}%,prenom.ilike.%${recherche}%,notes.ilike.%${recherche}%`)
 

@@ -11,6 +11,11 @@ interface Adresse {
   nom_syndic?: string; nb_bal?: number
 }
 
+export interface ContactPoint {
+  id: string; lat: number; lon: number
+  prenom?: string | null; nom?: string | null; statut_pipeline?: string | null
+}
+
 const STATUT_COLOR: Record<string, string> = {
   a_faire:   '#ef4444',
   boite:     '#3b82f6',
@@ -19,28 +24,57 @@ const STATUT_COLOR: Record<string, string> = {
   supprimee: '#1a1a18',
 }
 
+const PIPELINE_COLORS: Record<string, string> = {
+  prospect:      '#9A9AA8',
+  qualification: '#60A5FA',
+  estimation:    '#FBBF24',
+  mandat:        '#4ADE80',
+  perdu:         '#F87171',
+}
+
 interface Props {
   adresses:           Adresse[]
   zonePolygon:        any
   prochaineAdresseId: string | null
   onAdresseClick:     (adresse: Adresse) => void
+  contacts?:          ContactPoint[]
+  defaultShowDpe?:    boolean
+}
+
+/** Élément HTML pour un marqueur contact CRM */
+function createContactMarkerEl(label: string, color: string): HTMLElement {
+  const el = document.createElement('div')
+  el.style.cssText = `
+    width: 26px; height: 26px; border-radius: 50%;
+    background: ${color}; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800;
+    border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    pointer-events: none; user-select: none;
+  `
+  el.textContent = (label.slice(0, 1) || '?').toUpperCase()
+  return el
 }
 
 export default function TerrainMap({
   adresses, zonePolygon, prochaineAdresseId, onAdresseClick,
+  contacts, defaultShowDpe = false,
 }: Props) {
-  const containerRef      = useRef<HTMLDivElement>(null)
-  const mapRef            = useRef<any>(null)
-  const adressesRef       = useRef<Adresse[]>([])
-  const onClickRef        = useRef<(a: Adresse) => void>(onAdresseClick)
-  const watchIdRef        = useRef<number | null>(null)
-  // ✅ Ref pour le fitBounds initial — ne se déclenche qu'une fois par chargement d'adresses
-  const prevCountRef      = useRef<number>(0)
+  const containerRef       = useRef<HTMLDivElement>(null)
+  const mapRef             = useRef<any>(null)
+  const adressesRef        = useRef<Adresse[]>([])
+  const onClickRef         = useRef<(a: Adresse) => void>(onAdresseClick)
+  const watchIdRef         = useRef<number | null>(null)
+  const prevCountRef       = useRef<number>(0)
+  const contactMarkersRef  = useRef<any[]>([])
+
   const [mapLoaded,  setMapLoaded]  = useState(false)
   const [satellite,  setSatellite]  = useState(false)
   const [gpsActive,  setGpsActive]  = useState(false)
   const [gpsError,   setGpsError]   = useState(false)
-  const [showDpe,    setShowDpe]    = useState(false)
+  const [showDpe,    setShowDpe]    = useState(defaultShowDpe)
+  const [showContacts, setShowContacts] = useState(true)
 
   useEffect(() => { adressesRef.current = adresses },     [adresses])
   useEffect(() => { onClickRef.current  = onAdresseClick }, [onAdresseClick])
@@ -125,6 +159,13 @@ export default function TerrainMap({
           },
         })
 
+        // Halo DPE hot (adresses avec DPE < 2 mois)
+        map.addLayer({
+          id: 'adresses-dpe-halo', type: 'circle', source: 'adresses',
+          filter: ['==', ['get', 'dpe_hot'], true],
+          paint: { 'circle-radius': 14, 'circle-color': '#F59E0B', 'circle-opacity': 0.25, 'circle-blur': 0.5 },
+        })
+
         // Pulsation prochaine adresse
         map.addLayer({
           id: 'adresses-prochaine-pulse', type: 'circle', source: 'adresses',
@@ -146,7 +187,6 @@ export default function TerrainMap({
         map.on('mouseenter', 'adresses-touch', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'adresses-touch', () => { map.getCanvas().style.cursor = '' })
 
-        // ✅ Reset le compteur pour que fitBounds se déclenche à la 1re mise à jour
         prevCountRef.current = 0
         setMapLoaded(true)
       })
@@ -159,6 +199,8 @@ export default function TerrainMap({
         map.remove()
         mapRef.current = null
       }
+      contactMarkersRef.current.forEach(m => { try { m.remove() } catch(e) {} })
+      contactMarkersRef.current = []
       setMapLoaded(false)
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
     }
@@ -169,21 +211,23 @@ export default function TerrainMap({
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return
     const map = mapRef.current
-    // ✅ Guard supplémentaire : le map peut être dans un état invalide après remove()
     if (typeof map.getSource !== 'function') return
 
-    const pId = prochaineAdresseId
+    const pId        = prochaineAdresseId
+    const twoMonthsAgo = Date.now() - 60 * 24 * 3600 * 1000
 
     const features = adresses.filter(a => a.lat && a.lon).map(a => {
+      const dpeTs   = a.latest_dpe_date ? new Date(a.latest_dpe_date).getTime() : null
+      const dpe_hot = dpeTs !== null && dpeTs >= twoMonthsAgo   // DPE < 2 mois
       const dpe_cat = (() => {
-        if (a.statut_carte === 'supprimee' || !a.latest_dpe_date) return null
-        const days = (Date.now() - new Date(a.latest_dpe_date).getTime()) / 86400000
-        if (days <= 30)  return 'chaud'
+        if (a.statut_carte === 'supprimee' || !dpeTs) return null
+        const days = (Date.now() - dpeTs) / 86400000
+        if (days <= 60)  return 'hot'
         if (days <= 365) return 'tiede'
         return 'ancien'
       })()
       const couleur = showDpe && dpe_cat
-        ? (dpe_cat === 'chaud' ? '#22c55e' : dpe_cat === 'tiede' ? '#86efac' : '#fb923c')
+        ? (dpe_cat === 'hot' ? '#F59E0B' : dpe_cat === 'tiede' ? '#86efac' : '#9b9b96')
         : (STATUT_COLOR[a.statut_carte] ?? '#9b9b96')
       return {
         type: 'Feature' as const,
@@ -191,6 +235,7 @@ export default function TerrainMap({
           id:           a.id,
           statut:       a.statut_carte,
           couleur,
+          dpe_hot,
           prospectable: a.prospectable !== false,
           label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
           prochaine:    a.id === pId,
@@ -204,7 +249,6 @@ export default function TerrainMap({
     try {
       ;(map.getSource('adresses') as any)?.setData({ type: 'FeatureCollection', features })
 
-      // Itinéraire
       const orderedCoords = adresses
         .filter(a => a.lat && a.lon)
         .sort((a, b) => a.ordre - b.ordre)
@@ -217,8 +261,6 @@ export default function TerrainMap({
         })
       }
 
-      // ✅ fitBounds UNIQUEMENT au premier chargement des adresses
-      // (quand le nombre passe de 0 à non-zéro) — ne se re-déclenche plus sur les interactions
       if (adresses.length > 0 && prevCountRef.current === 0) {
         const lons = adresses.filter(a => a.lon).map(a => a.lon)
         const lats = adresses.filter(a => a.lat).map(a => a.lat)
@@ -232,11 +274,39 @@ export default function TerrainMap({
       prevCountRef.current = adresses.length
 
     } catch (err) {
-      // La carte peut être dans un état invalide (ex: supprimée) — on ignore
       console.warn('[TerrainMap] setData erreur:', err)
     }
 
   }, [adresses, prochaineAdresseId, mapLoaded, showDpe])
+
+  // ── Marqueurs contacts ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    // Supprimer les marqueurs précédents
+    contactMarkersRef.current.forEach(m => { try { m.remove() } catch(e) {} })
+    contactMarkersRef.current = []
+
+    if (!showContacts || !contacts?.length) return
+
+    import('maplibre-gl').then(ml => {
+      const currentMap = mapRef.current
+      if (!currentMap) return
+      contacts.forEach(c => {
+        if (!c.lat || !c.lon) return
+        const label = [c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'
+        const color = PIPELINE_COLORS[c.statut_pipeline ?? 'prospect'] ?? '#9A9AA8'
+        const el    = createContactMarkerEl(label, color)
+        try {
+          const marker = new ml.Marker({ element: el, anchor: 'center' })
+            .setLngLat([c.lon, c.lat])
+            .addTo(currentMap)
+          contactMarkersRef.current.push(marker)
+        } catch(e) {}
+      })
+    })
+  }, [contacts, mapLoaded, showContacts])
 
   // ── GPS ────────────────────────────────────────────────────────────────────
   const startGps = () => {
@@ -280,57 +350,71 @@ export default function TerrainMap({
     })
   }
 
+  const hasContacts = (contacts?.length ?? 0) > 0
+  const btnBase = {
+    position: 'absolute' as const, right: 10, zIndex: 10,
+    padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600 as const,
+    cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+    border: '1px solid',
+  }
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Satellite toggle */}
       <button onClick={toggleSatellite} style={{
-        position: 'absolute', bottom: 80, right: 10, zIndex: 10,
-        padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+        ...btnBase, bottom: 80,
         background: satellite ? '#1D9E75' : 'rgba(255,255,255,0.95)',
-        color: satellite ? '#fff' : '#374151',
-        border: '1px solid ' + (satellite ? '#1D9E75' : '#e8e7e0'),
-        cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        color:      satellite ? '#fff'     : '#374151',
+        borderColor: satellite ? '#1D9E75' : '#e8e7e0',
       }}>
         {satellite ? '🛰 Satellite' : '🗺 Carte'}
       </button>
 
       {/* GPS toggle */}
       <button onClick={gpsActive ? stopGps : startGps} style={{
-        position: 'absolute', bottom: 120, right: 10, zIndex: 10,
-        padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-        background: gpsActive ? '#3b82f6' : 'rgba(255,255,255,0.95)',
-        color: gpsActive ? '#fff' : (gpsError ? '#ef4444' : '#374151'),
-        border: '1px solid ' + (gpsError ? '#ef4444' : gpsActive ? '#3b82f6' : '#e8e7e0'),
-        cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        ...btnBase, bottom: 120,
+        background:  gpsActive ? '#3b82f6' : 'rgba(255,255,255,0.95)',
+        color:       gpsActive ? '#fff'    : (gpsError ? '#ef4444' : '#374151'),
+        borderColor: gpsError  ? '#ef4444' : gpsActive ? '#3b82f6' : '#e8e7e0',
       }}>
         {gpsError ? '⚠️ GPS' : gpsActive ? '📍 Actif' : '📍 GPS'}
       </button>
 
       {/* DPE toggle */}
       <button onClick={() => setShowDpe(v => !v)} style={{
-        position: 'absolute', bottom: 160, right: 10, zIndex: 10,
-        padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-        background: showDpe ? '#E63946' : 'rgba(255,255,255,0.95)',
-        color: showDpe ? '#fff' : '#374151',
-        border: '1px solid ' + (showDpe ? '#E63946' : '#e8e7e0'),
-        cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        ...btnBase, bottom: 160,
+        background:  showDpe ? '#F59E0B' : 'rgba(255,255,255,0.95)',
+        color:       showDpe ? '#fff'    : '#374151',
+        borderColor: showDpe ? '#F59E0B' : '#e8e7e0',
       }}>
-        📋 DPE
+        🏠 DPE
       </button>
 
-      {/* DPE legend */}
+      {/* Contacts toggle — visible seulement si des contacts sont passés */}
+      {hasContacts && (
+        <button onClick={() => setShowContacts(v => !v)} style={{
+          ...btnBase, bottom: 200,
+          background:  showContacts ? '#4ADE80' : 'rgba(255,255,255,0.95)',
+          color:       showContacts ? '#fff'    : '#374151',
+          borderColor: showContacts ? '#4ADE80' : '#e8e7e0',
+        }}>
+          👥 Contacts
+        </button>
+      )}
+
+      {/* Légende DPE */}
       {showDpe && (
         <div style={{
-          position: 'absolute', bottom: 202, right: 10, zIndex: 10,
+          position: 'absolute', bottom: hasContacts ? 244 : 202, right: 10, zIndex: 10,
           background: 'rgba(255,255,255,0.95)', borderRadius: 8,
           padding: '6px 10px', fontSize: 11, lineHeight: 1.9,
           border: '1px solid #e8e7e0', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         }}>
-          <div><span style={{ color: '#22c55e', marginRight: 4 }}>●</span>&lt;1 mois</div>
-          <div><span style={{ color: '#86efac', marginRight: 4 }}>●</span>1–12 mois</div>
-          <div><span style={{ color: '#fb923c', marginRight: 4 }}>●</span>&gt;12 mois</div>
+          <div><span style={{ color: '#F59E0B', marginRight: 4 }}>●</span>&lt;2 mois</div>
+          <div><span style={{ color: '#86efac', marginRight: 4 }}>●</span>2–12 mois</div>
+          <div><span style={{ color: '#9b9b96', marginRight: 4 }}>●</span>&gt;12 mois</div>
         </div>
       )}
     </div>
