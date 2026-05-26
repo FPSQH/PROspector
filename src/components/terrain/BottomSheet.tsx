@@ -17,6 +17,8 @@ interface Adresse {
   score?: number; latest_dpe_date?: string | null; dpe_etiquette?: string | null
   has_audit?: boolean; audit_n?: string | null; audit_date?: string | null
   audit_scenarios?: AuditScenario[] | null; nom_syndic?: string
+  // Coordonnées et zone (disponibles lors des sessions terrain)
+  lat?: number | null; lon?: number | null; zone_id?: string | null
 }
 
 export default function BottomSheet({
@@ -125,6 +127,10 @@ const intRes = await fetch('/api/interactions', {
                          : typeProjet.includes('reflexion') ? 'projet_long'
                          : null,
           statut_pipeline: 'prospect',
+          // Coordonnées et zone pour affichage carte
+          adresse_lat:     adresse.lat  ?? null,
+          adresse_lon:     adresse.lon  ?? null,
+          zone_id:         adresse.zone_id ?? null,
         }),
       })
       // FIX : lier le contact_id sur l'interaction
