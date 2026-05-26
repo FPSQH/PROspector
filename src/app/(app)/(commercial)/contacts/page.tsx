@@ -99,6 +99,62 @@ function pill(active: boolean, color = C.primary): any {
   }
 }
 
+// ── Email + ICS ───────────────────────────────────────────────────────────────
+function buildMailto(c: any): string {
+  const nom = [c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'
+  const adrStr = c.adresses ? addrText(c.adresses) : (c.adresse_libre ?? '')
+  const zoneName = (c.zones_prospection ?? c.adresses?.zones_prospection)?.nom ?? ''
+  const relanceLabel = c.date_relance
+    ? new Date(c.date_relance + 'T12:00:00').toLocaleDateString('fr-FR') : ''
+  const subject = c.date_relance
+    ? 'Relance contact PROspector pour le ' + relanceLabel
+    : 'Fiche contact – ' + nom
+  const body = [
+    'Contact : ' + nom,
+    adrStr     ? 'Adresse : '    + adrStr : '',
+    zoneName   ? 'Zone : '       + zoneName : '',
+    c.tel1     ? 'Tél : '        + c.tel1 : '',
+    c.email1   ? 'Email : '      + c.email1 : '',
+    c.type_contact    ? 'Type : '       + (TYPE_LABELS[c.type_contact]    ?? c.type_contact)    : '',
+    c.statut_pipeline ? 'Statut : '     + (STATUT_LABELS[c.statut_pipeline] ?? c.statut_pipeline) : '',
+    c.horizon_vente   ? 'Horizon : '    + (HORIZON_LABELS[c.horizon_vente] ?? c.horizon_vente)    : '',
+    c.horizon_echeance_date ? 'Échéance : ' + fmtDate(c.horizon_echeance_date) : '',
+    c.notes    ? 'Notes : '      + c.notes : '',
+    relanceLabel       ? 'Relance le : ' + relanceLabel : '',
+    '', '---', 'Envoyé depuis PROspector',
+  ].filter(Boolean).join('\n')
+  return 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body)
+}
+
+function downloadICS(c: any) {
+  if (!c.date_relance) return
+  const nom     = [c.prenom, c.nom].filter(Boolean).join(' ')
+  const dateStr = c.date_relance.replace(/-/g, '')
+  const now     = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z'
+  const adrStr  = c.adresses ? addrText(c.adresses) : (c.adresse_libre ?? '')
+  const description = [
+    'Prospect : '  + nom,
+    'Adresse : '   + (adrStr || 'Non renseignée'),
+    'Tél : '       + (c.tel1 || 'Non renseigné'),
+    'Type : '      + (TYPE_LABELS[c.type_contact] ?? ''),
+    'Notes : '     + (c.notes || ''),
+  ].join('\\n')
+  const ics = [
+    'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//PROspector//FR',
+    'CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',
+    'UID:relance-' + c.id + '@prospector','DTSTAMP:' + now,
+    'DTSTART;VALUE=DATE:' + dateStr,'DTEND;VALUE=DATE:' + dateStr,
+    'SUMMARY:Relance – ' + nom,
+    'DESCRIPTION:' + description,
+    'END:VEVENT','END:VCALENDAR',
+  ].join('\r\n')
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = 'relance-' + nom.toLowerCase().replace(/\s+/g,'-') + '.ics'
+  link.click(); URL.revokeObjectURL(link.href)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function ContactsPage() {
   const [contacts,       setContacts]       = useState<any[]>([])
@@ -641,6 +697,19 @@ export default function ContactsPage() {
         {FormBody()}
       </div>
       <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {/* Boutons mail + calendrier */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <a href={buildMailto({ ...selected, ...form, adresses: selected?.adresses, zones_prospection: selected?.zones_prospection })}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(29,158,117,0.1)', color: C.primary, border: '1px solid rgba(29,158,117,0.25)', textDecoration: 'none' }}>
+            ✉️ Envoyer par mail
+          </a>
+          {selected?.date_relance && (
+            <button onClick={() => downloadICS({ ...selected, ...form, adresses: selected?.adresses })}
+              style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: 'rgba(96,165,250,0.1)', color: C.blue, border: '1px solid rgba(96,165,250,0.25)', cursor: 'pointer' }}>
+              📅 Ajouter au calendrier
+            </button>
+          )}
+        </div>
         {saveErr && <div style={{ fontSize: 12, color: C.danger, marginBottom: 8 }}>{saveErr}</div>}
         {saveOk  && <div style={{ fontSize: 12, color: C.green,  marginBottom: 8 }}>✓ Enregistré</div>}
         <button onClick={save} disabled={saving}

@@ -35,6 +35,30 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* ── Contrôles natifs en mode sombre ──────────────────────────────── */
+/* Applique le rendu sombre aux popups natifs (select, date picker…)   */
+select,
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="week"] {
+  color-scheme: dark;
+}
+
+/* Couleurs de base pour les <select> même sans style inline */
+select {
+  background: #1A1A1E;
+  color: #F0F0F2;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+
 body {
   background: #f8f7f4;
   color: var(--gray-800);

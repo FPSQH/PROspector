@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 
 export interface ContactPoint {
   id: string
@@ -57,8 +57,38 @@ function fitBounds(map: any, pts: ContactPoint[]) {
   const lons = pts.map(c => c.lon), lats = pts.map(c => c.lat)
   map.fitBounds(
     [[Math.min(...lons) - 0.005, Math.min(...lats) - 0.005], [Math.max(...lons) + 0.005, Math.max(...lats) + 0.005]],
-    { padding: 48, duration: 400 }
+    { padding: 56, duration: 400 }
   )
+}
+
+/** Crée un élément HTML pour le marqueur du contact sélectionné */
+function createPinElement(label: string, color: string): HTMLElement {
+  const el = document.createElement('div')
+  el.style.cssText = `
+    display: flex; flex-direction: column; align-items: center;
+    cursor: pointer; user-select: none; pointer-events: none;
+  `
+  // Bulle label
+  const bubble = document.createElement('div')
+  bubble.textContent = label
+  bubble.style.cssText = `
+    background: ${color}; color: #fff;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 700;
+    white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    margin-bottom: 4px;
+  `
+  // Épingle
+  const pin = document.createElement('div')
+  pin.style.cssText = `
+    width: 18px; height: 18px; border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg); background: ${color};
+    border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  `
+  el.appendChild(bubble)
+  el.appendChild(pin)
+  return el
 }
 
 export default function ContactsMap({ contacts, selectedId, onContactClick }: {
@@ -66,17 +96,18 @@ export default function ContactsMap({ contacts, selectedId, onContactClick }: {
   selectedId?: string | null
   onContactClick?: (id: string) => void
 }) {
-  const containerRef   = useRef<HTMLDivElement>(null)
-  const mapRef         = useRef<any>(null)
-  const readyRef       = useRef(false)
-  const cbRef          = useRef(onContactClick)
-  const contactsRef    = useRef(contacts)
-  const selectedIdRef  = useRef(selectedId)
-  cbRef.current       = onContactClick
-  contactsRef.current  = contacts
+  const containerRef    = useRef<HTMLDivElement>(null)
+  const mapRef          = useRef<any>(null)
+  const readyRef        = useRef(false)
+  const cbRef           = useRef(onContactClick)
+  const contactsRef     = useRef(contacts)
+  const selectedIdRef   = useRef(selectedId)
+  const pinMarkerRef    = useRef<any>(null)   // marqueur HTML pour contact sélectionné
+  cbRef.current         = onContactClick
+  contactsRef.current   = contacts
   selectedIdRef.current = selectedId
 
-  // Init map (once)
+  // ── Init carte (une seule fois) ──────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     let cancelled = false
@@ -90,26 +121,23 @@ export default function ContactsMap({ contacts, selectedId, onContactClick }: {
       mapRef.current = map
 
       map.on('load', () => {
-        // Use refs to get latest data even if contacts arrived before map loaded
         map.addSource('contacts', { type: 'geojson', data: buildGeoJSON(contactsRef.current, selectedIdRef.current) })
 
-        // Anneau de sélection
-        map.addLayer({ id: 'contacts-ring', type: 'circle', source: 'contacts',
-          filter: ['==', ['get', 'selected'], true],
-          paint: { 'circle-radius': 15, 'circle-color': 'transparent',
-            'circle-stroke-width': 3, 'circle-stroke-color': ['get', 'color'] } })
+        // ── Cercle shadow (contacts non-sélectionnés) ──
+        map.addLayer({ id: 'contacts-shadow', type: 'circle', source: 'contacts',
+          filter: ['==', ['get', 'selected'], false],
+          paint: { 'circle-radius': 10, 'circle-color': ['get', 'color'], 'circle-opacity': 0.15, 'circle-blur': 0.5 } })
 
-        // Dot principal
+        // ── Dot principal (non sélectionnés) ──
         map.addLayer({ id: 'contacts-dot', type: 'circle', source: 'contacts',
-          paint: { 'circle-radius': ['case', ['get', 'selected'], 9, 7],
-            'circle-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+          filter: ['==', ['get', 'selected'], false],
+          paint: { 'circle-radius': 7, 'circle-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
 
-        // Label (seulement pour la sélection)
-        map.addLayer({ id: 'contacts-label', type: 'symbol', source: 'contacts',
-          filter: ['==', ['get', 'selected'], true],
-          layout: { 'text-field': ['get', 'label'], 'text-size': 12,
-            'text-font': ['Open Sans Bold'], 'text-offset': [0, 1.6], 'text-anchor': 'top' },
-          paint: { 'text-color': '#F0F0F2', 'text-halo-color': '#141416', 'text-halo-width': 2 } })
+        // ── Initiales label (non sélectionnés) ──
+        map.addLayer({ id: 'contacts-initiales', type: 'symbol', source: 'contacts',
+          filter: ['==', ['get', 'selected'], false],
+          layout: { 'text-field': ['slice', ['get', 'label'], 0, 1], 'text-size': 10, 'text-font': ['Open Sans Bold'] },
+          paint: { 'text-color': '#fff', 'text-halo-color': 'rgba(0,0,0,0)', 'text-halo-width': 0 } })
 
         map.on('click', 'contacts-dot', (e: any) => {
           const id = e.features?.[0]?.properties?.id
@@ -119,7 +147,13 @@ export default function ContactsMap({ contacts, selectedId, onContactClick }: {
         map.on('mouseleave', 'contacts-dot', () => { map.getCanvas().style.cursor = '' })
 
         readyRef.current = true
-        if (contactsRef.current.length > 0) fitBounds(map, contactsRef.current)
+
+        // Mettre à jour avec les données actuelles (race-condition fix)
+        const curr = contactsRef.current
+        const sel  = selectedIdRef.current
+        map.getSource('contacts').setData(buildGeoJSON(curr, sel))
+        updatePinMarker(map, ml, curr, sel)
+        if (curr.length > 0) fitBounds(map, curr)
       })
     })()
 
@@ -127,19 +161,40 @@ export default function ContactsMap({ contacts, selectedId, onContactClick }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Mise à jour des données
+  // ── Mise à jour données ──────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map || !readyRef.current) return
     const src = map.getSource('contacts')
     if (!src) return
+
     src.setData(buildGeoJSON(contacts, selectedId))
+
+    import('maplibre-gl').then(ml => {
+      updatePinMarker(map, ml, contacts, selectedId)
+    })
 
     if (selectedId) {
       const c = contacts.find(x => x.id === selectedId)
       if (c) map.easeTo({ center: [c.lon, c.lat], zoom: Math.max(map.getZoom(), 14), duration: 400 })
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contacts, selectedId])
+
+  // ── Helper : marqueur pin HTML pour la sélection ─────────────────────────
+  function updatePinMarker(map: any, ml: any, pts: ContactPoint[], selId?: string | null) {
+    // Supprimer le marqueur précédent
+    if (pinMarkerRef.current) { pinMarkerRef.current.remove(); pinMarkerRef.current = null }
+    if (!selId) return
+    const c = pts.find(x => x.id === selId)
+    if (!c) return
+    const color  = STATUT_COLORS[c.statut_pipeline ?? 'prospect'] ?? '#9A9AA8'
+    const label  = [c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'
+    const el     = createPinElement(label, color)
+    pinMarkerRef.current = new ml.Marker({ element: el, anchor: 'bottom', offset: [0, -4] })
+      .setLngLat([c.lon, c.lat])
+      .addTo(map)
+  }
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }
