@@ -101,28 +101,78 @@ function pill(active: boolean, color = C.primary): any {
 
 // ── Email + ICS ───────────────────────────────────────────────────────────────
 function buildMailto(c: any): string {
-  const nom = [c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'
-  const adrStr = c.adresses ? addrText(c.adresses) : (c.adresse_libre ?? '')
-  const zoneName = (c.zones_prospection ?? c.adresses?.zones_prospection)?.nom ?? ''
+  const nom          = [c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'
+  const adrStr       = c.adresses ? addrText(c.adresses) : (c.adresse_libre ?? '')
+  const zoneName     = (c.zones_prospection ?? c.adresses?.zones_prospection)?.nom ?? ''
   const relanceLabel = c.date_relance
-    ? new Date(c.date_relance + 'T12:00:00').toLocaleDateString('fr-FR') : ''
+    ? new Date(c.date_relance + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    : ''
+  const appUrl = (typeof window !== 'undefined' ? window.location.origin : 'https://prospector-sooty-seven.vercel.app') + '/contacts'
+
+  // Sujet
   const subject = c.date_relance
-    ? 'Relance contact PROspector pour le ' + relanceLabel
-    : 'Fiche contact – ' + nom
-  const body = [
-    'Contact : ' + nom,
-    adrStr     ? 'Adresse : '    + adrStr : '',
-    zoneName   ? 'Zone : '       + zoneName : '',
-    c.tel1     ? 'Tél : '        + c.tel1 : '',
-    c.email1   ? 'Email : '      + c.email1 : '',
-    c.type_contact    ? 'Type : '       + (TYPE_LABELS[c.type_contact]    ?? c.type_contact)    : '',
-    c.statut_pipeline ? 'Statut : '     + (STATUT_LABELS[c.statut_pipeline] ?? c.statut_pipeline) : '',
-    c.horizon_vente   ? 'Horizon : '    + (HORIZON_LABELS[c.horizon_vente] ?? c.horizon_vente)    : '',
-    c.horizon_echeance_date ? 'Échéance : ' + fmtDate(c.horizon_echeance_date) : '',
-    c.notes    ? 'Notes : '      + c.notes : '',
-    relanceLabel       ? 'Relance le : ' + relanceLabel : '',
-    '', '---', 'Envoyé depuis PROspector',
-  ].filter(Boolean).join('\n')
+    ? `[PROspector] Relance — ${nom} le ${relanceLabel}`
+    : `[PROspector] Fiche contact — ${nom}`
+
+  // Corps structuré (plain text — compatible tous clients mail)
+  const SEP = '────────────────────────────────────'
+  const row = (label: string, value: string) => `  ${(label + ' ').padEnd(13, ' ')}: ${value}`
+
+  const lines: string[] = [
+    '╔══════════════════════════════════════╗',
+    '  FICHE CONTACT  ·  PROspector',
+    '╚══════════════════════════════════════╝',
+    '',
+    '👤  IDENTITÉ',
+    SEP,
+    row('Nom', nom),
+  ]
+  if (c.tel1)   lines.push(row('Téléphone', c.tel1))
+  if (c.email1) lines.push(row('Email', c.email1))
+
+  if (adrStr || zoneName) {
+    lines.push('', '📍  LOCALISATION', SEP)
+    if (adrStr)   lines.push(row('Adresse', adrStr))
+    if (zoneName) lines.push(row('Zone', zoneName))
+  }
+
+  const hasProjet = c.type_contact || c.statut_pipeline || c.horizon_vente
+  if (hasProjet) {
+    lines.push('', '🏠  PROJET', SEP)
+    if (c.type_contact)    lines.push(row('Type', TYPE_LABELS[c.type_contact]    ?? c.type_contact))
+    if (c.statut_pipeline) lines.push(row('Statut', STATUT_LABELS[c.statut_pipeline] ?? c.statut_pipeline))
+    if (c.horizon_vente) {
+      lines.push(row('Horizon', HORIZON_LABELS[c.horizon_vente] ?? c.horizon_vente))
+      if (c.horizon_qualification_date) lines.push(row('Qualifié le', fmtDate(c.horizon_qualification_date)))
+      if (c.horizon_echeance_date)      lines.push(row('Échéance', '⚑  ' + fmtDate(c.horizon_echeance_date)))
+    }
+  }
+
+  const hasSuivi = relanceLabel || c.notes
+  if (hasSuivi) {
+    lines.push('', '📅  SUIVI', SEP)
+    if (relanceLabel) lines.push(row('Relance', '→  ' + relanceLabel))
+    if (c.notes) {
+      const notes = c.notes.length > 220 ? c.notes.slice(0, 220) + '…' : c.notes
+      lines.push(row('Notes', notes))
+    }
+  }
+
+  lines.push(
+    '',
+    SEP,
+    '🔗  Accéder à la fiche sur PROspector :',
+    '    ' + appUrl,
+    SEP,
+  )
+
+  // Sécurité longueur : si body encodé dépasse 1500 chars, tronquer les notes
+  const body = lines.join('\n')
+  const encoded = encodeURIComponent(subject) + encodeURIComponent(body)
+  if (encoded.length > 1500 && c.notes) {
+    // Retry avec notes très courtes
+    return buildMailto({ ...c, notes: c.notes.slice(0, 80) + '…' })
+  }
   return 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body)
 }
 
