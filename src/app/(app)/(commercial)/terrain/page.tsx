@@ -307,10 +307,27 @@ export default function TerrainPage() {
     if (premiere) { setSelectedAdresse(premiere); setSheetOpen(true) }
   }
 
-  const ouvrirGoogleMaps = () => {
-    const adr = adresses.find(a => a.id === itineraire[idxCourant])
+  /** Ouvre Google Maps pour une adresse précise */
+  const ouvrirGmapsAdresse = (adr: Adresse) => {
     if (!adr?.lat || !adr?.lon) return
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${adr.lat},${adr.lon}&travelmode=walking`, '_blank')
+  }
+
+  /** Ouvre Google Maps sur la prochaine adresse à faire (bouton header) */
+  const ouvrirGoogleMaps = () => {
+    const adr = adresses.find(a => a.id === itineraire[idxCourant])
+    if (adr) ouvrirGmapsAdresse(adr)
+  }
+
+  /** Ouvre Google Maps avec toute la tournée restante (jusqu'à 23 stops) */
+  const ouvrirTourneeGoogleMaps = () => {
+    const stops = itineraire
+      .map(id => adresses.find(a => a.id === id))
+      .filter((a): a is Adresse => !!a && a.statut_carte === 'a_faire' && !!a.lat && !!a.lon)
+      .slice(0, 23)
+    if (!stops.length) { ouvrirGoogleMaps(); return }
+    const coords = stops.map(a => `${a.lat},${a.lon}`).join('/')
+    window.open(`https://www.google.com/maps/dir/${coords}`, '_blank')
   }
 
   const handleEndSession = async () => {
@@ -850,7 +867,10 @@ export default function TerrainPage() {
         {!isHorsZone && (
           <>
             <button onClick={allerAdresseSuivante} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(29,158,117,0.12)', color: C.success, fontWeight: 600, fontSize: '0.78rem', border: '1px solid rgba(29,158,117,0.25)', cursor: 'pointer', flexShrink: 0 }}>Suivante →</button>
-            <button onClick={ouvrirGoogleMaps}      style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 600, fontSize: '0.78rem', border: `1px solid ${C.border}`, cursor: 'pointer', flexShrink: 0 }}>🗺</button>
+            <button onClick={ouvrirGoogleMaps}      style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 600, fontSize: '0.78rem', border: `1px solid ${C.border}`, cursor: 'pointer', flexShrink: 0 }} title="Naviguer vers la prochaine adresse">🧭</button>
+            {aFaireCount > 1 && (
+              <button onClick={ouvrirTourneeGoogleMaps} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: C.mid, fontWeight: 600, fontSize: '0.72rem', border: `1px solid ${C.border}`, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }} title={`Ouvrir l'itinéraire complet (${aFaireCount} adresses restantes)`}>🧭 Tournée</button>
+            )}
           </>
         )}
         <button onClick={handleEndSession} disabled={loading}
@@ -912,13 +932,16 @@ export default function TerrainPage() {
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 }}>
                   <button onClick={() => { setSheetOpen(false); setSelectedAdresse(null) }} style={{ background: 'none', border: 'none', fontSize: 18, color: C.mid, cursor: 'pointer', padding: 0, marginTop: 2 }}>←</button>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{[selectedAdresse.numero, selectedAdresse.nom_voie].filter(Boolean).join(' ') || 'Adresse'}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[selectedAdresse.numero, selectedAdresse.nom_voie].filter(Boolean).join(' ') || selectedAdresse.nom_voie || 'Adresse'}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{selectedAdresse.code_postal} {selectedAdresse.commune}</div>
                   </div>
+                  {selectedAdresse.lat && selectedAdresse.lon && (
+                    <button onClick={() => ouvrirGmapsAdresse(selectedAdresse)} style={{ background: 'none', border: `1px solid ${C.borderl}`, borderRadius: 7, fontSize: 14, cursor: 'pointer', padding: '5px 8px', color: C.text, flexShrink: 0 }} title="Ouvrir dans Google Maps">🧭</button>
+                  )}
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
-                  <BottomSheet open={true} inline={true} adresse={selectedAdresse} sessionId={session?.id ?? ''} onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }} onQualification={handleQualification} />
+                  <BottomSheet open={true} inline={true} adresse={selectedAdresse} sessionId={session?.id ?? ''} onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }} onQualification={handleQualification} onGps={selectedAdresse.lat && selectedAdresse.lon ? () => ouvrirGmapsAdresse(selectedAdresse) : undefined} />
                 </div>
               </div>
             ) : (
@@ -943,13 +966,13 @@ export default function TerrainPage() {
                   ) : adressesFiltrees.map(a => {
                     const isProchaine = a.id === prochaineAdresseId
                     return (
-                      <div key={a.id} onClick={() => handleAdresseClick(a)}
-                        style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: isProchaine ? 'rgba(29,158,117,0.08)' : 'transparent', borderLeft: `3px solid ${isProchaine ? C.primary : STATUT_COLOR[a.statut_carte] ?? C.border}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div key={a.id}
+                        style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: isProchaine ? 'rgba(29,158,117,0.08)' : 'transparent', borderLeft: `3px solid ${isProchaine ? C.primary : STATUT_COLOR[a.statut_carte] ?? C.border}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUT_COLOR[a.statut_carte], flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => handleAdresseClick(a)}>
                             <div style={{ fontWeight: 600, fontSize: 13, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {[a.numero, a.nom_voie].filter(Boolean).join(' ')}
+                              {[a.numero, a.nom_voie].filter(Boolean).join(' ') || a.nom_voie || '–'}
                             </div>
                             <div style={{ fontSize: 11, color: C.muted, display: 'flex', gap: 6, marginTop: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                               <span>{STATUT_LABEL[a.statut_carte]}</span>
@@ -958,7 +981,11 @@ export default function TerrainPage() {
                               {isProchaine && <span style={{ color: C.success, fontWeight: 700 }}>← Suivante</span>}
                             </div>
                           </div>
-                          <span style={{ fontSize: 12, color: C.muted }}>›</span>
+                          {a.lat && a.lon && (
+                            <button onClick={e => { e.stopPropagation(); ouvrirGmapsAdresse(a) }}
+                              style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', padding: '3px 6px', color: C.mid, flexShrink: 0 }}
+                              title="Naviguer vers cette adresse">🧭</button>
+                          )}
                         </div>
                       </div>
                     )
@@ -992,7 +1019,7 @@ export default function TerrainPage() {
         )}
       </div>
       {selectedAdresse && (
-        <BottomSheet open={sheetOpen} adresse={selectedAdresse} sessionId={session?.id ?? ''} onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }} onQualification={handleQualification} />
+        <BottomSheet open={sheetOpen} adresse={selectedAdresse} sessionId={session?.id ?? ''} onClose={() => { setSheetOpen(false); setSelectedAdresse(null) }} onQualification={handleQualification} onGps={selectedAdresse.lat && selectedAdresse.lon ? () => ouvrirGmapsAdresse(selectedAdresse) : undefined} />
       )}
     </div>
   )

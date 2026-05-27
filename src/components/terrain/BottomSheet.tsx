@@ -22,11 +22,11 @@ interface Adresse {
 }
 
 export default function BottomSheet({
-  adresse, open, onClose, onQualification, sessionId, inline = false
+  adresse, open, onClose, onQualification, sessionId, inline = false, onGps
 }: {
   adresse: Adresse; open: boolean; onClose: () => void
   onQualification: (data: any) => void; sessionId?: string
-  inline?: boolean
+  inline?: boolean; onGps?: () => void
 }) {
   type Step = 'main' | 'contact' | 'exclure' | 'supprimer'
 
@@ -510,7 +510,12 @@ const intRes = await fetch('/api/interactions', {
                 {isSupprimee && <span style={{ fontSize: 10, background: '#1a1a18', color: '#fff', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>SUPPRIMÉE</span>}
               </div>
             </div>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9b9b96', cursor: 'pointer', padding: '0 0 0 12px', flexShrink: 0, lineHeight: 1 }}>✕</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              {onGps && (
+                <button onClick={onGps} style={{ background: 'none', border: '1px solid #E8E6DF', borderRadius: 8, fontSize: 16, cursor: 'pointer', padding: '4px 8px', color: '#374151', lineHeight: 1 }} title="Ouvrir dans Google Maps">🧭</button>
+              )}
+              <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9b9b96', cursor: 'pointer', padding: '0 0 0 8px', flexShrink: 0, lineHeight: 1 }}>✕</button>
+            </div>
           </div>
           {backButton}
         </div>
