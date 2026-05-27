@@ -200,24 +200,14 @@ export default function CourriersPage() {
 
   const createTournee = async () => {
     const filtered = getFiltered()
-    // Utilise adresse_id (FK vers adresses.id) et non dpe_logement.id
-    const getAdresseId = (a: DpeAdresseData) => (a as any).adresse_id as string | null | undefined
+    // Stocke dpe_logement.id — sessions/[id] charge directement depuis dpe_logement
     let source: DpeAdresseData[]
     if (tourneeTarget === 'selection') source = filtered.filter(a => checked.has(a.id))
     else if (tourneeTarget === 'tous') source = filtered
     else source = adresses.filter(a => a.id === tourneeTarget)
 
-    const ids: string[] = source.map(getAdresseId).filter((id): id is string => !!id)
-
-    const nbSansAdresse = source.length - ids.length
-    if (!ids.length) {
-      alert('Aucune adresse ne peut être ajoutée à la tournée — les enregistrements DPE sélectionnés ne sont pas encore appariés à une adresse de prospection.')
-      return
-    }
-    if (nbSansAdresse > 0) {
-      const ok = confirm(`⚠️ ${nbSansAdresse} enregistrement${nbSansAdresse > 1 ? 's' : ''} DPE n'ont pas d'adresse appariée et seront ignorés.\n${ids.length} adresse${ids.length > 1 ? 's' : ''} seront incluses dans la tournée. Continuer ?`)
-      if (!ok) return
-    }
+    const ids: string[] = source.map(a => a.id)
+    if (!ids.length) return
     setTourneeSaving(true)
     try {
       const r = await fetch('/api/sessions', {
@@ -537,13 +527,11 @@ export default function CourriersPage() {
 
       {/* ── Modal Tournée DPE ──────────────────────────────────────────── */}
       {tourneeModal && (() => {
-        // Compter les adresses effectivement appariées (adresse_id non null)
-        const getAId = (a: DpeAdresseData) => (a as any).adresse_id as string | null | undefined
         const sourceItems: DpeAdresseData[] =
           tourneeTarget === 'selection' ? filtered.filter(a => checked.has(a.id))
           : tourneeTarget === 'tous'    ? filtered
           : adresses.filter(a => a.id === tourneeTarget)
-        const targetIds: string[] = sourceItems.map(getAId).filter((id): id is string => !!id)
+        const targetIds: string[] = sourceItems.map(a => a.id)
         const nbAdresses = targetIds.length
         const nbTotal    = sourceItems.length
         const isTooMany  = nbAdresses > 50

@@ -26,34 +26,84 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (!session) return NextResponse.json({ error: 'Session non trouvee' }, { status: 404 })
 
-  const s = session as any
+  const s        = session as any
+  const adminDb  = createAdminClient()
   const allAdresses: any[] = []
-  let from = 0
 
-  const buildQuery = () => {
-    const base = supabase.from('adresses').select(ADRESSE_SELECT).not('lat', 'is', null)
-    // Tournée DPE : charger uniquement les adresses sélectionnées
-    if (s.type_session === 'dpe' && s.adresse_ids?.length) {
-      return base.in('id', s.adresse_ids)
+  const dpeMap: Record<string, {
+    date:            string
+    etiquette:       string | null
+    has_audit:       boolean
+    audit_n:         string | null
+    audit_date:      string | null
+    audit_scenarios: any[] | null
+  }> = {}
+
+  // ── Chargement des adresses ──────────────────────────────────────────────────
+  if (s.type_session === 'dpe' && s.adresse_ids?.length) {
+    // Tournée DPE : charge depuis dpe_logement (adresse_ids = dpe_logement.id[])
+    // Inclut TOUS les biens DPE, même ceux non appariés à une adresse de prospection
+    const { data: dpes } = await adminDb
+      .from('dpe_logement')
+      .select('id, adresse_id, adresse_brute, lat, lon, code_insee, type_batiment, etiquette_dpe, date_etablissement, has_audit, audit_n, audit_date, audit_scenarios')
+      .in('id', s.adresse_ids)
+
+    for (const d of (dpes ?? [])) {
+      if (!d.lat || !d.lon) continue
+      // Utiliser adresse_id si disponible (permet les interactions BottomSheet),
+      // sinon utiliser dpe.id (bien visible sur la carte + GPS, sans interaction)
+      const eid = d.adresse_id ?? d.id
+      allAdresses.push({
+        id:                     eid,
+        lat:                    d.lat,
+        lon:                    d.lon,
+        numero:                 null,
+        nom_voie:               d.adresse_brute ?? '',
+        code_postal:            null,
+        commune:                null,
+        code_insee:             d.code_insee,
+        type_bien:              d.type_batiment,
+        nb_bal:                 null,
+        prospectable:           true,
+        type_habitat:           null,
+        mode_prospection:       null,
+        statut_prospectabilite: null,
+        motif_exclusion:        null,
+        courrier_cible_possible: false,
+        commentaire_adresse:    null,
+        nom_syndic:             null,
+        nb_acces_observe:       null,
+      })
+      // DPE déjà chargé — pré-remplir dpeMap directement
+      dpeMap[eid] = {
+        date:            d.date_etablissement,
+        etiquette:       (d.etiquette_dpe ?? '').toUpperCase() || null,
+        has_audit:       !!d.has_audit,
+        audit_n:         d.audit_n         ?? null,
+        audit_date:      d.audit_date      ?? null,
+        audit_scenarios: d.audit_scenarios ?? null,
+      }
     }
-    if (s.zone_id)            return base.eq('zone_id', s.zone_id)
-    if (s.commune_code_insee) return base.eq('code_insee', s.commune_code_insee)
-    return null
-  }
-
-  const baseQuery = buildQuery()
-  if (baseQuery) {
-    while (true) {
-      const { data, error } = await baseQuery.range(from, from + 999)
-      if (error || !data || data.length === 0) break
-      allAdresses.push(...data)
-      if (data.length < 1000) break
-      from += 1000
+  } else {
+    // Session normale : charge depuis adresses (zone ou commune)
+    let from = 0
+    const buildQuery = () => {
+      const base = supabase.from('adresses').select(ADRESSE_SELECT).not('lat', 'is', null)
+      if (s.zone_id)            return base.eq('zone_id', s.zone_id)
+      if (s.commune_code_insee) return base.eq('code_insee', s.commune_code_insee)
+      return null
+    }
+    const baseQuery = buildQuery()
+    if (baseQuery) {
+      while (true) {
+        const { data, error } = await baseQuery.range(from, from + 999)
+        if (error || !data || data.length === 0) break
+        allAdresses.push(...data)
+        if (data.length < 1000) break
+        from += 1000
+      }
     }
   }
-
-  // FIX : utiliser adminDb pour bypasser RLS sur interactions (cohérent avec interactions/route.ts)
-  const adminDb = createAdminClient()
 
   const { data: interactions } = await adminDb
     .from('interactions')
@@ -71,31 +121,26 @@ export async function GET(_req: Request, { params }: Params) {
   const interMap = new Map((interactions ?? []).map((i: any) => [i.adresse_id, i]))
   const itinMap  = new Map(itineraire.map((i: any) => [i.adresse_id, i.ordre]))
 
-  const adresseIds = allAdresses.map((a: any) => a.id)
-  const dpeMap: Record<string, {
-    date:           string
-    etiquette:      string | null
-    has_audit:      boolean
-    audit_n:        string | null
-    audit_date:     string | null
-    audit_scenarios: any[] | null
-  }> = {}
-  if (adresseIds.length > 0) {
-    const { data: dpes } = await supabase
-      .from('dpe_logement')
-      .select('adresse_id, date_etablissement, etiquette_dpe, has_audit, audit_n, audit_date, audit_scenarios')
-      .in('adresse_id', adresseIds)
-      .not('etiquette_dpe', 'is', null)
-      .order('date_etablissement', { ascending: false })
-    for (const d of (dpes ?? [])) {
-      if (!dpeMap[d.adresse_id]) {
-        dpeMap[d.adresse_id] = {
-          date:            d.date_etablissement,
-          etiquette:       (d.etiquette_dpe ?? '').toUpperCase() || null,
-          has_audit:       !!d.has_audit,
-          audit_n:         d.audit_n        ?? null,
-          audit_date:      d.audit_date     ?? null,
-          audit_scenarios: d.audit_scenarios ?? null,
+  // Charger DPE uniquement pour les sessions normales (déjà rempli pour type_session='dpe')
+  if (s.type_session !== 'dpe') {
+    const adresseIds = allAdresses.map((a: any) => a.id)
+    if (adresseIds.length > 0) {
+      const { data: dpes } = await supabase
+        .from('dpe_logement')
+        .select('adresse_id, date_etablissement, etiquette_dpe, has_audit, audit_n, audit_date, audit_scenarios')
+        .in('adresse_id', adresseIds)
+        .not('etiquette_dpe', 'is', null)
+        .order('date_etablissement', { ascending: false })
+      for (const d of (dpes ?? [])) {
+        if (!dpeMap[d.adresse_id]) {
+          dpeMap[d.adresse_id] = {
+            date:            d.date_etablissement,
+            etiquette:       (d.etiquette_dpe ?? '').toUpperCase() || null,
+            has_audit:       !!d.has_audit,
+            audit_n:         d.audit_n        ?? null,
+            audit_date:      d.audit_date     ?? null,
+            audit_scenarios: d.audit_scenarios ?? null,
+          }
         }
       }
     }
