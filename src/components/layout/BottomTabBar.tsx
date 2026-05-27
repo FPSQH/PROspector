@@ -77,6 +77,17 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
+  {
+    href: '/historique',
+    label: 'Historique',
+    icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <polyline points="12 7 12 12 15 15"/>
+        <path d="M5.5 5L4 3.5M4 6.5H7"/>
+      </svg>
+    ),
+  },
 ]
 
 export default function BottomTabBar() {

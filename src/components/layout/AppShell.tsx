@@ -72,6 +72,13 @@ const NavIcon = {
       <line x1="12" y1="2" x2="12" y2="5" stroke={c} strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   ),
+  history: (c: string) => (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="9" r="6.5" stroke={c} strokeWidth="1.5"/>
+      <path d="M9 5.5V9L11.5 11" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4.5 4L3 2.5M3 5H5.5" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
   settings: (c: string) => (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <circle cx="9" cy="9" r="2.5" stroke={c} strokeWidth="1.5"/>
@@ -87,7 +94,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/courriers',  label: 'Courrier DPE',icon: NavIcon.mail,      match: ['/courriers'] },
   { href: '/terrain',    label: 'Terrain',     icon: NavIcon.terrain,   match: ['/terrain'] },
   { href: '/contacts',   label: 'Contacts',    icon: NavIcon.contacts,  match: ['/contacts'] },
-  { href: '/planning',   label: 'Planning',    icon: NavIcon.calendar,  match: ['/planning'] },
+  { href: '/planning',   label: 'Planning',    icon: NavIcon.calendar,  match: ['/planning']   },
+  { href: '/historique', label: 'Historique',  icon: NavIcon.history,   match: ['/historique'] },
 ]
 
 interface Props {

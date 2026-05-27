@@ -7,8 +7,12 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const zone_id = searchParams.get('zone_id')
-  const statut  = searchParams.get('statut')
+  const zone_id      = searchParams.get('zone_id')
+  const statut       = searchParams.get('statut')
+  const date_debut   = searchParams.get('date_debut')
+  const date_fin     = searchParams.get('date_fin')
+  const limit        = Math.min(parseInt(searchParams.get('limit') ?? '30', 10), 100)
+  const offset       = parseInt(searchParams.get('offset') ?? '0', 10)
 
   const type_session_filter = searchParams.get('type_session') ?? ''
 
@@ -19,19 +23,22 @@ export async function GET(req: Request) {
       heure_debut_reel, heure_fin_reel, statut, origine,
       nb_portes, nb_boites, notes, created_at, type_session,
       commune_code_insee, commune_nom, nom_tournee, adresse_ids,
+      rapport_json,
       zones_prospection (nom, couleur, numero)
-    `)
+    `, { count: 'exact' })
     .eq('commercial_id', user.id)
     .order('date_session', { ascending: false })
-    .limit(50)
+    .range(offset, offset + limit - 1)
 
-  if (zone_id)              query = query.eq('zone_id', zone_id)
-  if (statut)               query = query.eq('statut', statut)
-  if (type_session_filter)  query = query.eq('type_session', type_session_filter)
+  if (zone_id)             query = query.eq('zone_id', zone_id)
+  if (statut)              query = query.eq('statut', statut)
+  if (type_session_filter) query = query.eq('type_session', type_session_filter)
+  if (date_debut)          query = query.gte('date_session', date_debut)
+  if (date_fin)            query = query.lte('date_session', date_fin)
 
-  const { data, error } = await query
+  const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ sessions: data ?? [] })
+  return NextResponse.json({ sessions: data ?? [], total: count ?? 0 })
 }
 
 export async function POST(req: Request) {
