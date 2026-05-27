@@ -200,12 +200,24 @@ export default function CourriersPage() {
 
   const createTournee = async () => {
     const filtered = getFiltered()
-    let ids: string[]
-    if (tourneeTarget === 'selection') ids = filtered.filter(a => checked.has(a.id)).map(a => a.id)
-    else if (tourneeTarget === 'tous') ids = filtered.map(a => a.id)
-    else ids = [tourneeTarget]
+    // Utilise adresse_id (FK vers adresses.id) et non dpe_logement.id
+    const getAdresseId = (a: DpeAdresseData) => (a as any).adresse_id as string | null | undefined
+    let source: DpeAdresseData[]
+    if (tourneeTarget === 'selection') source = filtered.filter(a => checked.has(a.id))
+    else if (tourneeTarget === 'tous') source = filtered
+    else source = adresses.filter(a => a.id === tourneeTarget)
 
-    if (!ids.length) return
+    const ids: string[] = source.map(getAdresseId).filter((id): id is string => !!id)
+
+    const nbSansAdresse = source.length - ids.length
+    if (!ids.length) {
+      alert('Aucune adresse ne peut être ajoutée à la tournée — les enregistrements DPE sélectionnés ne sont pas encore appariés à une adresse de prospection.')
+      return
+    }
+    if (nbSansAdresse > 0) {
+      const ok = confirm(`⚠️ ${nbSansAdresse} enregistrement${nbSansAdresse > 1 ? 's' : ''} DPE n'ont pas d'adresse appariée et seront ignorés.\n${ids.length} adresse${ids.length > 1 ? 's' : ''} seront incluses dans la tournée. Continuer ?`)
+      if (!ok) return
+    }
     setTourneeSaving(true)
     try {
       const r = await fetch('/api/sessions', {
@@ -525,11 +537,15 @@ export default function CourriersPage() {
 
       {/* ── Modal Tournée DPE ──────────────────────────────────────────── */}
       {tourneeModal && (() => {
-        const targetIds: string[] =
-          tourneeTarget === 'selection' ? filtered.filter(a => checked.has(a.id)).map(a => a.id)
-          : tourneeTarget === 'tous'    ? filtered.map(a => a.id)
-          : [tourneeTarget]
+        // Compter les adresses effectivement appariées (adresse_id non null)
+        const getAId = (a: DpeAdresseData) => (a as any).adresse_id as string | null | undefined
+        const sourceItems: DpeAdresseData[] =
+          tourneeTarget === 'selection' ? filtered.filter(a => checked.has(a.id))
+          : tourneeTarget === 'tous'    ? filtered
+          : adresses.filter(a => a.id === tourneeTarget)
+        const targetIds: string[] = sourceItems.map(getAId).filter((id): id is string => !!id)
         const nbAdresses = targetIds.length
+        const nbTotal    = sourceItems.length
         const isTooMany  = nbAdresses > 50
         return (
           <div style={{ position:'fixed', inset:0, zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.7)' }}
@@ -539,7 +555,8 @@ export default function CourriersPage() {
                 <div>
                   <div style={{ fontWeight:700, fontSize:'1rem', color: C.text }}>🚶 Préparer une tournée DPE</div>
                   <div style={{ fontSize:'0.75rem', color: C.muted, marginTop:3 }}>
-                    {nbAdresses} adresse{nbAdresses > 1 ? 's' : ''} sélectionnée{nbAdresses > 1 ? 's' : ''}
+                    {nbAdresses} adresse{nbAdresses > 1 ? 's' : ''} appariée{nbAdresses > 1 ? 's' : ''}
+                    {nbTotal !== nbAdresses && <span> / {nbTotal} DPE</span>}
                   </div>
                 </div>
                 <button onClick={() => setTourneeModal(false)} style={{ background:'none', border:'none', fontSize:22, color: C.muted, cursor:'pointer' }}>✕</button>

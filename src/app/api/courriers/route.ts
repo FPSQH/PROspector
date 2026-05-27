@@ -92,6 +92,7 @@ export async function GET(request: Request) {
 
     return {
       id:                 d.id,
+      adresse_id:         d.adresse_id   ?? null,
       adresse_brute:      d.adresse_brute ?? '',
       code_postal:        '',
       code_insee:         d.code_insee,

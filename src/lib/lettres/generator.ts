@@ -22,6 +22,7 @@ export interface AuditData {
 
 export interface DpeAdresseData {
   id:                  string
+  adresse_id?:         string | null   // FK vers adresses.id (null si non apparié)
   adresse_brute:       string
   code_postal?:        string
   nom_commune?:        string
