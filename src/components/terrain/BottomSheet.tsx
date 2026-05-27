@@ -42,6 +42,8 @@ export default function BottomSheet({
   const [showContactForm,  setShowContactForm]  = useState(false)
   const [motifExclusion,   setMotifExclusion]   = useState('')
   const [motifSuppression, setMotifSuppression] = useState('')
+  const [bienVide,         setBienVide]         = useState(false)
+  const [bienAbandonne,    setBienAbandonne]     = useState(false)
   const [saving,           setSaving]           = useState(false)
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export default function BottomSheet({
       setContact({ nom:'', prenom:'', tel1:'', email1:'', date_relance:'' })
       setShowContactForm(false)
       setMotifExclusion(''); setMotifSuppression('')
+      setBienVide(false); setBienAbandonne(false)
     }
   }, [open, adresse])
 
@@ -85,7 +88,9 @@ export default function BottomSheet({
     await postInteraction({
       adresse_id: adresse.id, session_id: sessionId,
       resultat: 'pas_de_reponse', action,
-      type_habitat: typeHabitat || null,
+      type_habitat:   typeHabitat      || null,
+      bien_vide:      bienVide         || null,
+      bien_abandonne: bienAbandonne    || null,
       observations_terrain: courrierCible ? { courrier_possible: true } : {},
     })
     setSaving(false)
@@ -99,13 +104,15 @@ export default function BottomSheet({
 const intRes = await fetch('/api/interactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        adresse_id:   adresse.id,
-        session_id:   sessionId,
-        resultat:     'contact',
-        action:       'rien',
-        type_habitat: typeHabitat || null,
-        note:         note || null,    // FIX : 'note' pas 'notes'
-        presence:     true,            // FIX : marquer le contact
+        adresse_id:     adresse.id,
+        session_id:     sessionId,
+        resultat:       'contact',
+        action:         'rien',
+        type_habitat:   typeHabitat   || null,
+        note:           note          || null,
+        presence:       true,
+        bien_vide:      bienVide      || null,
+        bien_abandonne: bienAbandonne || null,
       }),
     })
     const intData = await intRes.json().catch(() => ({}))
@@ -311,10 +318,20 @@ const intRes = await fetch('/api/interactions', {
             </div>
           </div>
 
-          {/* Courrier ciblé */}
-          <div style={{ padding: '2px 16px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" id="cc" checked={courrierCible} onChange={e => setCourrierCible(e.target.checked)} style={{ cursor: 'pointer', width: 16, height: 16 }} />
-            <label htmlFor="cc" style={{ fontSize: 12, color: '#374151', cursor: 'pointer' }}>Courrier ciblé possible</label>
+          {/* Courrier ciblé + qualifications bien */}
+          <div style={{ padding: '2px 16px 10px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" id="cc" checked={courrierCible} onChange={e => setCourrierCible(e.target.checked)} style={{ cursor: 'pointer', width: 16, height: 16 }} />
+              <label htmlFor="cc" style={{ fontSize: 12, color: '#374151', cursor: 'pointer' }}>Courrier ciblé possible</label>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" id="bv" checked={bienVide} onChange={e => setBienVide(e.target.checked)} style={{ cursor: 'pointer', width: 16, height: 16, accentColor: '#6366f1' }} />
+              <label htmlFor="bv" style={{ fontSize: 12, color: '#374151', cursor: 'pointer' }}>🏚 Bien vide (sans occupant)</label>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" id="ba" checked={bienAbandonne} onChange={e => setBienAbandonne(e.target.checked)} style={{ cursor: 'pointer', width: 16, height: 16, accentColor: '#f59e0b' }} />
+              <label htmlFor="ba" style={{ fontSize: 12, color: '#374151', cursor: 'pointer' }}>⚠️ Bien abandonné</label>
+            </div>
           </div>
 
           {/* Actions secondaires */}

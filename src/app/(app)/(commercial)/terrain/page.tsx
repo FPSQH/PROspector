@@ -118,6 +118,7 @@ export default function TerrainPage() {
   const [nbTotal,          setNbTotal]           = useState(0)
   const [nbVisites,        setNbVisites]         = useState(0)
   const [pctCouvert,       setPctCouvert]        = useState(0)
+  const [dpeToursPreparees, setDpeToursPreparees] = useState<any[]>([])
   const [loading,          setLoading]           = useState(false)
   const [preLoading,       setPreLoading]        = useState(false)
   const [sheetOpen,        setSheetOpen]         = useState(false)
@@ -145,17 +146,19 @@ export default function TerrainPage() {
 
   useEffect(() => {
     const init = async () => {
-      const [zonesRes, communesRes, sessRes, statsRes] = await Promise.all([
+      const [zonesRes, communesRes, sessRes, statsRes, dpeTournRes] = await Promise.all([
         fetch('/api/zones').then(r => r.json()),
         fetch('/api/communes').then(r => r.json()),
         fetch('/api/sessions?statut=en_cours').then(r => r.json()),
         fetch('/api/zones/stats').then(r => r.json()),
+        fetch('/api/sessions?statut=preparee&type_session=dpe').then(r => r.json()),
       ])
 
       const zonesData = zonesRes.zones ?? []
       setZones(zonesData)
       setCommunes(communesRes.communes ?? [])
       setZoneStats(statsRes.stats ?? {})
+      setDpeToursPreparees(dpeTournRes.sessions ?? [])
 
       const sessEnCours = sessRes.sessions?.[0] ?? null
       if (sessEnCours) {
@@ -248,6 +251,23 @@ export default function TerrainPage() {
     finally { setLoading(false) }
   }
 
+  const handleStartDpeTournee = async (tour: any) => {
+    setLoading(true)
+    try {
+      const patchRes = await fetch(`/api/sessions/${tour.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: 'en_cours' }),
+      })
+      if (!patchRes.ok) { console.error('[terrain] erreur démarrage tournée DPE'); return }
+      const patchData = await patchRes.json()
+      setSession(patchData.session ?? tour)
+      await loadSessionData(tour.id)
+      setDpeToursPreparees([])
+      setAppState('en_cours')
+    } catch(e) { console.error(e) }
+    finally { setLoading(false) }
+  }
+
   const handleAdresseClick = (adresse: Adresse) => {
     setSelectedAdresse(adresse); setSheetOpen(true)
   }
@@ -333,7 +353,8 @@ export default function TerrainPage() {
 
   const prochaineAdresseId = itineraire[idxCourant] ?? null
   const aFaireCount        = adresses.filter(a => a.statut_carte === 'a_faire').length
-  const isHorsZone         = !session?.zone_id
+  const isDpeTournee       = session?.type_session === 'dpe'
+  const isHorsZone         = !session?.zone_id && !isDpeTournee
   const adressesFiltrees   = adresseFilter === 'all' ? adresses : adresses.filter(a => a.statut_carte === adresseFilter)
 
   /* ── Bannière session en cours ─────────────────────────────────── */
@@ -444,6 +465,40 @@ export default function TerrainPage() {
                   </button>
                 )
               })}
+            </div>
+          )}
+
+          {/* ── Tournées DPE préparées ── */}
+          {dpeToursPreparees.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <p style={{ fontSize: '0.82rem', color: '#FBBF24', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                🏠 Tournées DPE préparées
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, opacity: sessionActive ? 0.4 : 1 }}>
+                {dpeToursPreparees.map(tour => {
+                  const nbAdr = (tour.adresse_ids ?? []).length
+                  const dateStr = new Date(tour.date_session).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+                  const isToday = tour.date_session === new Date().toISOString().split('T')[0]
+                  return (
+                    <div key={tour.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 12, padding: '14px 16px' }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(251,191,36,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0 }}>🏠</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {tour.nom_tournee ?? 'Tournée DPE'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: C.muted, marginTop: 2 }}>
+                          {isToday ? <span style={{ color: C.primary, fontWeight: 700 }}>Aujourd&apos;hui</span> : dateStr} · {nbAdr} adresse{nbAdr > 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      <button onClick={() => sessionActive ? undefined : handleStartDpeTournee(tour)}
+                        disabled={!!sessionActive || loading}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: loading ? C.dim : '#FBBF24', color: '#0C0C0E', fontWeight: 700, fontSize: '0.82rem', border: 'none', cursor: sessionActive ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
+                        {loading ? '…' : 'Démarrer →'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -717,7 +772,9 @@ export default function TerrainPage() {
    * ══════════════════════════════════════════════════════════════════ */
   if (appState === 'terminee') {
     const rapport = session?.rapport_json ?? {}
-    const zoneName = session?.zones_prospection?.nom ?? session?.commune_nom ?? 'Session libre'
+    const zoneName = session?.type_session === 'dpe'
+      ? `🏠 ${session?.nom_tournee ?? 'Tournée DPE'}`
+      : session?.zones_prospection?.nom ?? session?.commune_nom ?? 'Session libre'
 
     return (
       <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
@@ -770,11 +827,20 @@ export default function TerrainPage() {
     <>
       <div style={{ height: 52, background: C.card, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 10, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-          {isHorsZone ? <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚶</span>
-            : session?.zones_prospection && <div style={{ width: 10, height: 10, borderRadius: '50%', background: session.zones_prospection.couleur ?? C.primary, flexShrink: 0 }} />}
+          {isDpeTournee
+            ? <span style={{ fontSize: '1rem', flexShrink: 0 }}>🏠</span>
+            : isHorsZone
+              ? <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚶</span>
+              : session?.zones_prospection && <div style={{ width: 10, height: 10, borderRadius: '50%', background: session.zones_prospection.couleur ?? C.primary, flexShrink: 0 }} />
+          }
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: '0.875rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {isHorsZone ? `Libre — ${session?.commune_nom ?? 'Hors zone'}` : (session?.zones_prospection?.nom ?? 'Session en cours')}
+              {isDpeTournee
+                ? `DPE · ${session?.nom_tournee ?? 'Tournée DPE'}`
+                : isHorsZone
+                  ? `Libre — ${session?.commune_nom ?? 'Hors zone'}`
+                  : (session?.zones_prospection?.nom ?? 'Session en cours')
+              }
             </div>
             <div style={{ fontSize: '0.7rem', color: C.muted }}>
               {isHorsZone ? 'Prospection libre hors zone' : `${nbVisites}/${nbTotal} · ${pctCouvert}% · ${aFaireCount} restantes`}

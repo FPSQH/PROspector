@@ -10,21 +10,24 @@ export async function GET(req: Request) {
   const zone_id = searchParams.get('zone_id')
   const statut  = searchParams.get('statut')
 
+  const type_session_filter = searchParams.get('type_session') ?? ''
+
   let query = supabase
     .from('sessions_prospection')
     .select(`
       id, zone_id, date_session, heure_debut, heure_fin,
       heure_debut_reel, heure_fin_reel, statut, origine,
       nb_portes, nb_boites, notes, created_at, type_session,
-      commune_code_insee, commune_nom,
+      commune_code_insee, commune_nom, nom_tournee, adresse_ids,
       zones_prospection (nom, couleur, numero)
     `)
     .eq('commercial_id', user.id)
     .order('date_session', { ascending: false })
     .limit(50)
 
-  if (zone_id) query = query.eq('zone_id', zone_id)
-  if (statut)  query = query.eq('statut', statut)
+  if (zone_id)              query = query.eq('zone_id', zone_id)
+  if (statut)               query = query.eq('statut', statut)
+  if (type_session_filter)  query = query.eq('type_session', type_session_filter)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -37,13 +40,16 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { zone_id, date_session, heure_debut, type_session, commune_code_insee, commune_nom } = body
+  const {
+    zone_id, date_session, heure_debut, type_session, commune_code_insee, commune_nom,
+    adresse_ids, nom_tournee, statut: statutBody,
+  } = body
 
-  // ✅ zone_id facultatif pour les sessions hors_zone
-  const isHorsZone = type_session === 'hors_zone' || (!zone_id && commune_code_insee)
+  const isDpeTour  = type_session === 'dpe'
+  const isHorsZone = type_session === 'hors_zone' || (!zone_id && commune_code_insee && !isDpeTour)
 
-  // Vérifier la zone si elle est fournie
-  if (zone_id) {
+  // Vérifier la zone si elle est fournie (pas nécessaire pour les tournées DPE)
+  if (zone_id && !isDpeTour) {
     const { data: zone } = await supabase
       .from('zones_prospection')
       .select('id, nom')
@@ -58,19 +64,25 @@ export async function POST(req: Request) {
   const dateSession = date_session ?? todayStr
   const heureDebut  = heure_debut  ?? now.toTimeString().slice(0, 5)
 
+  // Pour les tournées DPE préparées, le statut peut être 'preparee'
+  const statutFinal = isDpeTour ? (statutBody ?? 'preparee')
+    : 'en_cours'
+
   const insertData: any = {
     commercial_id: user.id,
     date_session:  dateSession,
     heure_debut:   heureDebut,
-    statut:        'en_cours',
+    statut:        statutFinal,
     origine:       'manuel',
-    type_session:  isHorsZone ? 'hors_zone' : 'libre',
+    type_session:  isDpeTour ? 'dpe' : isHorsZone ? 'hors_zone' : 'libre',
     hors_zone:     isHorsZone,
   }
 
   if (zone_id)            insertData.zone_id             = zone_id
   if (commune_code_insee) insertData.commune_code_insee  = commune_code_insee
   if (commune_nom)        insertData.commune_nom         = commune_nom
+  if (nom_tournee)        insertData.nom_tournee         = nom_tournee
+  if (adresse_ids?.length) insertData.adresse_ids        = adresse_ids
 
   const { data: session, error } = await supabase
     .from('sessions_prospection')
@@ -80,8 +92,8 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ✅ Lier à planning_sessions UNIQUEMENT si la zone est planifiée AUJOURD'HUI
-  if (zone_id && !isHorsZone) {
+  // ✅ Lier à planning_sessions UNIQUEMENT si la zone est planifiée AUJOURD'HUI (pas pour les tournées DPE)
+  if (zone_id && !isHorsZone && !isDpeTour) {
     const { data: plannedToday } = await supabase
       .from('planning_sessions')
       .select('id')

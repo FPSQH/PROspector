@@ -64,6 +64,11 @@ export default function CourriersPage() {
   const [filterType,  setFilterType]  = useState('')
   const [generating,  setGenerating]  = useState(false)
   const [letterHTML,  setLetterHTML]  = useState('')
+  const [tourneeModal,  setTourneeModal]  = useState(false)
+  const [tourneeName,   setTourneeName]   = useState('')
+  const [tourneeDate,   setTourneeDate]   = useState(today())
+  const [tourneeSaving, setTourneeSaving] = useState(false)
+  const [tourneeTarget, setTourneeTarget] = useState<'selection'|'tous'|string>('tous')
 
   // ── Charger les DPE ──────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -183,6 +188,44 @@ export default function CourriersPage() {
       a.click(); URL.revokeObjectURL(url)
     } catch(e) { console.error(e) }
     finally { setGenerating(false) }
+  }
+
+  // ── Création tournée DPE ────────────────────────────────────────────────────
+  const openTourneeModal = (target: 'selection'|'tous'|string) => {
+    setTourneeTarget(target)
+    setTourneeName('')
+    setTourneeDate(today())
+    setTourneeModal(true)
+  }
+
+  const createTournee = async () => {
+    const filtered = getFiltered()
+    let ids: string[]
+    if (tourneeTarget === 'selection') ids = filtered.filter(a => checked.has(a.id)).map(a => a.id)
+    else if (tourneeTarget === 'tous') ids = filtered.map(a => a.id)
+    else ids = [tourneeTarget]
+
+    if (!ids.length) return
+    setTourneeSaving(true)
+    try {
+      const r = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type_session: 'dpe',
+          statut:       'preparee',
+          nom_tournee:  tourneeName.trim() || `Tournée DPE — ${new Date(tourneeDate).toLocaleDateString('fr-FR')}`,
+          date_session: tourneeDate,
+          adresse_ids:  ids,
+        }),
+      })
+      if (!r.ok) throw new Error('Erreur création tournée')
+      setTourneeModal(false)
+      // Feedback utilisateur
+      const nb = ids.length
+      alert(`✅ Tournée créée avec ${nb} adresse${nb > 1 ? 's' : ''}.\nRetrouvez-la dans la page Terrain pour la démarrer.`)
+    } catch(e) { console.error(e); alert('Erreur lors de la création de la tournée.') }
+    finally { setTourneeSaving(false) }
   }
 
   const filtered = getFiltered()
@@ -319,6 +362,12 @@ export default function CourriersPage() {
               {generating ? 'Génération...' : checked.size > 0 ? `DOCX (${checked.size})` : `DOCX (tous)`}
             </button>
           </div>
+          <button
+            onClick={() => openTourneeModal(checked.size > 0 ? 'selection' : 'tous')}
+            disabled={filtered.length === 0}
+            style={{ width:'100%', padding:'6px 0', fontSize:'0.72rem', fontWeight:600, border:`1px solid rgba(251,191,36,0.3)`, borderRadius:6, background:'rgba(251,191,36,0.08)', cursor: filtered.length === 0 ? 'not-allowed' : 'pointer', color:'#FBBF24' }}>
+            🚶 Préparer une tournée{checked.size > 0 ? ` (${checked.size})` : ` (${filtered.length})`}
+          </button>
         </div>
 
         {/* Liste DPE */}
@@ -426,6 +475,10 @@ export default function CourriersPage() {
                     style={{ padding:'7px 14px', borderRadius:7, border:'none', background: generating ? C.dim : C.primary, color:'#fff', fontSize:'0.8rem', fontWeight:600, cursor: generating ? 'not-allowed' : 'pointer' }}>
                     🖨️ DOCX
                   </button>
+                  <button onClick={() => openTourneeModal(selected.id)}
+                    style={{ padding:'7px 14px', borderRadius:7, border:`1px solid rgba(251,191,36,0.35)`, background:'rgba(251,191,36,0.08)', color:'#FBBF24', fontSize:'0.8rem', fontWeight:600, cursor:'pointer' }}>
+                    🚶 Tournée
+                  </button>
                 </div>
               </div>
 
@@ -469,6 +522,87 @@ export default function CourriersPage() {
         </div>
       </div>
       {mobileNavBar}
+
+      {/* ── Modal Tournée DPE ──────────────────────────────────────────── */}
+      {tourneeModal && (() => {
+        const targetIds: string[] =
+          tourneeTarget === 'selection' ? filtered.filter(a => checked.has(a.id)).map(a => a.id)
+          : tourneeTarget === 'tous'    ? filtered.map(a => a.id)
+          : [tourneeTarget]
+        const nbAdresses = targetIds.length
+        const isTooMany  = nbAdresses > 50
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.7)' }}
+            onClick={e => { if (e.target === e.currentTarget) setTourneeModal(false) }}>
+            <div style={{ background: C.card, borderRadius:16, padding:'28px', width:'100%', maxWidth:440, border:`1px solid ${C.borderl}`, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:'1rem', color: C.text }}>🚶 Préparer une tournée DPE</div>
+                  <div style={{ fontSize:'0.75rem', color: C.muted, marginTop:3 }}>
+                    {nbAdresses} adresse{nbAdresses > 1 ? 's' : ''} sélectionnée{nbAdresses > 1 ? 's' : ''}
+                  </div>
+                </div>
+                <button onClick={() => setTourneeModal(false)} style={{ background:'none', border:'none', fontSize:22, color: C.muted, cursor:'pointer' }}>✕</button>
+              </div>
+
+              {/* Avertissement > 50 */}
+              {isTooMany && (
+                <div style={{ background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.25)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:'0.8rem', color:'#FBBF24' }}>
+                  ⚠️ Vous avez sélectionné {nbAdresses} adresses. Pour une tournée efficace, nous recommandons moins de 50 adresses. Vous pouvez filtrer la liste ou n&apos;utiliser que les cochées.
+                </div>
+              )}
+
+              {/* Nom */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:'0.72rem', fontWeight:700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:6 }}>Nom de la tournée</div>
+                <input
+                  type="text"
+                  value={tourneeName}
+                  onChange={e => setTourneeName(e.target.value)}
+                  placeholder={`Tournée DPE — ${new Date(tourneeDate).toLocaleDateString('fr-FR')}`}
+                  style={{ width:'100%', padding:'9px 12px', borderRadius:8, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.06)', color: C.text, fontSize:'0.875rem', boxSizing:'border-box', outline:'none' }}
+                />
+              </div>
+
+              {/* Date */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontSize:'0.72rem', fontWeight:700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:6 }}>Date prévue</div>
+                <div style={{ display:'flex', gap:6 }}>
+                  <input
+                    type="date"
+                    value={tourneeDate}
+                    onChange={e => setTourneeDate(e.target.value)}
+                    min={today()}
+                    style={{ flex:1, padding:'9px 12px', borderRadius:8, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.06)', color: C.text, fontSize:'0.875rem', outline:'none' }}
+                  />
+                  <button onClick={() => setTourneeDate(today())}
+                    style={{ padding:'9px 12px', borderRadius:8, border:`1px solid ${C.borderl}`, background: tourneeDate === today() ? 'rgba(29,158,117,0.12)' : 'rgba(255,255,255,0.06)', color: tourneeDate === today() ? C.primary : C.mid, fontSize:'0.78rem', fontWeight:600, cursor:'pointer' }}>
+                    Aujourd&apos;hui
+                  </button>
+                </div>
+              </div>
+
+              {/* Récap */}
+              <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:'0.8rem', color: C.mid, border:`1px solid ${C.border}` }}>
+                📍 <strong style={{ color: C.text }}>{nbAdresses}</strong> adresse{nbAdresses > 1 ? 's' : ''} DPE &nbsp;·&nbsp;
+                📅 <strong style={{ color: C.text }}>{new Date(tourneeDate + 'T12:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' })}</strong>
+              </div>
+
+              {/* Boutons */}
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => setTourneeModal(false)}
+                  style={{ flex:1, padding:'11px', borderRadius:10, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.06)', color: C.mid, fontWeight:600, fontSize:'0.875rem', cursor:'pointer' }}>
+                  Annuler
+                </button>
+                <button onClick={createTournee} disabled={tourneeSaving}
+                  style={{ flex:2, padding:'11px', borderRadius:10, border:'none', background: tourneeSaving ? C.dim : '#FBBF24', color:'#0C0C0E', fontWeight:700, fontSize:'0.875rem', cursor: tourneeSaving ? 'not-allowed' : 'pointer' }}>
+                  {tourneeSaving ? 'Création...' : `Créer la tournée (${nbAdresses})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

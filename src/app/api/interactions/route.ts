@@ -11,10 +11,12 @@ export async function POST(req: Request) {
     session_id, adresse_id, resultat, action,
     type_habitat, nb_etages, nom_boite,
     type_contact, note, date_relance,
-    presence,    // ← FIX : lire presence depuis le body
-    contact_id,  // ← FIX : lire contact_id depuis le body
+    presence,
+    contact_id,
     observations_terrain,
     statut_adresse,
+    bien_vide,
+    bien_abandonne,
   } = body
 
   if (!session_id || !adresse_id || !resultat) {
@@ -83,10 +85,12 @@ export async function POST(req: Request) {
         type_contact:         type_contact         ?? null,
         note:                 note                 ?? null,
         date_relance:         date_relance         ?? null,
-        presence:             presenceVal,          // ← FIX
-        contact_id:           contact_id           ?? null, // ← FIX
+        presence:             presenceVal,
+        contact_id:           contact_id           ?? null,
         statut_adresse:       statut_adresse       ?? null,
         observations_terrain: observations_terrain ?? {},
+        bien_vide:            bien_vide            ?? null,
+        bien_abandonne:       bien_abandonne       ?? null,
         updated_at:           new Date().toISOString(),
       })
       .eq('id', existing.id)
@@ -112,10 +116,12 @@ export async function POST(req: Request) {
         type_contact:         type_contact         ?? null,
         note:                 note                 ?? null,
         date_relance:         date_relance         ?? null,
-        presence:             presenceVal,          // ← FIX
-        contact_id:           contact_id           ?? null, // ← FIX
+        presence:             presenceVal,
+        contact_id:           contact_id           ?? null,
         statut_adresse:       statut_adresse       ?? null,
         observations_terrain: observations_terrain ?? {},
+        bien_vide:            bien_vide            ?? null,
+        bien_abandonne:       bien_abandonne       ?? null,
       })
       .select()
       .single()

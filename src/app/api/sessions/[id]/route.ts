@@ -17,6 +17,7 @@ export async function GET(_req: Request, { params }: Params) {
       heure_debut_reel, heure_fin_reel, statut,
       nb_portes, nb_boites, notes, rapport_json,
       type_session, commune_code_insee, commune_nom,
+      nom_tournee, adresse_ids,
       zones_prospection (id, nom, couleur, numero, nb_prospectables)
     `)
     .eq('id', params.id)
@@ -31,6 +32,10 @@ export async function GET(_req: Request, { params }: Params) {
 
   const buildQuery = () => {
     const base = supabase.from('adresses').select(ADRESSE_SELECT).not('lat', 'is', null)
+    // Tournée DPE : charger uniquement les adresses sélectionnées
+    if (s.type_session === 'dpe' && s.adresse_ids?.length) {
+      return base.in('id', s.adresse_ids)
+    }
     if (s.zone_id)            return base.eq('zone_id', s.zone_id)
     if (s.commune_code_insee) return base.eq('code_insee', s.commune_code_insee)
     return null
@@ -146,6 +151,9 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (statut === 'realisee' && !heure_fin) {
     updates.heure_fin_reel = new Date().toISOString()
+  }
+  if (statut === 'en_cours') {
+    updates.heure_debut_reel = new Date().toISOString()
   }
 
   const { error: updateError } = await supabase
