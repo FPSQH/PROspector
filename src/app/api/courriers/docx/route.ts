@@ -7,9 +7,10 @@ import {
 } from 'docx'
 import {
   getDpeGroup, showGL, getIntroCtx, getDpeTexts,
-  getVenteText, getGLText, getAdemeItems, RENOVATION_CA_TEXT
+  getVenteText, getGLText, getAdemeItems,
+  getEstimationText, getPolitesse1, getPolitesse2, getRenovationCaText,
 } from '@/lib/lettres/generator'
-import type { DpeAdresseData } from '@/lib/lettres/generator'
+import type { DpeAdresseData, LetterTemplate } from '@/lib/lettres/generator'
 
 const TEAL    = '009597'
 const DARK    = '1A1A1A'
@@ -61,7 +62,7 @@ function infoLine(text: string, bgColor: string, bdColor: string) {
 }
 
 // ── Construction lettre DOCX — utilise exactement les mêmes fonctions que le HTML ──
-function buildLetter(letter: DpeAdresseData, commercial: any): any[] {
+function buildLetter(letter: DpeAdresseData, commercial: any, template?: LetterTemplate | null): any[] {
   const agentNom = [commercial?.prenom, commercial?.nom].filter(Boolean).join(' ') || 'Votre conseiller'
   const today    = new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
   const ville    = letter.nom_commune ?? letter.commune ?? ''
@@ -73,10 +74,10 @@ function buildLetter(letter: DpeAdresseData, commercial: any): any[] {
   // ── Même logique que generator.ts ──
   const dpeGroup = getDpeGroup(dpe)
   const isRed    = dpeGroup === 'FG' || dpeGroup === 'E'
-  const { intro: dpeIntro, detail: dpeDetail } = getDpeTexts(dpe, typeBien)
-  const venteText  = getVenteText(dpeGroup, dpe, typeBien)
+  const { intro: dpeIntro, detail: dpeDetail } = getDpeTexts(dpe, typeBien, template)
+  const venteText  = getVenteText(dpeGroup, dpe, typeBien, template)
   const { line1: ademeL1, line2: ademeL2 } = getAdemeItems(letter)
-  const introCtx   = getIntroCtx(dpeGroup, ctx, typeBien)
+  const introCtx   = getIntroCtx(dpeGroup, ctx, typeBien, template)
 
   const bg = isRed ? RED_BG : TEAL_BG
   const bd = isRed ? RED_BD : TEAL_BD
@@ -147,11 +148,13 @@ function buildLetter(letter: DpeAdresseData, commercial: any): any[] {
 
   // Estimation
   paras.push(secTitle('Estimation gratuite de votre bien'))
-  paras.push(bodyRich([
-    { text: 'Pour vous accompagner dans votre réflexion, je vous propose de réaliser une ' },
-    { text: 'estimation gratuite et sans engagement', bold: true },
-    { text: ` de ${typeBien}. Cette estimation, établie à partir des ventes récentes de biens comparables dans votre secteur, vous donnera une vision claire de la valeur actuelle de votre propriété sur le marché.` }
-  ]))
+  const estimText = getEstimationText(typeBien, template)
+  const estimParts = estimText.split('estimation gratuite et sans engagement')
+  paras.push(bodyRich(
+    estimParts.length === 2
+      ? [{ text: estimParts[0] }, { text: 'estimation gratuite et sans engagement', bold: true }, { text: estimParts[1] }]
+      : [{ text: estimText }]
+  ))
 
   // Vente
   paras.push(secTitle('Vous envisagez de vendre ?'))
@@ -160,27 +163,33 @@ function buildLetter(letter: DpeAdresseData, commercial: any): any[] {
   // Gestion locative OU bloc rénovation CA — JAMAIS les deux (même règle que HTML)
   if (showGL(dpeGroup, isAppt)) {
     paras.push(secTitle('Notre service de gestion locative'))
-    paras.push(body(getGLText(isAppt)))
+    paras.push(body(getGLText(isAppt, template)))
   } else if (isRed) {
     paras.push(secTitle('Un projet de rénovation ?'))
-    // Lien cliquable dans le DOCX
-    paras.push(new Paragraph({
-      children: [
-        T('Square Habitat est le réseau immobilier du groupe Crédit Agricole. Si vous envisagez des travaux de rénovation énergétique, nous pouvons vous mettre en relation avec un conseiller du Crédit Agricole pour étudier leur financement (prêts et solutions dédiées). Vous pouvez également utiliser le site '),
-        new ExternalHyperlink({
-          link: 'https://j-ecorenove.credit-agricole.fr',
-          children: [T("J'écorénove", { color: TEAL, underline: { type: 'single', color: TEAL } })]
-        }),
-        T(' pour simuler vos travaux et estimer les aides auxquelles vous pourriez prétendre.'),
-      ],
-      alignment: AlignmentType.BOTH, spacing: { after: 120 }
-    }))
+    const caText = getRenovationCaText(template)
+    // Conserve le lien cliquable si le texte est le texte par défaut
+    const isDefault = !template?.renovation_ca
+    if (isDefault) {
+      paras.push(new Paragraph({
+        children: [
+          T('Square Habitat est le réseau immobilier du groupe Crédit Agricole. Si vous envisagez des travaux de rénovation énergétique, nous pouvons vous mettre en relation avec un conseiller du Crédit Agricole pour étudier leur financement (prêts et solutions dédiées). Vous pouvez également utiliser le site '),
+          new ExternalHyperlink({
+            link: 'https://j-ecorenove.credit-agricole.fr',
+            children: [T("J'écorénove", { color: TEAL, underline: { type: 'single', color: TEAL } })]
+          }),
+          T(' pour simuler vos travaux et estimer les aides auxquelles vous pourriez prétendre.'),
+        ],
+        alignment: AlignmentType.BOTH, spacing: { after: 120 }
+      }))
+    } else {
+      paras.push(body(caText))
+    }
   }
 
   // Politesse
   paras.push(new Paragraph({ children: [], spacing: { after: 120 } }))
-  paras.push(body("Je reste à votre entière disposition pour répondre à vos questions ou convenir d'un rendez-vous à votre convenance, sans aucun engagement de votre part."))
-  paras.push(body("Dans l'attente de votre retour, je vous adresse, Madame, Monsieur, mes cordiales salutations."))
+  paras.push(body(getPolitesse1(template)))
+  paras.push(body(getPolitesse2(template)))
 
   // Signature
   paras.push(new Paragraph({ children: [], spacing: { before: 400 } }))
@@ -246,9 +255,11 @@ export async function POST(request: Request) {
   if (!letters.length) return NextResponse.json({ error: 'Aucune lettre' }, { status: 400 })
 
   const adminDb = createAdminClient()
-  const { data: commercial } = await adminDb
-    .from('commerciaux').select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email')
-    .eq('id', user.id).maybeSingle()
+  const [{ data: commercial }, { data: templateRow }] = await Promise.all([
+    adminDb.from('commerciaux').select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
+    supabase.from('lettre_templates').select('*').eq('commercial_id', user.id).maybeSingle(),
+  ])
+  const template: LetterTemplate | null = templateRow ?? null
 
   const sections = letters.map((letter: DpeAdresseData) => ({
     properties: {
@@ -257,7 +268,7 @@ export async function POST(request: Request) {
     headers: {
       default: { options: { children: [buildHeader(commercial), new Paragraph({ children: [], spacing: { after: 200 } })] } }
     },
-    children: buildLetter(letter, commercial)
+    children: buildLetter(letter, commercial, template)
   }))
 
   const doc = new Document({

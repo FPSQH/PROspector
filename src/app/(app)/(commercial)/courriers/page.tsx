@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { generateLetterHTML, generateLetterText } from '@/lib/lettres/generator'
-import type { DpeAdresseData } from '@/lib/lettres/generator'
+import { generateLetterHTML } from '@/lib/lettres/generator'
+import type { DpeAdresseData, LetterTemplate } from '@/lib/lettres/generator'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -64,11 +65,20 @@ export default function CourriersPage() {
   const [filterType,  setFilterType]  = useState('')
   const [generating,  setGenerating]  = useState(false)
   const [letterHTML,  setLetterHTML]  = useState('')
+  const [letterTemplate, setLetterTemplate] = useState<LetterTemplate | null>(null)
   const [tourneeModal,  setTourneeModal]  = useState(false)
   const [tourneeName,   setTourneeName]   = useState('')
   const [tourneeDate,   setTourneeDate]   = useState(today())
   const [tourneeSaving, setTourneeSaving] = useState(false)
   const [tourneeTarget, setTourneeTarget] = useState<'selection'|'tous'|string>('tous')
+
+  // ── Charger le template une seule fois ───────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/courriers/template')
+      .then(r => r.json())
+      .then(d => setLetterTemplate(d.template ?? null))
+      .catch(() => {})
+  }, [])
 
   // ── Charger les DPE ──────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -130,7 +140,7 @@ export default function CourriersPage() {
         <text x="14" y="17" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="bold" fill="white" font-family="Arial">${dpe}</text>
       </svg>`
       el.style.cssText = 'cursor:pointer;width:28px;height:36px'
-      el.addEventListener('click', () => { setSelected(a); setLetterHTML(generateLetterHTML(a)) })
+      el.addEventListener('click', () => { setSelected(a); setLetterHTML(generateLetterHTML(a, letterTemplate)) })
       const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([a.lon, a.lat])
         .addTo(map)
@@ -138,12 +148,12 @@ export default function CourriersPage() {
       bounds.extend([a.lon, a.lat])
     }
     if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 14 })
-  }, [adresses, filterVille, filterType, mapReady])
+  }, [adresses, filterVille, filterType, mapReady, letterTemplate])
 
   // ── Lettre ────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (selected) setLetterHTML(generateLetterHTML(selected))
-  }, [selected])
+    if (selected) setLetterHTML(generateLetterHTML(selected, letterTemplate))
+  }, [selected, letterTemplate])
 
   // ── Filtrage + tri ────────────────────────────────────────────────────────────
   const getFiltered = () => {
@@ -284,12 +294,18 @@ export default function CourriersPage() {
 
         {/* Header */}
         <div style={{ padding:'16px 16px 12px', borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-            <span style={{ fontSize:'1.2rem' }}>✉️</span>
-            <div>
-              <div style={{ fontWeight:700, fontSize:'0.9375rem', color: C.text }}>Courriers DPE</div>
-              <div style={{ fontSize:'0.72rem', color: C.muted }}>{filtered.length} DPE sur {adresses.length} total</div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:'1.2rem' }}>✉️</span>
+              <div>
+                <div style={{ fontWeight:700, fontSize:'0.9375rem', color: C.text }}>Courriers DPE</div>
+                <div style={{ fontSize:'0.72rem', color: C.muted }}>{filtered.length} DPE sur {adresses.length} total</div>
+              </div>
             </div>
+            <Link href="/courriers/templates"
+              style={{ fontSize:'0.72rem', color: letterTemplate ? C.primary : C.muted, textDecoration:'none', padding:'4px 8px', borderRadius:6, border:`1px solid ${letterTemplate ? 'rgba(29,158,117,0.3)' : C.border}`, background: letterTemplate ? 'rgba(29,158,117,0.08)' : 'transparent' }}>
+              {letterTemplate ? '✓ Template' : '⚙ Template'}
+            </Link>
           </div>
 
           {/* Dates */}
