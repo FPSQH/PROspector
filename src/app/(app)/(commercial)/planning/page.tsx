@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 /* ── Design tokens ───────────────────────────────────────────────── */
 const C = {
@@ -143,12 +143,21 @@ export default function PlanningPage() {
   const [selDate,        setSelDate]        = useState<string | null>(null)
   const [reporting,      setReporting]      = useState<string | null>(null)
   const [isMobile,       setIsMobile]       = useState(false)
+  const [banner,         setBanner]         = useState<string | null>(null)
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Affiche un banner temporaire (5 s) dans la barre calendrier
+  const showBanner = useCallback((msg: string) => {
+    if (bannerTimer.current) clearTimeout(bannerTimer.current)
+    setBanner(msg)
+    bannerTimer.current = setTimeout(() => setBanner(null), 5000)
   }, [])
 
   const getZone = useCallback((zoneId: string): Zone | null => {
@@ -158,14 +167,64 @@ export default function PlanningPage() {
   const load = useCallback(async (m: number, a: number) => {
     setLoading(true)
     try {
+      // ── Étape 1 : auto-sync (mois courant ou passé uniquement) ─────────────
+      // Marque les sessions "planifiée" dont la date est dépassée en "non_realisee"
+      // et décale toutes les sessions futures d'autant (y compris sur les mois suivants).
+      const nowRef = new Date()
+      const isCurrentOrPast =
+        a < nowRef.getFullYear() ||
+        (a === nowRef.getFullYear() && m <= nowRef.getMonth() + 1)
+
+      let nbNonRealises = 0
+      if (isCurrentOrPast) {
+        try {
+          const syncRes = await fetch('/api/planning/auto-sync', { method: 'POST' }).then(r => r.json())
+          nbNonRealises = syncRes.nb_non_realisees ?? 0
+        } catch { /* non-bloquant */ }
+      }
+
+      // ── Étape 2 : fetch données du mois ────────────────────────────────────
       const [pd, zd] = await Promise.all([
         fetch(`/api/planning?mois=${m}&annee=${a}`).then(r => r.json()),
         fetch('/api/zones').then(r => r.json()),
       ])
-      setSessions(pd.planning ?? [])
+
+      const planningData: Session[] = pd.planning ?? []
+      const zonesData: Zone[]       = zd.zones    ?? []
+
+      // ── Étape 3 : prolongation automatique ────────────────────────────────
+      // Si le mois n'a aucune session planifiée ET qu'on est sur le mois courant
+      // ou un mois futur ET que des zones existent → générer en continuant la rotation.
+      const hasPlanifie = planningData.some(s => s.statut === 'planifiee')
+      const isCurrentOrFuture =
+        a > nowRef.getFullYear() ||
+        (a === nowRef.getFullYear() && m >= nowRef.getMonth() + 1)
+
+      let finalPlanning = planningData
+      let finalKpis     = pd.kpis ?? null
+
+      if (!hasPlanifie && isCurrentOrFuture && zonesData.length > 0) {
+        try {
+          const prolongRes = await fetch('/api/planning', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ mois: m, annee: a, continuer: true }),
+          }).then(r => r.json())
+
+          if (prolongRes.planning && !prolongRes.already_exists) {
+            finalPlanning = prolongRes.planning
+            finalKpis     = prolongRes.kpis ?? null
+          } else if (prolongRes.already_exists) {
+            finalPlanning = prolongRes.planning ?? planningData
+          }
+        } catch { /* non-bloquant */ }
+      }
+
+      // ── Étape 4 : hydratation état ─────────────────────────────────────────
+      setSessions(finalPlanning)
       setSessionsLibres(pd.sessions_libres ?? [])
       setRelances(pd.relances ?? [])
-      setKpis(pd.kpis ?? null)
+      setKpis(finalKpis)
       if (pd.config) setCfg({
         jours_semaine:   pd.config.jours_semaine   ?? [2, 3, 5],
         heure_debut:     pd.config.heure_debut      ?? '10:00',
@@ -174,13 +233,21 @@ export default function PlanningPage() {
         heure_debut_2:   pd.config.heure_debut_2    ?? null,
         jours_semaine_2: pd.config.jours_semaine_2  ?? [],
       })
-      setZones(zd.zones ?? [])
+      setZones(zonesData)
+
+      // ── Étape 5 : banner si des sessions ont été auto-décalées ─────────────
+      if (nbNonRealises > 0) {
+        const s = nbNonRealises > 1 ? 's' : ''
+        showBanner(
+          `${nbNonRealises} session${s} non réalisée${s} détectée${s} — planning décalé et mis à jour`
+        )
+      }
     } catch (err) {
       console.error('[Planning] Erreur chargement:', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showBanner])
 
   useEffect(() => { load(mois, annee) }, [mois, annee, load])
 
@@ -300,6 +367,19 @@ export default function PlanningPage() {
   /* ── Panel calendrier + liste ────────────────────────────────────── */
   const calPanel = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.card, overflow: 'hidden' }}>
+
+      {/* Banner auto-sync */}
+      {banner && (
+        <div style={{
+          padding: '8px 14px', background: 'rgba(251,191,36,0.1)',
+          borderBottom: `1px solid rgba(251,191,36,0.25)`,
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 13 }}>⚠️</span>
+          <span style={{ fontSize: 11, color: '#FBBF24', fontWeight: 500, flex: 1 }}>{banner}</span>
+          <button onClick={() => setBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: 14, padding: '0 2px', lineHeight: 1 }}>✕</button>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ padding: '13px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

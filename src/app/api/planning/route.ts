@@ -131,6 +131,8 @@ export async function POST(req: Request) {
   const now   = new Date()
   const mois  = parseInt(body.mois  ?? now.getMonth() + 1)
   const annee = parseInt(body.annee ?? now.getFullYear())
+  // continuer: true → auto-prolongation, ne pas bloquer si sessions déjà présentes
+  const continuer = !!body.continuer
 
   const cfg = await getConfig(supabase, user.id)
 
@@ -138,11 +140,17 @@ export async function POST(req: Request) {
   const { data: existing } = await supabase
     .from('planning_sessions').select('id')
     .eq('commercial_id', user.id).eq('mois', mois).eq('annee', annee).eq('statut', 'planifiee')
-  if (existing && existing.length > 0)
+  if (existing && existing.length > 0) {
+    if (continuer) {
+      // Auto-prolongation : des sessions existent déjà → rien à faire
+      const s = await fetchSessions(supabase, user.id, mois, annee)
+      return NextResponse.json({ planning: s, sessions_libres: [], already_exists: true })
+    }
     return NextResponse.json(
       { error: 'Des sessions planifiées existent déjà ce mois. Utilisez Reset pour les supprimer.', nb_sessions: existing.length },
       { status: 409 }
     )
+  }
 
   const { data: zones } = await supabase
     .from('zones_prospection').select('id, nom, numero, nb_adresses')
@@ -173,11 +181,32 @@ export async function POST(req: Request) {
     ? Math.max(configDay, todayDay)   // jamais antérieur à la date du jour
     : configDay                        // mois futur → date de début ou 1er du mois
 
+  // ── Déterminer la zone de départ pour la rotation ─────────────────────────
+  // Cherche la dernière session (toute statut) avant le premier jour du mois cible.
+  // Si trouvée, on reprend depuis la zone suivante dans la rotation.
+  // Si absente (premier planning), on démarre à l'index 0.
+  const firstDayOfMonth = `${annee}-${String(mois).padStart(2, '0')}-01`
+  const { data: lastBefore } = await supabase
+    .from('planning_sessions')
+    .select('zone_id')
+    .eq('commercial_id', user.id)
+    .lt('date_prevue', firstDayOfMonth)
+    .order('date_prevue', { ascending: false })
+    .order('heure_debut', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  let zoneStartIndex = 0
+  if (lastBefore?.zone_id) {
+    const idx = zones.findIndex((z: any) => z.id === lastBefore.zone_id)
+    if (idx >= 0) zoneStartIndex = (idx + 1) % zones.length
+  }
+
   const daysInMonth = new Date(annee, mois, 0).getDate()
   const heureFin1   = addMinutes(cfg.debut, cfg.duree)
   const heureFin2   = cfg.debut_2 ? addMinutes(cfg.debut_2, cfg.duree) : null
   const toInsert: any[] = []
-  let zoneIndex = 0
+  let zoneIndex = zoneStartIndex
 
   for (let day = startDay; day <= daysInMonth; day++) {
     const jourSemaine = new Date(annee, mois - 1, day).getDay()
