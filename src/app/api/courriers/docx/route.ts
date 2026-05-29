@@ -153,6 +153,17 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   // Mode unique
   if (template.mode === 'unique' && template.unique_text) {
     const paras: Paragraph[] = []
+    // Bloc enveloppe (si activé, même en mode unique)
+    if (template.envelope_enabled) {
+      const line1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
+      const line2 = letter.adresse_brute || ''
+      const line3 = [letter.code_postal, ville].filter(Boolean).join(' ')
+      paras.push(new Paragraph({ children: [], spacing: { after: 600 } }))
+      for (const l of [line1, line2, line3].filter(Boolean)) {
+        paras.push(new Paragraph({ children: [T(l, { size: 20 })], spacing: { after: 40 } }))
+      }
+      paras.push(new Paragraph({ children: [], spacing: { after: 480 } }))
+    }
     paras.push(new Paragraph({
       children: [T(`${ville ? ville + ', le ' : 'Le '}${today}`, { size: 18, color: GREY, italics: true })],
       alignment: AlignmentType.RIGHT, spacing: { after: 240 }

@@ -132,13 +132,16 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   const p = (t: string) => `<p style="font-size:13px;line-height:1.75;margin:0 0 10px;text-align:justify;color:#1A1A1A;">${t}</p>`
 
   if (template.mode === 'unique' && template.unique_text) {
-    return [
-      headerHtml,
-      `<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`,
-      p(fillVarsHtml(template.unique_text, vars)),
-      signatureHtml,
-      footerHtml,
-    ].join('\n')
+    const parts: string[] = [headerHtml]
+    if (template.envelope_enabled) {
+      const l1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
+      parts.push(`<div style="border:1px dashed #aaa;padding:12px 16px;margin:0 0 24px;font-size:13px;line-height:2;max-width:280px;"><div>${l1}</div><div>${data.adresse_brute || ''}</div><div>${[data.code_postal, ville].filter(Boolean).join(' ')}</div></div>`)
+    }
+    parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
+    parts.push(p(fillVarsHtml(template.unique_text, vars)))
+    parts.push(signatureHtml)
+    if (footerHtml) parts.push(footerHtml)
+    return parts.join('\n')
   }
 
   const sections = getEffectiveSections(template)
