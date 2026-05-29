@@ -61,31 +61,58 @@ function uid() { return crypto.randomUUID() }
 
 // ── Génération aperçu HTML depuis template V2 ─────────────────────────────────
 function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): string {
-  const ville    = data.nom_commune ?? data.commune ?? ''
-  const dpe      = (data.dpe_etiquette ?? '?').toUpperCase()
-  const isAppt   = data.type_bien === 'appartement'
-  const typeBien = isAppt ? 'votre appartement' : 'votre bien'
-  const ctx      = ville ? `sur le secteur de ${ville}` : 'dans notre secteur'
-  const today    = new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
-  const dpeGroup = getDpeGroup(dpe)
-  const isRed    = dpeGroup === 'FG' || dpeGroup === 'E'
+  const ville       = data.nom_commune ?? data.commune ?? ''
+  const dpe         = (data.dpe_etiquette ?? '?').toUpperCase()
+  const isAppt      = data.type_bien === 'appartement'
+  const typeBien    = isAppt ? 'votre appartement' : 'votre bien'
+  const ctx         = ville ? `sur le secteur de ${ville}` : 'dans notre secteur'
+  const today       = new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+  const dpeGroup    = getDpeGroup(dpe)
+  const isRed       = dpeGroup === 'FG' || dpeGroup === 'E'
+  const agentNom    = [`${data.agent_prenom ?? ''}`, `${data.agent_nom ?? ''}`].join(' ').trim() || 'Jean Dupont'
+  const agenceNom   = data.agent_agence    ?? 'Square Habitat'
+  const agenceTel   = data.agent_telephone ?? '05 56 00 00 00'
+  const agenceEmail = data.agent_email     ?? 'contact@squarehabitat.fr'
 
   const vars: Record<string, string> = {
     typeBien, ctx, dpe, ville,
-    adresse:     data.adresse_brute || '',
-    conso:       data.conso_ep_m2    ? `${data.conso_ep_m2} kWhep/m²/an` : '',
-    cout:        data.cout_annuel    ? `${Math.round(data.cout_annuel).toLocaleString('fr-FR')} €` : '',
-    ges:         data.ges_m2         ? `${data.ges_m2} kgeqCO₂/m²/an` : '',
-    energie:     data.energie_principale ?? '',
-    agentNom:    'Jean Dupont',
-    agenceNom:   'Square Habitat',
-    agenceTel:   '05 56 00 00 00',
-    agenceEmail: 'contact@squarehabitat.fr',
+    adresse:    data.adresse_brute || '',
+    conso:      data.conso_ep_m2  ? `${data.conso_ep_m2} kWhep/m²/an` : '',
+    cout:       data.cout_annuel  ? `${Math.round(data.cout_annuel).toLocaleString('fr-FR')} €` : '',
+    ges:        data.ges_m2       ? `${data.ges_m2} kgeqCO₂/m²/an` : '',
+    energie:    data.energie_principale ?? '',
+    agentNom, agenceNom, agenceTel, agenceEmail,
   }
 
   const TEAL = '#009597'
   const infoBox_bg  = isRed ? '#FDEDEB' : '#E8F6F6'
   const infoBox_brd = isRed ? '#C0392B' : '#009597'
+
+  // ── En-tête identique au DOCX : logo | agence | agent ──────────────────────
+  const logoHtml = template.logo_data && template.logo_mime
+    ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="max-width:60px;max-height:40px;object-fit:contain;display:block;margin:0 auto;" />`
+    : `<span style="font-size:18px;font-weight:700;color:#009597;font-family:Arial,sans-serif;">SQH</span>`
+
+  const headerHtml = `<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-family:Arial,sans-serif;"><tr>`
+    + `<td style="width:75px;border-bottom:2px solid #009597;vertical-align:middle;text-align:center;padding-bottom:10px;">${logoHtml}</td>`
+    + `<td style="border-bottom:2px solid #009597;vertical-align:middle;padding:0 12px 10px;">`
+    +   `<div style="font-size:15px;font-weight:700;color:#009597;">${agenceNom}</div>`
+    +   (agenceTel ? `<div style="font-size:11px;color:#5F5E5A;">📞 ${agenceTel}</div>` : '')
+    + `</td>`
+    + `<td style="width:190px;border-bottom:2px solid #009597;vertical-align:middle;text-align:right;padding-bottom:10px;">`
+    +   `<div style="font-size:12px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
+    +   `<div style="font-size:11px;color:#5F5E5A;">Conseiller Immobilier</div>`
+    +   (agenceEmail ? `<div style="font-size:11px;color:#5F5E5A;">${agenceEmail}</div>` : '')
+    + `</td>`
+    + `</tr></table>`
+
+  // ── Signature identique au DOCX ─────────────────────────────────────────────
+  const signatureHtml = `<div style="margin-top:28px;border-top:2px solid #009597;padding-top:10px;font-family:Arial,sans-serif;">`
+    + `<div style="font-size:13px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
+    + `<div style="font-size:12px;color:#5F5E5A;">Conseiller Immobilier — ${agenceNom}</div>`
+    + (agenceTel   ? `<div style="font-size:12px;color:#5F5E5A;">📞 ${agenceTel}</div>`   : '')
+    + (agenceEmail ? `<div style="font-size:12px;color:#5F5E5A;">✉ ${agenceEmail}</div>` : '')
+    + `</div>`
 
   const h4 = (sec: TemplateSection) => {
     if (!sec.showTitle) return ''
@@ -99,13 +126,15 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
 
   if (template.mode === 'unique' && template.unique_text) {
     return [
+      headerHtml,
       `<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`,
       p(fillVarsHtml(template.unique_text, vars)),
+      signatureHtml,
     ].join('\n')
   }
 
   const sections = getEffectiveSections(template)
-  const parts: string[] = []
+  const parts: string[] = [headerHtml]
 
   // Enveloppe
   if (template.envelope_enabled) {
@@ -186,7 +215,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
     }
   }
 
-  parts.push(`<p style="margin-top:28px;font-size:13px;color:#1A1A1A;"><strong>Jean Dupont</strong><br>Conseiller Immobilier — Square Habitat</p>`)
+  parts.push(signatureHtml)
   return parts.filter(Boolean).join('\n')
 }
 
@@ -744,7 +773,9 @@ export default function TemplatesPage() {
   const previewData: DpeAdresseData = {
     ...PREVIEW_BASE, ...PREVIEW_AUDIT, dpe_etiquette: previewDpe,
     agent_nom: 'Dupont', agent_prenom: 'Jean',
-    agent_agence: draft?.name ?? 'Square Habitat',
+    agent_agence:    'Square Habitat',
+    agent_telephone: '05 56 00 00 00',
+    agent_email:     'contact@squarehabitat.fr',
   }
   // Génère l'aperçu depuis le template v2 (reflète vraiment les personnalisations)
   const letterHTML = draft
