@@ -89,9 +89,16 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   const infoBox_brd = isRed ? '#C0392B' : '#009597'
 
   // ── En-tête identique au DOCX : logo | agence | agent ──────────────────────
-  const logoHtml = template.logo_data && template.logo_mime
-    ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="max-width:60px;max-height:40px;object-fit:contain;display:block;margin:0 auto;" />`
+  const logoInFooter = template.logo_position === 'footer'
+  const logoW = template.logo_width  ?? 60
+  const logoH = template.logo_height ?? 40
+  const logoHtml = (template.logo_data && template.logo_mime && !logoInFooter)
+    ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="width:${logoW}px;height:${logoH}px;object-fit:contain;display:block;margin:0 auto;" />`
     : `<span style="font-size:18px;font-weight:700;color:#009597;font-family:Arial,sans-serif;">SQH</span>`
+
+  const footerHtml = (template.logo_data && template.logo_mime && logoInFooter)
+    ? `<div style="margin-top:32px;border-top:2px solid #009597;padding-top:10px;text-align:center;"><img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="width:${logoW}px;height:${logoH}px;object-fit:contain;" /></div>`
+    : ''
 
   const headerHtml = `<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-family:Arial,sans-serif;"><tr>`
     + `<td style="width:75px;border-bottom:2px solid #009597;vertical-align:middle;text-align:center;padding-bottom:10px;">${logoHtml}</td>`
@@ -130,6 +137,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
       `<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`,
       p(fillVarsHtml(template.unique_text, vars)),
       signatureHtml,
+      footerHtml,
     ].join('\n')
   }
 
@@ -216,6 +224,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   }
 
   parts.push(signatureHtml)
+  if (footerHtml) parts.push(footerHtml)
   return parts.filter(Boolean).join('\n')
 }
 
@@ -975,7 +984,7 @@ export default function TemplatesPage() {
                 <div style={{ marginBottom:32 }}>
                   <div style={{ fontWeight:600, fontSize:14, color:C.text, marginBottom:4 }}>Logo de l'agence</div>
                   <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>
-                    Affiché dans l'en-tête de vos lettres DOCX. PNG ou JPG recommandé, max 1,5 Mo.
+                    Affiché dans vos lettres DOCX. PNG ou JPG recommandé, max 1,5 Mo.
                   </div>
 
                   {draft.logo_data ? (
@@ -1000,6 +1009,65 @@ export default function TemplatesPage() {
                     {draft.logo_data ? 'Changer le logo' : 'Choisir un logo'}
                     <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleLogoUpload} />
                   </label>
+
+                  {/* Position et taille — uniquement si logo chargé */}
+                  {draft.logo_data && (
+                    <div style={{ marginTop:20, padding:'16px', background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, borderRadius:8 }}>
+
+                      {/* Emplacement */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Emplacement dans le document :</div>
+                        <div style={{ display:'flex', borderRadius:7, border:`1px solid ${C.border}`, overflow:'hidden', width:'fit-content' }}>
+                          {(['header','footer'] as const).map(pos => (
+                            <button key={pos} onClick={() => patchDraft({ logo_position: pos })}
+                              style={{
+                                padding:'5px 16px', border:'none', cursor:'pointer', fontSize:12, fontWeight:600,
+                                background: (draft.logo_position ?? 'header') === pos ? C.primary : 'transparent',
+                                color:      (draft.logo_position ?? 'header') === pos ? '#fff'    : C.muted,
+                              }}>
+                              {pos === 'header' ? 'En-tête' : 'Pied de page'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Taille */}
+                      <div>
+                        <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Taille dans le DOCX :</div>
+                        <div style={{ display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
+                          <label style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontSize:12, color:C.muted, minWidth:52 }}>Largeur</span>
+                            <input type="number" min={20} max={300}
+                              value={draft.logo_width ?? 60}
+                              onChange={e => patchDraft({ logo_width: Math.max(20, Math.min(300, Number(e.target.value))) })}
+                              style={{ width:70, background:'rgba(255,255,255,0.06)', border:`1px solid ${C.borderl}`, borderRadius:6, color:C.text, fontSize:13, padding:'4px 8px' }}
+                            />
+                            <span style={{ fontSize:11, color:C.dim }}>px</span>
+                          </label>
+                          <label style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontSize:12, color:C.muted, minWidth:48 }}>Hauteur</span>
+                            <input type="number" min={10} max={200}
+                              value={draft.logo_height ?? 40}
+                              onChange={e => patchDraft({ logo_height: Math.max(10, Math.min(200, Number(e.target.value))) })}
+                              style={{ width:70, background:'rgba(255,255,255,0.06)', border:`1px solid ${C.borderl}`, borderRadius:6, color:C.text, fontSize:13, padding:'4px 8px' }}
+                            />
+                            <span style={{ fontSize:11, color:C.dim }}>px</span>
+                          </label>
+                          {/* Mini-aperçu taille */}
+                          <div style={{ padding:6, background:'#fff', borderRadius:5 }}>
+                            <img
+                              src={`data:${draft.logo_mime ?? 'image/png'};base64,${draft.logo_data}`}
+                              alt="Aperçu"
+                              style={{ width: draft.logo_width ?? 60, height: draft.logo_height ?? 40, objectFit:'contain', display:'block' }}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ fontSize:11, color:C.dim, marginTop:6 }}>
+                          Taille exacte dans le DOCX. Allez dans l'onglet Aperçu pour voir le rendu complet.
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Enveloppe */}

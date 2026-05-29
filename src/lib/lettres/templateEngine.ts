@@ -36,6 +36,9 @@ export interface TemplateV2 {
   unique_text:      string | null
   logo_data:        string | null
   logo_mime:        string | null
+  logo_width?:      number   // largeur ImageRun en px, défaut 60
+  logo_height?:     number   // hauteur ImageRun en px, défaut 40
+  logo_position?:   'header' | 'footer'  // défaut 'header'
   sections_config:  TemplateSection[] | null
   envelope_enabled: boolean
   envelope_line1:   string

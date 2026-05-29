@@ -175,8 +175,8 @@ export function htmlToRuns(
   for (const tok of tokens) {
     if (tok.type === 'text') {
       flushText(tok.text)
-    } else if (tok.type === 'selfclose' && tok.tag === 'br') {
-      // Line break
+    } else if ((tok.type === 'selfclose' || tok.type === 'open') && tok.tag === 'br') {
+      // Line break (<br> ou <br/>)
       result.push(new TextRun({ break: 1 }))
     } else if (tok.type === 'open') {
       switch (tok.tag) {
