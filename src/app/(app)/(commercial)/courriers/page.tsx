@@ -54,14 +54,6 @@ export default function CourriersPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Fermer le dropdown template au clic extérieur
-  useEffect(() => {
-    if (!templateDropdown) return
-    const handler = () => setTemplateDropdown(false)
-    window.addEventListener('click', handler, { capture: true })
-    return () => window.removeEventListener('click', handler, { capture: true })
-  }, [templateDropdown])
-
   const [dateDebut, setDateDebut] = useState(daysAgo(90))
   const [dateFin,   setDateFin]   = useState(today())
   const [adresses,  setAdresses]  = useState<DpeAdresseData[]>([])
@@ -82,6 +74,14 @@ export default function CourriersPage() {
   const [tourneeDate,   setTourneeDate]   = useState(today())
   const [tourneeSaving, setTourneeSaving] = useState(false)
   const [tourneeTarget, setTourneeTarget] = useState<'selection'|'tous'|string>('tous')
+
+  // Fermer le dropdown template au clic extérieur
+  useEffect(() => {
+    if (!templateDropdown) return
+    const handler = () => setTemplateDropdown(false)
+    window.addEventListener('click', handler, { capture: true })
+    return () => window.removeEventListener('click', handler, { capture: true })
+  }, [templateDropdown])
 
   // ── Charger les templates v2 ──────────────────────────────────────────────────
   useEffect(() => {
