@@ -543,7 +543,8 @@ export default function TemplatesPage() {
   const [saveErr,     setSaveErr]     = useState('')
   const [creating,    setCreating]    = useState(false)
   const [tab,         setTab]         = useState<Tab>('sections')
-  const [previewDpe,  setPreviewDpe]  = useState('F')
+  const [previewDpe,       setPreviewDpe]       = useState('F')
+  const [previewWithAudit, setPreviewWithAudit] = useState(false)
   const [expandedSec, setExpandedSec] = useState<string | null>(null)
 
   // Drag-drop state
@@ -728,8 +729,20 @@ export default function TemplatesPage() {
   }
 
   // ── Aperçu lettre ─────────────────────────────────────────────────────────
+  const PREVIEW_AUDIT = previewWithAudit ? {
+    audit: {
+      n_audit: 'AUDIT-2024-001234',
+      date_audit: '15/03/2024',
+      scenarios: [
+        { categorie: 'Scénario 1 — Isolation seule',     classe_apres: 'D', cout_travaux: 18000, gain_pct: 35 },
+        { categorie: 'Scénario 2 — Rénovation partielle', classe_apres: 'C', cout_travaux: 32000, gain_pct: 55 },
+        { categorie: 'Scénario 3 — Rénovation globale',  classe_apres: 'B', cout_travaux: 55000, gain_pct: 72 },
+      ],
+    },
+  } : {}
+
   const previewData: DpeAdresseData = {
-    ...PREVIEW_BASE, dpe_etiquette: previewDpe,
+    ...PREVIEW_BASE, ...PREVIEW_AUDIT, dpe_etiquette: previewDpe,
     agent_nom: 'Dupont', agent_prenom: 'Jean',
     agent_agence: draft?.name ?? 'Square Habitat',
   }
@@ -996,7 +1009,7 @@ export default function TemplatesPage() {
             {/* ────────── ONGLET APERÇU ────────── */}
             {tab === 'preview' && (
               <div>
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
                   <span style={{ fontSize:12, color:C.muted }}>Aperçu avec DPE :</span>
                   {['A','B','C','D','E','F','G'].map(l => (
                     <button key={l} onClick={() => setPreviewDpe(l)}
@@ -1007,6 +1020,23 @@ export default function TemplatesPage() {
                       {l}
                     </button>
                   ))}
+                  {/* Checkbox audit */}
+                  <label style={{ display:'flex', alignItems:'center', gap:6, marginLeft:8, cursor:'pointer', userSelect:'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={previewWithAudit}
+                      onChange={e => setPreviewWithAudit(e.target.checked)}
+                      style={{ accentColor: C.primary, width:14, height:14, cursor:'pointer' }}
+                    />
+                    <span style={{ fontSize:12, color: previewWithAudit ? C.text : C.muted }}>
+                      Avec audit réalisé
+                    </span>
+                    {previewWithAudit && !['E','F','G'].includes(previewDpe) && (
+                      <span style={{ fontSize:11, color:C.gold }}>
+                        ⚠ visible uniquement pour DPE E, F ou G
+                      </span>
+                    )}
+                  </label>
                 </div>
                 <div style={{ background:'#fff', borderRadius:10, padding:'32px 40px', boxShadow:'0 4px 24px rgba(0,0,0,0.4)', fontFamily:'Arial, sans-serif', fontSize:13, lineHeight:1.75, color:'#1A1A1A', maxWidth:700 }}
                   dangerouslySetInnerHTML={{ __html: letterHTML }}
