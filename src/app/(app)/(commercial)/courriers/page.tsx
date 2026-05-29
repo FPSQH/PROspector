@@ -5,7 +5,8 @@ import Link from 'next/link'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { generateLetterHTML } from '@/lib/lettres/generator'
-import type { DpeAdresseData, LetterTemplate } from '@/lib/lettres/generator'
+import type { DpeAdresseData } from '@/lib/lettres/generator'
+import type { TemplateV2 } from '@/lib/lettres/templateEngine'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -53,6 +54,14 @@ export default function CourriersPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // Fermer le dropdown template au clic extérieur
+  useEffect(() => {
+    if (!templateDropdown) return
+    const handler = () => setTemplateDropdown(false)
+    window.addEventListener('click', handler, { capture: true })
+    return () => window.removeEventListener('click', handler, { capture: true })
+  }, [templateDropdown])
+
   const [dateDebut, setDateDebut] = useState(daysAgo(90))
   const [dateFin,   setDateFin]   = useState(today())
   const [adresses,  setAdresses]  = useState<DpeAdresseData[]>([])
@@ -63,20 +72,27 @@ export default function CourriersPage() {
   const [sortField, setSortField] = useState<SortField>('date')
   const [filterVille, setFilterVille] = useState('')
   const [filterType,  setFilterType]  = useState('')
-  const [generating,  setGenerating]  = useState(false)
-  const [letterHTML,  setLetterHTML]  = useState('')
-  const [letterTemplate, setLetterTemplate] = useState<LetterTemplate | null>(null)
+  const [generating,       setGenerating]       = useState(false)
+  const [letterHTML,       setLetterHTML]       = useState('')
+  const [templates,        setTemplates]        = useState<TemplateV2[]>([])
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
+  const [templateDropdown, setTemplateDropdown] = useState(false)
   const [tourneeModal,  setTourneeModal]  = useState(false)
   const [tourneeName,   setTourneeName]   = useState('')
   const [tourneeDate,   setTourneeDate]   = useState(today())
   const [tourneeSaving, setTourneeSaving] = useState(false)
   const [tourneeTarget, setTourneeTarget] = useState<'selection'|'tous'|string>('tous')
 
-  // ── Charger le template une seule fois ───────────────────────────────────────
+  // ── Charger les templates v2 ──────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/courriers/template')
       .then(r => r.json())
-      .then(d => setLetterTemplate(d.template ?? null))
+      .then(d => {
+        const list: TemplateV2[] = d.templates ?? []
+        setTemplates(list)
+        const def = list.find(t => t.is_default) ?? list[0] ?? null
+        if (def) setActiveTemplateId(def.id)
+      })
       .catch(() => {})
   }, [])
 
@@ -140,7 +156,7 @@ export default function CourriersPage() {
         <text x="14" y="17" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="bold" fill="white" font-family="Arial">${dpe}</text>
       </svg>`
       el.style.cssText = 'cursor:pointer;width:28px;height:36px'
-      el.addEventListener('click', () => { setSelected(a); setLetterHTML(generateLetterHTML(a, letterTemplate)) })
+      el.addEventListener('click', () => { setSelected(a); setLetterHTML(generateLetterHTML(a, null)) })
       const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([a.lon, a.lat])
         .addTo(map)
@@ -148,12 +164,12 @@ export default function CourriersPage() {
       bounds.extend([a.lon, a.lat])
     }
     if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 14 })
-  }, [adresses, filterVille, filterType, mapReady, letterTemplate])
+  }, [adresses, filterVille, filterType, mapReady])
 
   // ── Lettre ────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (selected) setLetterHTML(generateLetterHTML(selected, letterTemplate))
-  }, [selected, letterTemplate])
+    if (selected) setLetterHTML(generateLetterHTML(selected, null))
+  }, [selected])
 
   // ── Filtrage + tri ────────────────────────────────────────────────────────────
   const getFiltered = () => {
@@ -188,7 +204,7 @@ export default function CourriersPage() {
       const r = await fetch('/api/courriers/docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ letters, date_debut: dateDebut, date_fin: dateFin }),
+        body: JSON.stringify({ letters, date_debut: dateDebut, date_fin: dateFin, template_id: activeTemplateId }),
       })
       if (!r.ok) throw new Error('Erreur génération DOCX')
       const blob = await r.blob()
@@ -302,10 +318,33 @@ export default function CourriersPage() {
                 <div style={{ fontSize:'0.72rem', color: C.muted }}>{filtered.length} DPE sur {adresses.length} total</div>
               </div>
             </div>
-            <Link href="/courriers/templates"
-              style={{ fontSize:'0.72rem', color: letterTemplate ? C.primary : C.muted, textDecoration:'none', padding:'4px 8px', borderRadius:6, border:`1px solid ${letterTemplate ? 'rgba(29,158,117,0.3)' : C.border}`, background: letterTemplate ? 'rgba(29,158,117,0.08)' : 'transparent' }}>
-              {letterTemplate ? '✓ Template' : '⚙ Template'}
-            </Link>
+            {/* Sélecteur de template */}
+            <div style={{ position:'relative' }}>
+              <button onClick={() => setTemplateDropdown(v => !v)}
+                style={{ fontSize:'0.72rem', color: activeTemplateId ? C.primary : C.muted, padding:'4px 8px', borderRadius:6, border:`1px solid ${activeTemplateId ? 'rgba(29,158,117,0.3)' : C.border}`, background: activeTemplateId ? 'rgba(29,158,117,0.08)' : 'transparent', cursor:'pointer' }}>
+                {activeTemplateId ? `✓ ${templates.find(t=>t.id===activeTemplateId)?.name ?? 'Template'}` : '⚙ Templates'}
+              </button>
+              {templateDropdown && (
+                <div style={{ position:'absolute', right:0, top:'calc(100% + 4px)', zIndex:50, background:C.card, border:`1px solid ${C.borderl}`, borderRadius:8, minWidth:180, boxShadow:'0 8px 24px rgba(0,0,0,0.5)', padding:'6px' }}>
+                  {templates.length === 0 && (
+                    <div style={{ fontSize:12, color:C.muted, padding:'6px 8px' }}>Aucun template</div>
+                  )}
+                  {templates.map(t => (
+                    <button key={t.id} onClick={() => { setActiveTemplateId(t.id); setTemplateDropdown(false) }}
+                      style={{ width:'100%', display:'flex', alignItems:'center', gap:6, padding:'7px 10px', borderRadius:6, border:'none', background: activeTemplateId===t.id ? 'rgba(29,158,117,0.1)' : 'transparent', color: activeTemplateId===t.id ? C.primary : C.text, fontSize:12, fontWeight: activeTemplateId===t.id ? 600 : 400, cursor:'pointer', textAlign:'left' }}>
+                      <span style={{ flex:1 }}>{t.name}</span>
+                      {t.is_default && <span style={{ fontSize:9, color:C.primary }}>défaut</span>}
+                    </button>
+                  ))}
+                  <div style={{ borderTop:`1px solid ${C.border}`, marginTop:4, paddingTop:4 }}>
+                    <Link href="/courriers/templates" style={{ display:'block', padding:'7px 10px', borderRadius:6, fontSize:12, color:C.muted, textDecoration:'none' }}
+                      onClick={() => setTemplateDropdown(false)}>
+                      ⚙ Gérer les templates →
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Dates */}
