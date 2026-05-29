@@ -90,8 +90,8 @@ function htmlParas(html: string, vars: Record<string, string>): Paragraph[] {
   const normalized = filled
     .replace(/<p[^>]*>/gi,    '')   // <p ...>   → rien (ouvre un bloc)
     .replace(/<div[^>]*>/gi,  '')   // <div ...>  → rien
-    .replace(/</ps*>/gi,   SEP)  // </p>   → séparateur
-    .replace(/</divs*>/gi, SEP)  // </div> → séparateur
+    .replace(/<\/p\s*>/gi,   SEP)  // </p>   → séparateur
+    .replace(/<\/div\s*>/gi, SEP)  // </div> → séparateur
     // <br> conservé ici → traité comme saut de ligne inline par htmlToRuns
   const blocks = normalized.split(SEP)
     .map(b => b.trim())
