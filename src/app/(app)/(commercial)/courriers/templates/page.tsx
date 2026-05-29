@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import type { TemplateV2, TemplateSection, FixedSectionId } from '@/lib/lettres/templateEngine'
+import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
 import {
   DEFAULT_SECTIONS, SECTION_META, ALL_VARIABLES, getEffectiveSections,
 } from '@/lib/lettres/templateEngine'
