@@ -201,7 +201,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       alignment: AlignmentType.RIGHT, spacing: { after: 240 }
     }))
     paras.push(...htmlParas(template.unique_text, vars))
-    appendSignature(paras, vars.agentNom, commercial)
+    // En mode unique l'utilisateur gère lui-même la signature dans son template
     return paras
   }
 

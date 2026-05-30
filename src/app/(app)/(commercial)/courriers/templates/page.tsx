@@ -144,7 +144,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
     }
     parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
     parts.push(p(fillVarsHtml(template.unique_text, vars)))
-    parts.push(signatureHtml)
+    // En mode unique l'utilisateur gère sa propre signature via {agentNom}/{agenceNom}
     if (footerHtml) parts.push(footerHtml)
     return parts.join('\n')
   }
