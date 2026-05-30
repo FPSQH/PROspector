@@ -279,7 +279,9 @@ export function generateLetterHTML(b: DpeAdresseData, template?: LetterTemplate 
   const ville    = b.nom_commune ?? b.commune ?? ''
   const dpe      = (b.dpe_etiquette ?? '?').toUpperCase()
   const isAppt   = b.type_bien === 'appartement'
-  const typeBien = isAppt ? 'votre appartement' : 'votre bien'
+  const typeBien = b.type_bien === 'appartement' ? 'votre appartement'
+               : b.type_bien === 'maison'       ? 'votre maison'
+               : 'votre bien'
   const ctx      = ville ? `sur le secteur de ${ville}` : 'dans notre secteur'
   const dpeGroup = getDpeGroup(dpe)
   const isRed    = dpeGroup === 'FG' || dpeGroup === 'E'

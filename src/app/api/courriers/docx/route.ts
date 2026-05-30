@@ -115,7 +115,9 @@ function htmlParas(html: string, vars: Record<string, string>): Paragraph[] {
 function buildVars(letter: DpeAdresseData, commercial: any): Record<string, string> {
   const ville    = letter.nom_commune ?? letter.commune ?? ''
   const isAppt   = letter.type_bien === 'appartement'
-  const typeBien = isAppt ? 'votre appartement' : 'votre bien'
+  const typeBien = letter.type_bien === 'appartement' ? 'votre appartement'
+                 : letter.type_bien === 'maison'       ? 'votre maison'
+                 : 'votre bien'
   const ctx      = ville ? 'sur le secteur de ' + ville : 'dans notre secteur'
   const dpe      = (letter.dpe_etiquette ?? '?').toUpperCase()
   return {
@@ -554,7 +556,9 @@ function buildLetterLegacy(letter: DpeAdresseData, commercial: any): Paragraph[]
   const ville    = letter.nom_commune ?? letter.commune ?? ''
   const dpe      = (letter.dpe_etiquette ?? '?').toUpperCase()
   const isAppt   = letter.type_bien === 'appartement'
-  const typeBien = isAppt ? 'votre appartement' : 'votre bien'
+  const typeBien = letter.type_bien === 'appartement' ? 'votre appartement'
+                 : letter.type_bien === 'maison'       ? 'votre maison'
+                 : 'votre bien'
   const ctx      = ville ? 'sur le secteur de ' + ville : 'dans notre secteur'
   const dpeGroup = getDpeGroup(dpe)
   const isRed    = dpeGroup === 'FG' || dpeGroup === 'E'

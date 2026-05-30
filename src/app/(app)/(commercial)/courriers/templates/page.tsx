@@ -67,7 +67,9 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   const ville       = data.nom_commune ?? data.commune ?? ''
   const dpe         = (data.dpe_etiquette ?? '?').toUpperCase()
   const isAppt      = data.type_bien === 'appartement'
-  const typeBien    = isAppt ? 'votre appartement' : 'votre bien'
+  const typeBien    = data.type_bien === 'appartement' ? 'votre appartement'
+                   : data.type_bien === 'maison'       ? 'votre maison'
+                   : 'votre bien'
   const ctx         = ville ? `sur le secteur de ${ville}` : 'dans notre secteur'
   const today       = new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
   const dpeGroup    = getDpeGroup(dpe)
