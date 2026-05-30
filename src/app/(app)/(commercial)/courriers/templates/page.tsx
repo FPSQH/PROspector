@@ -5,7 +5,10 @@ import Link from 'next/link'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
 import {
   DEFAULT_SECTIONS, SECTION_META, ALL_VARIABLES, getEffectiveSections, parseAddress,
+  sectionMatchesCondition, migrateSectionCondition,
 } from '@/lib/lettres/templateEngine'
+import type { SectionCondition } from '@/lib/lettres/templateEngine'
+import { getDefaultSectionHtml } from '@/lib/lettres/generator'
 import {
   generateLetterHTML, getDpeGroup, getDpeTexts, getIntroCtx,
   getVenteText, getGLText, getEstimationText, getPolitesse1, getPolitesse2,
@@ -149,7 +152,9 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
     return parts.join('\n')
   }
 
-  const sections = getEffectiveSections(template)
+  const hasAuditPreview = !!(data.audit?.n_audit)
+  const typeBienRaw     = data.type_bien ?? 'appartement'
+  const sections = getEffectiveSections(template).map(migrateSectionCondition)
   const parts: string[] = [headerHtml]
 
   // Enveloppe AFNOR DL
@@ -169,6 +174,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
 
   for (const sec of sections) {
     if (!sec.enabled) continue
+    if (!sectionMatchesCondition(sec, dpe, typeBienRaw, hasAuditPreview)) continue
 
     switch (sec.id) {
       case 'intro':
@@ -190,7 +196,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
         break
       }
       case 'audit':
-        if (!isRed || !data.audit?.n_audit) break
+        if (!data.audit?.n_audit) break  // sécurité contenu
         parts.push(h4(sec))
         if (sec.bodyHtml) {
           parts.push(p(fillVarsHtml(sec.bodyHtml, vars)))
@@ -211,12 +217,10 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getVenteText(dpeGroup, dpe, typeBien, null)))
         break
       case 'gestion_locative':
-        if (!showGL(dpeGroup, isAppt)) break
         parts.push(h4(sec))
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getGLText(isAppt, null)))
         break
       case 'renovation':
-        if (!isRed || showGL(dpeGroup, isAppt)) break
         parts.push(h4(sec))
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getRenovationCaHTML(null)))
         break
@@ -392,15 +396,53 @@ interface SectionItemProps {
   onDrop:      () => void
 }
 
+const DPE_COLORS_SEC: Record<string, string> = {
+  A:'#319834', B:'#51A351', C:'#B0CC30', D:'#F0D30A',
+  E:'#F0A500', F:'#E06029', G:'#CC1016',
+}
+
 function SectionItem({
   section, index, expanded, onToggle, onChange, onDelete,
   onDragStart, onDragOver, onDrop,
 }: SectionItemProps) {
-  const [editTitle, setEditTitle] = useState(false)
-  const [titleDraft, setTitleDraft] = useState(section.title)
-  const [showTitleFmt, setShowTitleFmt] = useState(false)
+  const [editTitle,       setEditTitle]       = useState(false)
+  const [titleDraft,      setTitleDraft]       = useState(section.title)
+  const [showTitleFmt,    setShowTitleFmt]     = useState(false)
+  const [showConditions,  setShowConditions]   = useState(false)
+  const [prefillType,     setPrefillType]      = useState<'appartement'|'maison'>('appartement')
   const meta = section.type === 'fixed' ? SECTION_META[section.id] : null
   const vars = ALL_VARIABLES.map(v => v.key)
+
+  // ── Gestion des conditions ───────────────────────────────────────────────
+  const cond = section.condition ?? {}
+
+  const applyCondition = (next: SectionCondition) => {
+    const hasAny = (next.dpe?.length ?? 0) > 0 || (next.types?.length ?? 0) > 0 || !!next.requireAudit
+    onChange({ condition: hasAny ? next : undefined })
+  }
+  const toggleDpe = (l: string) => {
+    const cur  = cond.dpe ?? []
+    const next = cur.includes(l) ? cur.filter(x => x !== l) : [...cur, l]
+    applyCondition({ ...cond, dpe: next.length ? next : undefined })
+  }
+  const toggleType = (t: string) => {
+    const cur  = cond.types ?? []
+    const next = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]
+    applyCondition({ ...cond, types: next.length ? next : undefined })
+  }
+  const condSummary = (() => {
+    const parts: string[] = []
+    if (cond.dpe?.length)   parts.push('DPE ' + cond.dpe.join(''))
+    if (cond.types?.length) parts.push(cond.types.map(t => t === 'appartement' ? 'Appt' : t === 'maison' ? 'Maison' : 'Local').join('+'))
+    if (cond.requireAudit)  parts.push('Audit')
+    return parts.join(' · ')
+  })()
+
+  // ── Pré-remplissage du texte par défaut ──────────────────────────────────
+  const loadDefault = (dpe: string) => {
+    const html = getDefaultSectionHtml(section.id, dpe, prefillType)
+    if (html !== null) onChange({ bodyHtml: html })
+  }
 
   const titleStyle: React.CSSProperties = {
     color:          section.titleColor,
@@ -459,6 +501,7 @@ function SectionItem({
               {section.title}
               {!section.showTitle && <span style={{ fontSize: 10, color: C.dim, marginLeft: 6, fontWeight: 400 }}>(sans titre)</span>}
               {section.type === 'custom' && <span style={{ fontSize: 10, color: C.gold, marginLeft: 6, background: 'rgba(217,119,6,0.12)', padding: '1px 5px', borderRadius: 3 }}>custom</span>}
+              {condSummary && <span style={{ fontSize: 9, color: '#93C5FD', marginLeft: 6, background: 'rgba(96,165,250,0.12)', padding: '1px 5px', borderRadius: 3, flexShrink: 0 }}>{condSummary}</span>}
             </span>
           )}
           {meta?.conditional && (
@@ -545,11 +588,91 @@ function SectionItem({
             )}
           </div>
 
-          {/* Éditeur corps */}
+          {/* ── Conditions d'affichage ── */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: showConditions ? 6 : 0 }}>
+              <span style={{ fontSize: 11, color: C.muted }}>Conditions d'affichage :</span>
+              {condSummary
+                ? <span style={{ fontSize: 10, color: '#93C5FD', background: 'rgba(96,165,250,0.12)', padding: '1px 6px', borderRadius: 3 }}>{condSummary}</span>
+                : <span style={{ fontSize: 10, color: C.dim }}>toujours affiché</span>
+              }
+              <span
+                title="Si des conditions sont cochées, ce bloc ne s'affiche que lorsque TOUTES les conditions sont remplies (logique ET). Sans condition cochée, le bloc s'affiche systématiquement."
+                style={{ fontSize: 13, cursor: 'help', color: C.dim, lineHeight: 1 }}>ⓘ</span>
+              <button onClick={() => setShowConditions(v => !v)}
+                style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', color: C.dim, cursor: 'pointer', marginLeft: 'auto' }}>
+                {showConditions ? '▲ Masquer' : '▼ Configurer'}
+              </button>
+            </div>
+
+            {showConditions && (
+              <div style={{ background: C.card, borderRadius: 7, padding: '10px 12px', border: `1px solid ${C.border}` }}>
+                {/* DPE */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 5 }}>
+                    Note DPE <span style={{ color: C.dim }}>(aucune case = toutes les notes)</span> :
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {['A','B','C','D','E','F','G'].map(l => (
+                      <button key={l} onClick={() => toggleDpe(l)}
+                        style={{ padding: '3px 9px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                          fontSize: 12, fontWeight: 700,
+                          background: cond.dpe?.includes(l) ? DPE_COLORS_SEC[l] : 'rgba(255,255,255,0.08)',
+                          color: cond.dpe?.includes(l) ? '#fff' : C.mid,
+                          opacity: cond.dpe?.includes(l) ? 1 : 0.7 }}>
+                        {l}
+                      </button>
+                    ))}
+                    {!!cond.dpe?.length && (
+                      <button onClick={() => applyCondition({ ...cond, dpe: undefined })}
+                        style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'transparent', color: C.dim, cursor: 'pointer' }}>
+                        ✕ tout décocher
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Type de bien */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 5 }}>
+                    Type de bien <span style={{ color: C.dim }}>(aucune case = tous)</span> :
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {[['appartement','Appartement'],['maison','Maison'],['local commercial','Local commercial']].map(([v, l]) => (
+                      <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: C.mid }}>
+                        <input type="checkbox"
+                          checked={!!(cond.types?.includes(v))}
+                          onChange={() => toggleType(v)}
+                          style={{ accentColor: C.primary, cursor: 'pointer' }}
+                        />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Audit */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: C.mid }}>
+                    <input type="checkbox"
+                      checked={!!cond.requireAudit}
+                      onChange={e => applyCondition({ ...cond, requireAudit: e.target.checked || undefined })}
+                      style={{ accentColor: C.primary, cursor: 'pointer' }}
+                    />
+                    Uniquement si un audit énergétique est présent
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Éditeur corps ── */}
           <div style={{ marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <span style={{ fontSize: 11, color: C.muted }}>
-                Corps du texte {section.bodyHtml === null ? <span style={{ color: C.dim }}>(texte par défaut utilisé)</span> : <span style={{ color: C.primary }}>• personnalisé</span>}
+                Corps du texte {section.bodyHtml === null
+                  ? <span style={{ color: C.dim }}>(texte auto selon DPE)</span>
+                  : <span style={{ color: C.primary }}>• personnalisé</span>}
               </span>
               {section.bodyHtml !== null && (
                 <button onClick={() => onChange({ bodyHtml: null })}
@@ -558,6 +681,31 @@ function SectionItem({
                 </button>
               )}
             </div>
+
+            {/* ── Pré-remplissage depuis le texte par défaut ── */}
+            {meta && section.id !== 'audit' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '6px 10px', background: C.card, borderRadius: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: C.dim, flexShrink: 0 }}>Charger le texte par défaut pour DPE :</span>
+                {['A','B','C','D','E','F','G'].map(l => (
+                  <button key={l} onClick={() => loadDefault(l)}
+                    style={{ padding: '2px 7px', borderRadius: 3, border: 'none', cursor: 'pointer',
+                      fontSize: 11, fontWeight: 700, background: DPE_COLORS_SEC[l], color: '#fff' }}>
+                    {l}
+                  </button>
+                ))}
+                <span style={{ fontSize: 11, color: C.dim }}>pour</span>
+                {(['appartement','maison'] as const).map(t => (
+                  <button key={t} onClick={() => setPrefillType(t)}
+                    style={{ padding: '2px 7px', borderRadius: 3, cursor: 'pointer', fontSize: 11,
+                      border: `1px solid ${prefillType===t ? C.primary : C.border}`,
+                      background: prefillType===t ? 'rgba(29,158,117,0.1)' : 'transparent',
+                      color: prefillType===t ? C.primary : C.dim, fontWeight: prefillType===t ? 600 : 400 }}>
+                    {t === 'appartement' ? 'Appt' : 'Maison'}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <RichEditor
               value={section.bodyHtml ?? ''}
               onChange={html => onChange({ bodyHtml: html || null })}
@@ -596,6 +744,7 @@ export default function TemplatesPage() {
   const [tab,         setTab]         = useState<Tab>('sections')
   const [previewDpe,       setPreviewDpe]       = useState('F')
   const [previewWithAudit, setPreviewWithAudit] = useState(false)
+  const [previewType,      setPreviewType]      = useState<'appartement'|'maison'>('appartement')
   const [expandedSec, setExpandedSec] = useState<string | null>(null)
 
   // Drag-drop state
@@ -615,9 +764,10 @@ export default function TemplatesPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // ── Hydrate sections_config avec les defaults ─────────────────────────────
+  // ── Hydrate sections_config + migration conditions ────────────────────────
   function hydrate(t: TemplateV2): TemplateV2 {
-    return { ...t, sections_config: getEffectiveSections(t) }
+    const sections = getEffectiveSections(t).map(migrateSectionCondition)
+    return { ...t, sections_config: sections }
   }
 
   // ── Changer de template actif ─────────────────────────────────────────────
@@ -834,6 +984,7 @@ export default function TemplatesPage() {
 
   const previewData: DpeAdresseData = {
     ...PREVIEW_BASE, ...PREVIEW_AUDIT, dpe_etiquette: previewDpe,
+    type_bien: previewType,
     agent_nom: 'Dupont', agent_prenom: 'Jean',
     agent_agence:    'Square Habitat',
     agent_telephone: '05 56 00 00 00',
@@ -1204,8 +1355,18 @@ export default function TemplatesPage() {
                       {l}
                     </button>
                   ))}
+                  {/* Toggle type de bien */}
+                  <span style={{ fontSize:12, color:C.dim, marginLeft:8 }}>|</span>
+                  {(['appartement','maison'] as const).map(t => (
+                    <button key={t} onClick={() => setPreviewType(t)}
+                      style={{ padding:'3px 10px', borderRadius:5, border:'none', fontSize:12, cursor:'pointer',
+                        background: previewType===t ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
+                        color: previewType===t ? C.text : C.dim, fontWeight: previewType===t ? 600 : 400 }}>
+                      {t === 'appartement' ? 'Appt' : 'Maison'}
+                    </button>
+                  ))}
                   {/* Checkbox audit */}
-                  <label style={{ display:'flex', alignItems:'center', gap:6, marginLeft:8, cursor:'pointer', userSelect:'none' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:6, marginLeft:4, cursor:'pointer', userSelect:'none' }}>
                     <input
                       type="checkbox"
                       checked={previewWithAudit}

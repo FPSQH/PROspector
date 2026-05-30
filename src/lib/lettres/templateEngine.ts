@@ -14,6 +14,13 @@ export type FixedSectionId =
   | 'renovation'
   | 'politesse'
 
+/** Condition d'affichage d'une section. Logique ET entre critères. */
+export interface SectionCondition {
+  dpe?:          string[]   // ex: ['E','F','G'] — undefined/[] = toutes les notes
+  types?:        string[]   // ex: ['appartement','maison'] — undefined/[] = tous
+  requireAudit?: boolean    // true = uniquement si un audit est présent
+}
+
 export interface TemplateSection {
   id:             string        // FixedSectionId ou UUID custom
   type:           'fixed' | 'custom'
@@ -25,6 +32,7 @@ export interface TemplateSection {
   titleBold:      boolean
   titleUnderline: boolean
   bodyHtml:       string | null // null = généré automatiquement selon DPE
+  condition?:     SectionCondition // undefined = pas de filtre (affichage systématique)
 }
 
 export interface TemplateV2 {
@@ -68,6 +76,7 @@ export const DEFAULT_SECTIONS: TemplateSection[] = [
     title: 'Audit énergétique & rénovation', showTitle: true,
     titleColor: '#009597', titleSize: 14, titleBold: true, titleUnderline: false,
     bodyHtml: null,
+    condition: { dpe: ['E','F','G'], requireAudit: true },
   },
   {
     id: 'estimation', type: 'fixed', enabled: true,
@@ -86,12 +95,14 @@ export const DEFAULT_SECTIONS: TemplateSection[] = [
     title: 'Notre service de gestion locative', showTitle: true,
     titleColor: '#009597', titleSize: 14, titleBold: true, titleUnderline: false,
     bodyHtml: null,
+    condition: { dpe: ['A','B','C','D'] },
   },
   {
     id: 'renovation', type: 'fixed', enabled: true,
     title: 'Bloc rénovation', showTitle: true,
     titleColor: '#009597', titleSize: 14, titleBold: true, titleUnderline: false,
     bodyHtml: null,
+    condition: { dpe: ['E','F','G'] },
   },
   {
     id: 'politesse', type: 'fixed', enabled: true,
@@ -168,6 +179,42 @@ export const ALL_VARIABLES: VarDef[] = [
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// ── Conditions par défaut (pour migration des templates existants) ─────────────
+
+export const DEFAULT_SECTION_CONDITIONS: Record<string, SectionCondition> = {
+  audit:            { dpe: ['E','F','G'], requireAudit: true },
+  gestion_locative: { dpe: ['A','B','C','D'] },
+  renovation:       { dpe: ['E','F','G'] },
+}
+
+/**
+ * Vérifie si une section doit être affichée selon ses conditions.
+ * Logique ET entre critères ; sans condition → toujours affiché.
+ */
+export function sectionMatchesCondition(
+  sec: TemplateSection,
+  dpe: string,
+  type_bien: string,
+  hasAudit: boolean,
+): boolean {
+  const c = sec.condition
+  if (!c) return true
+  if (c.dpe?.length && !c.dpe.includes(dpe.toUpperCase())) return false
+  if (c.types?.length && !c.types.includes((type_bien ?? '').toLowerCase())) return false
+  if (c.requireAudit && !hasAudit) return false
+  return true
+}
+
+/**
+ * Migration : ajoute la condition par défaut sur une section qui n'en a pas encore
+ * (propriété absente = ancien format avant la feature conditions).
+ */
+export function migrateSectionCondition(sec: TemplateSection): TemplateSection {
+  if ('condition' in sec) return sec   // déjà configuré (même si undefined)
+  const def = DEFAULT_SECTION_CONDITIONS[sec.id]
+  return def ? { ...sec, condition: def } : sec
+}
 
 /** Retourne les sections effectives : config personnalisée OU sections par défaut. */
 export function getEffectiveSections(template: TemplateV2 | null): TemplateSection[] {

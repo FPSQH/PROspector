@@ -12,7 +12,7 @@ import {
 } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
-import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine, parseAddress } from '@/lib/lettres/templateEngine'
+import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine, parseAddress, sectionMatchesCondition, migrateSectionCondition } from '@/lib/lettres/templateEngine'
 import { htmlToRuns } from '@/lib/lettres/htmlToDocx'
 
 const TEAL    = '009597'
@@ -234,8 +234,10 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   paras.push(new Paragraph({ children: [], spacing: { after: 80 } }))
 
   // Parcourir les sections dans l'ordre
-  for (const sec of sections) {
+  const hasAudit = !!(letter.audit?.n_audit)
+  for (const sec of sections.map(migrateSectionCondition)) {
     if (!sec.enabled) continue
+    if (!sectionMatchesCondition(sec, dpe, letter.type_bien ?? 'appartement', hasAudit)) continue
 
     switch (sec.id as string) {
       // ── Intro ──────────────────────────────────────────────────────────────
@@ -271,7 +273,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
 
       // ── Audit ──────────────────────────────────────────────────────────────
       case 'audit': {
-        if (!isRed || !letter.audit?.n_audit) break
+        if (!letter.audit?.n_audit) break  // sécurité contenu (condition de visibilité gérée par sectionMatchesCondition)
         const scenarios = (letter.audit.scenarios || [])
           .filter(sc => !/états*initial/i.test(sc.categorie || '')).slice(0, 3)
         if (!scenarios.length) break
@@ -329,7 +331,6 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
 
       // ── Gestion locative ───────────────────────────────────────────────────
       case 'gestion_locative': {
-        if (!showGL(dpeGroup, isAppt)) break
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
           paras.push(...htmlParas(sec.bodyHtml, vars))
@@ -341,8 +342,6 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
 
       // ── Rénovation ─────────────────────────────────────────────────────────
       case 'renovation': {
-        if (!isRed) break
-        if (showGL(dpeGroup, isAppt)) break  // GL et rénovation s'excluent
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
           paras.push(...htmlParas(sec.bodyHtml, vars))

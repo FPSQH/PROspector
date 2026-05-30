@@ -223,6 +223,55 @@ export function getLetterStrategy(dpe: string): string {
   return 'Excellente performance énergétique — atout de vente'
 }
 
+// ── Texte par défaut par section (pour le pré-remplissage dans l'éditeur) ───────
+
+/**
+ * Retourne le HTML de texte par défaut d'une section pour un DPE et type donnés.
+ * Null si aucun texte statique disponible (ex: 'audit' dépend des données réelles).
+ */
+export function getDefaultSectionHtml(
+  sectionId: string,
+  dpe: string,
+  typeBienRaw: string,  // 'appartement' | 'maison' | 'local commercial'
+): string | null {
+  const dU       = dpe.toUpperCase()
+  const isAppt   = typeBienRaw === 'appartement'
+  const typeBien = isAppt ? 'votre appartement'
+                 : typeBienRaw === 'maison' ? 'votre maison'
+                 : 'votre bien'
+  const dpeGroup = getDpeGroup(dU)
+
+  switch (sectionId) {
+    case 'intro': {
+      const txt = getIntroCtx(dpeGroup, 'sur votre secteur', typeBien)
+      return `<div>${txt}</div>`
+    }
+    case 'dpe': {
+      const { intro, detail } = getDpeTexts(dU, typeBien)
+      return `<div><strong>${intro}</strong></div><div>${detail}</div>`
+    }
+    case 'estimation': {
+      return `<div>${getEstimationText(typeBien)}</div>`
+    }
+    case 'vente': {
+      return `<div>${getVenteText(dpeGroup, dU, typeBien)}</div>`
+    }
+    case 'gestion_locative': {
+      return `<div>${getGLText(isAppt)}</div>`
+    }
+    case 'renovation': {
+      return `<div>${getRenovationCaHTML()}</div>`
+    }
+    case 'politesse': {
+      return `<div>${getPolitesse1()}</div><div>${getPolitesse2()}</div>`
+    }
+    case 'audit':
+      return null  // dépend des données d'audit réelles — pas de texte statique
+    default:
+      return null
+  }
+}
+
 // ── Génération HTML (prévisualisation dans l'app) ─────────────────────────────
 
 export function generateLetterHTML(b: DpeAdresseData, template?: LetterTemplate | null): string {
