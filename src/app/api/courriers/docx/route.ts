@@ -12,7 +12,7 @@ import {
 } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
-import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine, parseAddress, sectionMatchesCondition, migrateSectionCondition } from '@/lib/lettres/templateEngine'
+import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine, parseAddress, sectionMatchesCondition, migrateSectionCondition, getSectionConflicts, sectionContentKey } from '@/lib/lettres/templateEngine'
 import { htmlToRuns } from '@/lib/lettres/htmlToDocx'
 
 const TEAL    = '009597'
@@ -234,12 +234,15 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   paras.push(new Paragraph({ children: [], spacing: { after: 80 } }))
 
   // Parcourir les sections dans l'ordre
-  const hasAudit = !!(letter.audit?.n_audit)
-  for (const sec of sections.map(migrateSectionCondition)) {
+  const hasAudit   = !!(letter.audit?.n_audit)
+  const migrated   = sections.map(migrateSectionCondition)
+  const conflictIds = getSectionConflicts(migrated)
+  for (const sec of migrated) {
     if (!sec.enabled) continue
+    if (conflictIds.has(sec.id)) continue  // en conflit → exclu du DOCX
     if (!sectionMatchesCondition(sec, dpe, letter.type_bien ?? 'appartement', hasAudit)) continue
 
-    switch (sec.id as string) {
+    switch (sectionContentKey(sec)) {
       // ── Intro ──────────────────────────────────────────────────────────────
       case 'intro': {
         if (sec.bodyHtml) {

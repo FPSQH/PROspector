@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
 import {
   DEFAULT_SECTIONS, SECTION_META, ALL_VARIABLES, getEffectiveSections, parseAddress,
-  sectionMatchesCondition, migrateSectionCondition,
+  sectionMatchesCondition, migrateSectionCondition, getSectionConflicts, sectionContentKey,
 } from '@/lib/lettres/templateEngine'
 import type { SectionCondition } from '@/lib/lettres/templateEngine'
 import { getDefaultSectionHtml } from '@/lib/lettres/generator'
@@ -172,11 +172,13 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   parts.push(p('Madame, Monsieur,'))
   parts.push(p(`Je me permets de vous contacter au sujet de ${typeBien} situé : <strong>${data.adresse_brute}</strong>`))
 
+  const previewConflicts = getSectionConflicts(sections)
   for (const sec of sections) {
     if (!sec.enabled) continue
+    if (previewConflicts.has(sec.id)) continue  // conflit → exclu
     if (!sectionMatchesCondition(sec, dpe, typeBienRaw, hasAuditPreview)) continue
 
-    switch (sec.id) {
+    switch (sectionContentKey(sec)) {
       case 'intro':
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getIntroCtx(dpeGroup, ctx, typeBien, null)))
         break
@@ -385,12 +387,14 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface SectionItemProps {
-  section:   TemplateSection
-  index:     number
-  expanded:  boolean
-  onToggle:  () => void
-  onChange:  (patch: Partial<TemplateSection>) => void
-  onDelete?: () => void
+  section:     TemplateSection
+  index:       number
+  expanded:    boolean
+  isConflict?: boolean
+  onToggle:    () => void
+  onChange:    (patch: Partial<TemplateSection>) => void
+  onDelete?:   () => void
+  onDuplicate: () => void
   onDragStart: (i: number) => void
   onDragOver:  (i: number) => void
   onDrop:      () => void
@@ -402,7 +406,7 @@ const DPE_COLORS_SEC: Record<string, string> = {
 }
 
 function SectionItem({
-  section, index, expanded, onToggle, onChange, onDelete,
+  section, index, expanded, isConflict, onToggle, onChange, onDelete, onDuplicate,
   onDragStart, onDragOver, onDrop,
 }: SectionItemProps) {
   const [editTitle,       setEditTitle]       = useState(false)
@@ -458,8 +462,9 @@ function SectionItem({
       onDragOver={e => { e.preventDefault(); onDragOver(index) }}
       onDrop={e => { e.preventDefault(); onDrop() }}
       style={{
-        background: C.card2, borderRadius: 8,
-        border: `1px solid ${expanded ? C.primary + '40' : C.border}`,
+        background: isConflict ? 'rgba(239,68,68,0.05)' : C.card2,
+        borderRadius: 8,
+        border: `1px solid ${isConflict ? 'rgba(239,68,68,0.5)' : expanded ? C.primary + '40' : C.border}`,
         marginBottom: 6, transition: 'border-color 0.15s',
         opacity: section.enabled ? 1 : 0.45,
       }}>
@@ -515,6 +520,10 @@ function SectionItem({
             style={{ padding: '2px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', color: C.dim, fontSize: 11, cursor: 'pointer' }}>
             ✎
           </button>
+          <button title="Dupliquer ce bloc" onClick={onDuplicate}
+            style={{ padding: '2px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', color: C.dim, fontSize: 13, cursor: 'pointer', lineHeight: 1 }}>
+            ⧉
+          </button>
           {onDelete && (
             <button title="Supprimer" onClick={() => { if (confirm('Supprimer cette section ?')) onDelete() }}
               style={{ padding: '2px 6px', borderRadius: 4, border: `1px solid rgba(239,68,68,0.25)`, background: 'rgba(239,68,68,0.05)', color: C.danger, fontSize: 11, cursor: 'pointer' }}>
@@ -530,6 +539,23 @@ function SectionItem({
       {/* ── Corps expansible ── */}
       {expanded && (
         <div style={{ padding: '0 10px 12px', borderTop: `1px solid ${C.border}` }}>
+
+          {/* Bandeau conflit */}
+          {isConflict && (
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.danger, marginBottom: 2 }}>
+                  Conflit de scénario détecté
+                </div>
+                <div style={{ fontSize: 11, color: '#FCA5A5', lineHeight: 1.5 }}>
+                  Un autre bloc de même type a des conditions identiques.
+                  Ces blocs en conflit <strong>ne seront pas inclus dans le DOCX</strong> tant que leurs conditions ne sont pas différenciées.
+                  Modifiez les conditions ci-dessous pour résoudre le conflit.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Formatage du titre */}
           <div style={{ marginTop: 10, marginBottom: 10 }}>
@@ -897,6 +923,24 @@ export default function TemplatesPage() {
     setExpandedSec(newSec.id)
   }
 
+  // ── Dupliquer une section ─────────────────────────────────────────────────
+  const duplicateSection = (idx: number) => {
+    setDraft(prev => {
+      if (!prev?.sections_config) return prev
+      const secs = [...prev.sections_config]
+      const orig = secs[idx]
+      const copy: typeof orig = {
+        ...orig,
+        id: crypto.randomUUID(),
+        // Pour les sections fixes : mémoriser le type d'origine dans fixedId
+        fixedId: orig.type === 'fixed' ? (orig.fixedId ?? orig.id) : undefined,
+        title: orig.title + ' (copie)',
+      }
+      secs.splice(idx + 1, 0, copy)
+      return { ...prev, sections_config: secs }
+    })
+  }
+
   // ── Supprimer section custom ──────────────────────────────────────────────
   const deleteSection = (idx: number) => {
     setDraft(prev => {
@@ -998,8 +1042,9 @@ export default function TemplatesPage() {
   // ── Changements non sauvegardés ───────────────────────────────────────────
   const hasChanges = draft && saved && JSON.stringify(draft) !== JSON.stringify(hydrate(saved))
 
-  // ── Sections effectives ───────────────────────────────────────────────────
-  const sections = draft?.sections_config ?? DEFAULT_SECTIONS
+  // ── Sections effectives + détection conflits ─────────────────────────────
+  const sections    = draft?.sections_config ?? DEFAULT_SECTIONS
+  const conflictIds = useMemo(() => getSectionConflicts(sections), [sections])
 
   // ─── Rendu ───────────────────────────────────────────────────────────────
 
@@ -1179,9 +1224,11 @@ export default function TemplatesPage() {
                         section={sec}
                         index={idx}
                         expanded={expandedSec === sec.id}
+                        isConflict={conflictIds.has(sec.id)}
                         onToggle={() => setExpandedSec(prev => prev === sec.id ? null : sec.id)}
                         onChange={patch => patchSection(idx, patch)}
-                        onDelete={sec.type === 'custom' ? () => deleteSection(idx) : undefined}
+                        onDelete={sec.type === 'custom' || sec.fixedId ? () => deleteSection(idx) : undefined}
+                        onDuplicate={() => duplicateSection(idx)}
                         onDragStart={i => { dragIdx.current = i }}
                         onDragOver={i => { overIdx.current = i }}
                         onDrop={handleDrop}

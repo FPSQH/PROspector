@@ -22,7 +22,8 @@ export interface SectionCondition {
 }
 
 export interface TemplateSection {
-  id:             string        // FixedSectionId ou UUID custom
+  id:             string        // FixedSectionId (originel) ou UUID (dupliqué / custom)
+  fixedId?:       string        // FixedSectionId pour les sections fixes dupliquées (ex: 'dpe')
   type:           'fixed' | 'custom'
   enabled:        boolean
   title:          string        // titre affiché (renommable)
@@ -186,6 +187,43 @@ export const DEFAULT_SECTION_CONDITIONS: Record<string, SectionCondition> = {
   audit:            { dpe: ['E','F','G'], requireAudit: true },
   gestion_locative: { dpe: ['A','B','C','D'] },
   renovation:       { dpe: ['E','F','G'] },
+}
+
+/** Clé de contenu d'une section (type de génération à utiliser dans les switch). */
+export function sectionContentKey(sec: TemplateSection): string {
+  return sec.fixedId ?? sec.id
+}
+
+// ── Détection de conflits ──────────────────────────────────────────────────────
+
+function condFingerprint(c?: SectionCondition): string {
+  if (!c) return ''
+  return [
+    [...(c.dpe   ?? [])].sort().join(','),
+    [...(c.types ?? [])].sort().join(','),
+    c.requireAudit ? '1' : '0',
+  ].join('|')
+}
+
+/**
+ * Retourne les ids des sections en conflit : même type + conditions identiques.
+ * Ces sections seront exclues du DOCX (affichage ambigu).
+ */
+export function getSectionConflicts(sections: TemplateSection[]): Set<string> {
+  const seen      = new Map<string, string>()
+  const conflicts = new Set<string>()
+  for (const sec of sections) {
+    if (!sec.enabled) continue
+    const key   = `${sectionContentKey(sec)}::${condFingerprint(sec.condition)}`
+    const first = seen.get(key)
+    if (first !== undefined) {
+      conflicts.add(sec.id)
+      conflicts.add(first)
+    } else {
+      seen.set(key, sec.id)
+    }
+  }
+  return conflicts
 }
 
 /**
