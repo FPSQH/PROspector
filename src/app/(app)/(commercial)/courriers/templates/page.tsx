@@ -400,7 +400,7 @@ function SectionItem({
   const [titleDraft, setTitleDraft] = useState(section.title)
   const [showTitleFmt, setShowTitleFmt] = useState(false)
   const meta = section.type === 'fixed' ? SECTION_META[section.id] : null
-  const vars = meta?.vars ?? ALL_VARIABLES.map(v => v.key)
+  const vars = ALL_VARIABLES.map(v => v.key)
 
   const titleStyle: React.CSSProperties = {
     color:          section.titleColor,
