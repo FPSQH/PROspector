@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
 import {
-  DEFAULT_SECTIONS, SECTION_META, ALL_VARIABLES, getEffectiveSections,
+  DEFAULT_SECTIONS, SECTION_META, ALL_VARIABLES, getEffectiveSections, parseAddress,
 } from '@/lib/lettres/templateEngine'
 import {
   generateLetterHTML, getDpeGroup, getDpeTexts, getIntroCtx,
@@ -156,8 +156,9 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   if (template.envelope_enabled) {
     const dest  = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
     const compl = template.envelope_line2 || ''
-    const adr   = (data.adresse_brute || '').toUpperCase()
-    const cpv   = [data.code_postal, ville].filter(Boolean).join(' ').toUpperCase()
+    const { street, cpVille } = parseAddress(data.adresse_brute || '', data.code_postal || '', ville)
+    const adr   = street.toUpperCase()
+    const cpv   = cpVille.toUpperCase()
     const lines = [dest, compl ? compl.toUpperCase() : '', adr, cpv].filter(Boolean)
     parts.push(`<div style="border:1px solid #c8c8c8;padding:14px 18px;margin:0 0 24px 55%;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:220px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div>`)
   }

@@ -12,7 +12,7 @@ import {
 } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
-import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine } from '@/lib/lettres/templateEngine'
+import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine, parseAddress } from '@/lib/lettres/templateEngine'
 import { htmlToRuns } from '@/lib/lettres/htmlToDocx'
 
 const TEAL    = '009597'
@@ -95,7 +95,7 @@ function htmlParas(html: string, vars: Record<string, string>): Paragraph[] {
     // <br> conservé ici → traité comme saut de ligne inline par htmlToRuns
   const blocks = normalized.split(SEP)
     .map(b => b.trim())
-    .filter(b => b.replace(/<[^>]+>/g, '').trim().length > 0)  // ignore blocs vides ou HTML-only (<br>, <p><br></p>…)
+    .filter(b => b.replace(/<[^>]+>/g, '').trim().length > 0)  // ignore blocs vides ou HTML-only
   if (blocks.length === 0) {
     return [new Paragraph({ children: [], alignment: AlignmentType.BOTH, spacing: { after: 120 } })]
   }
@@ -106,7 +106,7 @@ function htmlParas(html: string, vars: Record<string, string>): Paragraph[] {
     return new Paragraph({
       children: runs.length ? runs : [],
       alignment: AlignmentType.BOTH,
-      spacing: { after: 120 },
+      spacing: { after: 200 },
     })
   })
 }
@@ -140,8 +140,9 @@ function buildVars(letter: DpeAdresseData, commercial: any): Record<string, stri
 function buildEnvelopeParas(template: TemplateV2, letter: DpeAdresseData, ville: string): (Paragraph | Table)[] {
   const dest  = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
   const compl = template.envelope_line2 || ''
-  const adr   = afnorLine(letter.adresse_brute || '')
-  const cpv   = afnorLine([letter.code_postal, ville].filter(Boolean).join(' '))
+  const { street, cpVille } = parseAddress(letter.adresse_brute || '', letter.code_postal || '', ville)
+  const adr   = afnorLine(street)
+  const cpv   = afnorLine(cpVille)
   const lines = [dest, compl ? afnorLine(compl) : '', adr, cpv].filter(Boolean)
   const cellNil = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
   const noBorder = { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil }

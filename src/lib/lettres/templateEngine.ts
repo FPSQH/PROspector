@@ -193,6 +193,46 @@ export function afnorLine(s: string): string {
   return s.toUpperCase().replace(/[,;.]/g, '').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Extrait la rue d'une adresse_brute qui contient souvent "RUE CP VILLE"
+ * (format courant dans les données ADEME DPE).
+ * Retourne { street, cpVille } séparés proprement.
+ */
+export function parseAddress(
+  adresse_brute: string,
+  code_postal: string,
+  ville: string,
+): { street: string; cpVille: string } {
+  const adr    = adresse_brute.trim()
+  const villeU = (ville || '').trim().toUpperCase()
+
+  if (!villeU) return { street: adr, cpVille: code_postal || '' }
+
+  const aU      = adr.toUpperCase()
+  const escaped = villeU.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  // Cherche " [5 chiffres] VILLE" à la fin
+  const m1 = aU.match(new RegExp('\\s+(\\d{4,5})\\s+' + escaped + '$'))
+  if (m1) {
+    return {
+      street:  adr.slice(0, m1.index!).trim(),
+      cpVille: [code_postal || m1[1], ville].filter(Boolean).join(' '),
+    }
+  }
+
+  // Cherche " VILLE" à la fin (sans CP dans l'adresse brute)
+  const m2 = aU.match(new RegExp('\\s+' + escaped + '$'))
+  if (m2) {
+    return {
+      street:  adr.slice(0, m2.index!).trim(),
+      cpVille: [code_postal, ville].filter(Boolean).join(' '),
+    }
+  }
+
+  // Pas de correspondance : retourne l'adresse brute telle quelle
+  return { street: adr, cpVille: [code_postal, ville].filter(Boolean).join(' ') }
+}
+
 /** Génère le bloc d'adresse enveloppe format DL (AFNOR NF Z 10-011). */
 export function getEnvelopeHtml(
   template: TemplateV2,
@@ -202,8 +242,9 @@ export function getEnvelopeHtml(
 ): string {
   const dest   = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
   const compl  = template.envelope_line2 || ''
-  const adr    = afnorLine(adresse)
-  const cpVill = afnorLine([codePostal, ville].filter(Boolean).join(' '))
+  const { street, cpVille } = parseAddress(adresse, codePostal, ville)
+  const adr    = afnorLine(street)
+  const cpVill = afnorLine(cpVille)
   const lines  = [dest, compl ? afnorLine(compl) : '', adr, cpVill].filter(Boolean)
   return [
     `<div style="border:1px solid #c8c8c8;padding:14px 18px;margin:24px 0 24px 60%;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:220px;max-width:260px;background:#fafafa;letter-spacing:0.02em;">`,
