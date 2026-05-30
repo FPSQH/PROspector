@@ -134,8 +134,12 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   if (template.mode === 'unique' && template.unique_text) {
     const parts: string[] = [headerHtml]
     if (template.envelope_enabled) {
-      const l1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
-      parts.push(`<div style="border:1px dashed #aaa;padding:12px 16px;margin:0 0 24px;font-size:13px;line-height:2;max-width:280px;"><div>${l1}</div><div>${data.adresse_brute || ''}</div><div>${[data.code_postal, ville].filter(Boolean).join(' ')}</div></div>`)
+      const dest  = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
+      const compl = template.envelope_line2 || ''
+      const adr   = (data.adresse_brute || '').toUpperCase()
+      const cpv   = [data.code_postal, ville].filter(Boolean).join(' ').toUpperCase()
+      const lines = [dest, compl ? compl.toUpperCase() : '', adr, cpv].filter(Boolean)
+      parts.push(`<div style="border:1px solid #c8c8c8;padding:14px 18px;margin:0 0 24px 55%;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:220px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div>`)
     }
     parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
     parts.push(p(fillVarsHtml(template.unique_text, vars)))
@@ -147,10 +151,14 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   const sections = getEffectiveSections(template)
   const parts: string[] = [headerHtml]
 
-  // Enveloppe
+  // Enveloppe AFNOR DL
   if (template.envelope_enabled) {
-    const l1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
-    parts.push(`<div style="border:1px dashed #aaa;padding:12px 16px;margin:0 0 24px;font-size:13px;line-height:2;max-width:280px;"><div>${l1}</div><div>${data.adresse_brute || ''}</div><div>${[data.code_postal, ville].filter(Boolean).join(' ')}</div></div>`)
+    const dest  = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
+    const compl = template.envelope_line2 || ''
+    const adr   = (data.adresse_brute || '').toUpperCase()
+    const cpv   = [data.code_postal, ville].filter(Boolean).join(' ').toUpperCase()
+    const lines = [dest, compl ? compl.toUpperCase() : '', adr, cpv].filter(Boolean)
+    parts.push(`<div style="border:1px solid #c8c8c8;padding:14px 18px;margin:0 0 24px 55%;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:220px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div>`)
   }
 
   parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
@@ -1088,19 +1096,39 @@ export default function TemplatesPage() {
 
                   {draft.envelope_enabled && (
                     <div>
+                      {/* Ligne 1 — destinataire */}
                       <div style={{ marginBottom:8 }}>
-                        <label style={{ fontSize:12, color:C.muted, display:'block', marginBottom:4 }}>Ligne 1 (destinataire) :</label>
+                        <label style={{ fontSize:12, color:C.muted, display:'block', marginBottom:4 }}>
+                          Ligne 1 — Destinataire :
+                        </label>
                         <input
                           value={draft.envelope_line1}
                           onChange={e => patchDraft({ envelope_line1: e.target.value })}
                           style={{ width:'100%', background:'rgba(255,255,255,0.05)', border:`1px solid ${C.borderl}`, borderRadius:7, color:C.text, fontSize:13, padding:'8px 12px', boxSizing:'border-box' }}
-                          placeholder="Mr et ou Mme le Propriétaire"
+                          placeholder="Monsieur Madame le Propriétaire"
                         />
                       </div>
-                      <div style={{ background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, borderRadius:8, padding:'12px 16px', fontSize:12, color:C.muted, lineHeight:2.2 }}>
-                        <div style={{ color:C.text }}>{draft.envelope_line1}</div>
-                        <div style={{ color:C.dim }}>← Adresse du bien (remplie automatiquement)</div>
-                        <div style={{ color:C.dim }}>← Code postal + Ville (remplis automatiquement)</div>
+                      {/* Ligne 2 — complément (optionnel) */}
+                      <div style={{ marginBottom:12 }}>
+                        <label style={{ fontSize:12, color:C.muted, display:'block', marginBottom:4 }}>
+                          Ligne 2 — Complément d'adresse <span style={{ color:C.dim }}>(optionnel)</span> :
+                        </label>
+                        <input
+                          value={draft.envelope_line2 ?? ''}
+                          onChange={e => patchDraft({ envelope_line2: e.target.value })}
+                          style={{ width:'100%', background:'rgba(255,255,255,0.05)', border:`1px solid ${C.borderl}`, borderRadius:7, color:C.text, fontSize:13, padding:'8px 12px', boxSizing:'border-box' }}
+                          placeholder="Apt 3B — Bât A  (laissez vide si inutile)"
+                        />
+                      </div>
+                      {/* Aperçu AFNOR */}
+                      <div style={{ fontSize:11, color:C.dim, marginBottom:6 }}>
+                        Aperçu — format AFNOR NF Z 10-011 (majuscules, fenêtre DL à droite) :
+                      </div>
+                      <div style={{ background:'#fff', border:'1px solid #c8c8c8', borderRadius:6, padding:'10px 14px', fontSize:12, lineHeight:1.9, fontFamily:'Arial,sans-serif', display:'inline-block', minWidth:220, letterSpacing:'0.02em', color:'#111' }}>
+                        <div>{draft.envelope_line1 || 'Monsieur Madame le Propriétaire'}</div>
+                        {draft.envelope_line2 && <div style={{ color:'#555' }}>{(draft.envelope_line2).toUpperCase()}</div>}
+                        <div style={{ color:'#555' }}>← ADRESSE (remplie automatiquement)</div>
+                        <div style={{ color:'#555' }}>← CODE POSTAL VILLE</div>
                       </div>
                     </div>
                   )}

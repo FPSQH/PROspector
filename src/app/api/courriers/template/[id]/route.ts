@@ -54,6 +54,7 @@ export async function PUT(request: Request, { params }: Ctx) {
   if ('sections_config'  in body) patch.sections_config  = body.sections_config  ?? null
   if (typeof body.envelope_enabled === 'boolean') patch.envelope_enabled = body.envelope_enabled
   if (typeof body.envelope_line1   === 'string')  patch.envelope_line1   = body.envelope_line1
+  if (typeof body.envelope_line2   === 'string')  patch.envelope_line2   = body.envelope_line2
 
   const { data, error } = await supabase
     .from('lettre_templates_v2')

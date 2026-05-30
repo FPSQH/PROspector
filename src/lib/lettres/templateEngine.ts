@@ -41,7 +41,8 @@ export interface TemplateV2 {
   logo_position?:   'header' | 'footer'  // défaut 'header'
   sections_config:  TemplateSection[] | null
   envelope_enabled: boolean
-  envelope_line1:   string
+  envelope_line1:   string   // ligne 1 — destinataire (ex: "Monsieur Madame le Propriétaire")
+  envelope_line2?:  string   // ligne 2 — complément optionnel (ex: "Apt 3B - Bât A")
   created_at?:      string
   updated_at?:      string
 }
@@ -186,21 +187,26 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
-/** Génère le bloc d'adresse d'enveloppe en HTML. */
+/** Normalise une ligne d'adresse selon AFNOR NF Z 10-011 (majuscules, sans ponctuation). */
+export function afnorLine(s: string): string {
+  return s.toUpperCase().replace(/[,;.]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** Génère le bloc d'adresse enveloppe format DL (AFNOR NF Z 10-011). */
 export function getEnvelopeHtml(
   template: TemplateV2,
   adresse: string,
   codePostal: string,
   ville: string,
 ): string {
-  const line1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
-  const line2 = adresse || ''
-  const line3 = [codePostal, ville].filter(Boolean).join(' ')
+  const dest   = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
+  const compl  = template.envelope_line2 || ''
+  const adr    = afnorLine(adresse)
+  const cpVill = afnorLine([codePostal, ville].filter(Boolean).join(' '))
+  const lines  = [dest, compl ? afnorLine(compl) : '', adr, cpVill].filter(Boolean)
   return [
-    `<div style="border:1px dashed #aaa;padding:12px 16px;margin:24px 0;font-size:13px;line-height:2;font-family:Arial,sans-serif;max-width:280px;">`,
-    `<div>${line1}</div>`,
-    line2 ? `<div>${line2}</div>` : '',
-    line3 ? `<div>${line3}</div>` : '',
+    `<div style="border:1px solid #c8c8c8;padding:14px 18px;margin:24px 0 24px 60%;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:220px;max-width:260px;background:#fafafa;letter-spacing:0.02em;">`,
+    ...lines.map(l => `<div>${l}</div>`),
     `</div>`,
-  ].filter(Boolean).join('\n')
+  ].join('\n')
 }

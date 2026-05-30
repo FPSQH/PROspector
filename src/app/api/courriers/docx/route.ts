@@ -12,7 +12,7 @@ import {
 } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
-import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml } from '@/lib/lettres/templateEngine'
+import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine } from '@/lib/lettres/templateEngine'
 import { htmlToRuns } from '@/lib/lettres/htmlToDocx'
 
 const TEAL    = '009597'
@@ -135,6 +135,30 @@ function buildVars(letter: DpeAdresseData, commercial: any): Record<string, stri
   }
 }
 
+// ── Bloc adresse enveloppe AFNOR NF Z 10-011, format DL ─────────────────────────
+// Positionné à droite (indent ~95mm) pour passer dans la fenêtre DL
+// quand l'A4 est plié en 3 (C-fold), feuille retournée côté imprimé.
+function buildEnvelopeParas(template: TemplateV2, letter: DpeAdresseData, ville: string): Paragraph[] {
+  const dest  = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
+  const compl = template.envelope_line2 || ''
+  const adr   = afnorLine(letter.adresse_brute || '')
+  const cpv   = afnorLine([letter.code_postal, ville].filter(Boolean).join(' '))
+  const lines = [dest, compl ? afnorLine(compl) : '', adr, cpv].filter(Boolean)
+  // Indent = 5400 DXA ≈ 95mm (zone droite de la page pour fenêtre DL gauche)
+  const indent = { left: 5400 }
+  const paras: Paragraph[] = []
+  paras.push(new Paragraph({ children: [], spacing: { after: 400 } }))
+  for (const l of lines) {
+    paras.push(new Paragraph({
+      children: [T(l, { size: 20 })],
+      indent,
+      spacing: { after: 40 },
+    }))
+  }
+  paras.push(new Paragraph({ children: [], spacing: { after: 560 } }))
+  return paras
+}
+
 // ── Génération lettre V2 (templates avec sections_config) ────────────────────
 function buildLetterV2(letter: DpeAdresseData, commercial: any, template: TemplateV2): Paragraph[] {
   const vars    = buildVars(letter, commercial)
@@ -153,16 +177,9 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   // Mode unique
   if (template.mode === 'unique' && template.unique_text) {
     const paras: Paragraph[] = []
-    // Bloc enveloppe (si activé, même en mode unique)
+    // Bloc enveloppe AFNOR NF Z 10-011 (si activé, même en mode unique)
     if (template.envelope_enabled) {
-      const line1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
-      const line2 = letter.adresse_brute || ''
-      const line3 = [letter.code_postal, ville].filter(Boolean).join(' ')
-      paras.push(new Paragraph({ children: [], spacing: { after: 600 } }))
-      for (const l of [line1, line2, line3].filter(Boolean)) {
-        paras.push(new Paragraph({ children: [T(l, { size: 20 })], spacing: { after: 40 } }))
-      }
-      paras.push(new Paragraph({ children: [], spacing: { after: 480 } }))
+      paras.push(...buildEnvelopeParas(template, letter, ville))
     }
     paras.push(new Paragraph({
       children: [T(`${ville ? ville + ', le ' : 'Le '}${today}`, { size: 18, color: GREY, italics: true })],
@@ -177,18 +194,9 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   const sections = getEffectiveSections(template)
   const paras: Paragraph[] = []
 
-  // Bloc enveloppe (avant la date, en haut)
+  // Bloc enveloppe AFNOR NF Z 10-011 (format DL, avant la date)
   if (template.envelope_enabled) {
-    const line1 = template.envelope_line1 || 'Mr et ou Mme le Propriétaire'
-    const line2 = letter.adresse_brute || ''
-    const line3 = [letter.code_postal, ville].filter(Boolean).join(' ')
-    const envLines = [line1, line2, line3].filter(Boolean)
-    const cellNil = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
-    paras.push(new Paragraph({ children: [], spacing: { after: 600 } }))
-    for (const l of envLines) {
-      paras.push(new Paragraph({ children: [T(l, { size: 20 })], spacing: { after: 40 } }))
-    }
-    paras.push(new Paragraph({ children: [], spacing: { after: 480 } }))
+    paras.push(...buildEnvelopeParas(template, letter, ville))
   }
 
   // Date
