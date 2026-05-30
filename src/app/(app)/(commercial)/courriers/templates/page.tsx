@@ -174,11 +174,29 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   parts.push(p('Madame, Monsieur,'))
   parts.push(p(`Je me permets de vous contacter au sujet de ${typeBien} situé : <strong>${data.adresse_brute}</strong>`))
 
+  // ── Wrapper image pour l'aperçu ──────────────────────────────────────────
+  const wrapImgPreview = (sec: TemplateSection, content: string): string => {
+    if (!sec.image_enabled || !sec.image_data || !sec.image_mime) return content
+    const src = `data:${sec.image_mime};base64,${sec.image_data}`
+    const pct = sec.image_width_pct ?? 35
+    if (sec.image_position === 'fullwidth') {
+      return `<div style="text-align:center;margin:0 0 10px;"><img src="${src}" style="max-width:100%;height:auto;border-radius:4px;" /></div>${content}`
+    }
+    const isLeft  = (sec.image_position ?? 'left') !== 'right'
+    const pad     = isLeft ? 'padding-right:14px' : 'padding-left:14px'
+    const imgDiv  = `<div style="flex-shrink:0;width:${pct}%;${pad};"><img src="${src}" style="width:100%;height:auto;border-radius:4px;" /></div>`
+    const txtDiv  = `<div style="flex:1;">${content}</div>`
+    const [l, r]  = isLeft ? [imgDiv, txtDiv] : [txtDiv, imgDiv]
+    return `<div style="display:flex;align-items:flex-start;">${l}${r}</div>`
+  }
+
   const previewConflicts = getSectionConflicts(sections)
   for (const sec of sections) {
     if (!sec.enabled) continue
     if (previewConflicts.has(sec.id)) continue  // conflit → exclu
     if (!sectionMatchesCondition(sec, dpe, typeBienRaw, hasAuditPreview)) continue
+
+    const startIdx = parts.length
 
     switch (sectionContentKey(sec)) {
       case 'intro':
@@ -241,6 +259,12 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
           parts.push(h4(sec))
           parts.push(p(fillVarsHtml(sec.bodyHtml, vars)))
         }
+    }
+
+    // ── Wrap avec image si activée ────────────────────────────────────────
+    if (sec.image_enabled && sec.image_data && parts.length > startIdx) {
+      const merged = parts.splice(startIdx).join('\n')
+      parts.push(wrapImgPreview(sec, merged))
     }
   }
 
@@ -385,6 +409,107 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COMPOSANT FLOWCHART (panneau droit onglet Sections)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type FlowRow =
+  | { kind: 'common';   sec: TemplateSection }
+  | { kind: 'branched'; cols: Array<{ key: string; secs: TemplateSection[] }> }
+
+function buildFlow(sections: TemplateSection[]): FlowRow[] {
+  const rows: FlowRow[] = []
+  let pending: Record<string, TemplateSection[]> = {}
+  let hasPending = false
+
+  const flushPending = () => {
+    if (!hasPending) return
+    rows.push({ kind: 'branched', cols: Object.entries(pending).map(([key, secs]) => ({ key, secs })) })
+    pending = {}; hasPending = false
+  }
+
+  for (const sec of sections) {
+    const dpeKey = sec.condition?.dpe?.length ? [...sec.condition.dpe].sort().join(',') : null
+    if (!dpeKey) { flushPending(); rows.push({ kind: 'common', sec }) }
+    else { if (!pending[dpeKey]) pending[dpeKey] = []; pending[dpeKey].push(sec); hasPending = true }
+  }
+  flushPending()
+  return rows
+}
+
+function SectionFlowchart({
+  sections, conflictIds, onFocus,
+}: {
+  sections: TemplateSection[]; conflictIds: Set<string>; onFocus: (id: string) => void
+}) {
+  const enabled = sections.filter(s => s.enabled)
+  const rows    = buildFlow(enabled)
+
+  const node = (sec: TemplateSection) => {
+    const isConfl = conflictIds.has(sec.id)
+    const badges: React.ReactNode[] = []
+    if (sec.condition?.types?.length) sec.condition.types.forEach(t =>
+      badges.push(<span key={t} style={{ fontSize: 8, padding: '0 3px', borderRadius: 3, background: 'rgba(96,165,250,0.15)', color: '#93C5FD' }}>{t === 'appartement' ? 'Appt' : t === 'maison' ? 'Maison' : 'Local'}</span>)
+    )
+    if (sec.condition?.requireAudit) badges.push(<span key="aud" style={{ fontSize: 8, padding: '0 3px', borderRadius: 3, background: 'rgba(217,119,6,0.15)', color: '#D97706' }}>Audit</span>)
+    if (sec.image_enabled)           badges.push(<span key="img" style={{ fontSize: 8 }}>🖼</span>)
+    return (
+      <div key={sec.id} onClick={() => onFocus(sec.id)}
+        title={isConfl ? '⚠ Conflit — cliquer pour ouvrir' : 'Cliquer pour ouvrir la section'}
+        style={{ padding: '4px 8px', borderRadius: 5, marginBottom: 3, cursor: 'pointer', fontSize: 10,
+          border: `1px solid ${isConfl ? 'rgba(239,68,68,0.5)' : C.border}`,
+          background: isConfl ? 'rgba(239,68,68,0.07)' : 'rgba(255,255,255,0.04)',
+          color: isConfl ? '#FCA5A5' : C.text }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
+            {isConfl && <span style={{ color: '#EF4444', marginRight: 3 }}>⚠</span>}{sec.title}
+          </span>
+          {badges}
+        </div>
+      </div>
+    )
+  }
+
+  const arrow = <div style={{ textAlign: 'center', color: C.dim, fontSize: 9, margin: '1px 0', lineHeight: 1 }}>▼</div>
+
+  return (
+    <div style={{ fontSize: 11 }}>
+      <div style={{ fontWeight: 700, color: C.mid, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>
+        Structure du courrier
+      </div>
+      <div style={{ padding: '3px 8px', borderRadius: 4, background: 'rgba(29,158,117,0.15)', border: `1px solid ${C.primary}40`, color: C.primary, fontSize: 9, fontWeight: 700, textAlign: 'center', marginBottom: 2 }}>
+        ▶ DÉBUT
+      </div>
+      {rows.map((row, i) => (
+        <div key={i}>
+          {arrow}
+          {row.kind === 'common' ? node(row.sec) : (
+            <div style={{ display: 'flex', gap: 3 }}>
+              {row.cols.map(col => (
+                <div key={col.key} style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 8, color: C.dim, textAlign: 'center', marginBottom: 2, padding: '1px 3px', background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    DPE {col.key}
+                  </div>
+                  {col.secs.map(s => node(s))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      {arrow}
+      <div style={{ padding: '3px 8px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.dim, fontSize: 9, fontWeight: 700, textAlign: 'center' }}>
+        ■ FIN
+      </div>
+      {conflictIds.size > 0 && (
+        <div style={{ marginTop: 10, fontSize: 10, color: '#FCA5A5', padding: '5px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: 5 }}>
+          ⚠ {conflictIds.size} bloc(s) en conflit — exclus du DOCX
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // COMPOSANT ITEM DE SECTION (drag + toggle + éditeur)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -451,6 +576,26 @@ function SectionItem({
     if (html !== null) onChange({ bodyHtml: html })
   }
 
+  // ── Upload image dans le bloc ─────────────────────────────────────────────
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 2_000_000) { alert('Image trop lourde (max 2 Mo)'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const img = new Image()
+      img.onload = () => onChange({
+        image_data: dataUrl.split(',')[1],
+        image_mime: file.type,
+        image_natural_width:  img.naturalWidth,
+        image_natural_height: img.naturalHeight,
+      })
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  }
+
   const titleStyle: React.CSSProperties = {
     color:          section.titleColor,
     fontSize:       section.titleSize + 1,
@@ -460,6 +605,7 @@ function SectionItem({
 
   return (
     <div
+      id={section.id}
       draggable
       onDragStart={() => onDragStart(index)}
       onDragOver={e => { e.preventDefault(); onDragOver(index) }}
@@ -744,6 +890,74 @@ function SectionItem({
             {section.bodyHtml === null && meta && (
               <div style={{ marginTop: 6, fontSize: 11, color: C.dim }}>
                 💡 {meta.description}
+              </div>
+            )}
+          </div>
+
+          {/* ── Image dans le bloc ── */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: C.mid }}>
+              <input type="checkbox" checked={!!section.image_enabled}
+                onChange={e => onChange({ image_enabled: e.target.checked })}
+                style={{ accentColor: C.primary, cursor: 'pointer' }} />
+              Inclure une image dans ce bloc
+            </label>
+
+            {section.image_enabled && (
+              <div style={{ marginTop: 10 }}>
+                {/* Upload / aperçu */}
+                {section.image_data ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <img src={`data:${section.image_mime ?? 'image/png'};base64,${section.image_data}`}
+                      style={{ maxWidth: 80, maxHeight: 60, objectFit: 'contain', background: '#fff', borderRadius: 4, padding: 4 }} alt="Aperçu" />
+                    <button onClick={() => onChange({ image_data: null, image_mime: null })}
+                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, border: `1px solid rgba(239,68,68,0.3)`, background: 'rgba(239,68,68,0.05)', color: C.danger, cursor: 'pointer' }}>
+                      Supprimer
+                    </button>
+                    <label style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, border: `1px solid ${C.borderl}`, background: 'rgba(255,255,255,0.04)', color: C.mid, cursor: 'pointer' }}>
+                      Changer
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                    </label>
+                  </div>
+                ) : (
+                  <label style={{ display: 'inline-block', padding: '6px 14px', borderRadius: 6, border: `1px solid ${C.borderl}`, background: 'rgba(255,255,255,0.04)', color: C.mid, fontSize: 11, cursor: 'pointer', marginBottom: 10 }}>
+                    Choisir une image
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                  </label>
+                )}
+
+                {/* Position */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Position :</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {(['left','right','fullwidth'] as const).map(pos => {
+                      const labels: Record<string,string> = { left:'◧ Gauche', right:'◨ Droite', fullwidth:'▬ Pleine largeur' }
+                      const active = (section.image_position ?? 'left') === pos
+                      return (
+                        <button key={pos} onClick={() => onChange({ image_position: pos })}
+                          style={{ padding: '3px 9px', borderRadius: 4, border: `1px solid ${active ? C.primary : C.border}`,
+                            background: active ? 'rgba(29,158,117,0.1)' : 'transparent',
+                            color: active ? C.primary : C.muted, fontSize: 11, cursor: 'pointer', fontWeight: active ? 600 : 400 }}>
+                          {labels[pos]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Slider largeur (2 colonnes seulement) */}
+                {(section.image_position ?? 'left') !== 'fullwidth' && (
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
+                      Largeur image : <strong style={{ color: C.text }}>{section.image_width_pct ?? 35}%</strong>
+                      <span style={{ color: C.dim }}> · texte : {100 - (section.image_width_pct ?? 35)}%</span>
+                    </div>
+                    <input type="range" min={20} max={70} step={5}
+                      value={section.image_width_pct ?? 35}
+                      onChange={e => onChange({ image_width_pct: Number(e.target.value) })}
+                      style={{ width: '100%', accentColor: C.primary }} />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1049,6 +1263,12 @@ export default function TemplatesPage() {
   const sections    = draft?.sections_config ?? DEFAULT_SECTIONS
   const conflictIds = useMemo(() => getSectionConflicts(sections), [sections])
 
+  // ── Focaliser une section depuis le flowchart ─────────────────────────────
+  const focusSection = (id: string) => {
+    setExpandedSec(id)
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50)
+  }
+
   // ─── Rendu ───────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -1191,57 +1411,71 @@ export default function TemplatesPage() {
 
             {/* ────────── ONGLET SECTIONS ────────── */}
             {tab === 'sections' && (
-              <div style={{ maxWidth:720 }}>
+              <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
 
-                {/* Mode unique */}
-                {draft.mode === 'unique' ? (
-                  <div>
-                    <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
-                      En mode <strong style={{ color:C.text }}>Texte unique</strong>, une seule lettre est générée pour tous les DPE, sans sections conditionnelles.
-                      Utilisez les variables disponibles pour personnaliser dynamiquement.
-                    </div>
-                    <div style={{ marginBottom:8, display:'flex', gap:8, flexWrap:'wrap' }}>
-                      {ALL_VARIABLES.map(v => (
-                        <span key={v.key} title={`Exemple : ${v.example}`}
-                          style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(96,165,250,0.1)', color:'#93C5FD', border:'1px solid rgba(96,165,250,0.2)', fontFamily:'monospace', cursor:'help' }}>
-                          {v.key}
-                        </span>
-                      ))}
-                    </div>
-                    <RichEditor
-                      value={draft.unique_text ?? ''}
-                      onChange={html => patchDraft({ unique_text: html || null })}
-                      placeholder="Rédigez votre courrier unique ici… Utilisez les variables {typeBien}, {dpe}, etc."
-                      vars={ALL_VARIABLES.map(v => v.key)}
-                    />
-                  </div>
-                ) : (
-                  /* Mode sections */
-                  <div>
-                    <div style={{ fontSize:12, color:C.dim, marginBottom:12 }}>
-                      Glissez les sections pour les réordonner · Cliquez sur une section pour l'éditer
-                    </div>
-
-                    {sections.map((sec, idx) => (
-                      <SectionItem key={sec.id}
-                        section={sec}
-                        index={idx}
-                        expanded={expandedSec === sec.id}
-                        isConflict={conflictIds.has(sec.id)}
-                        onToggle={() => setExpandedSec(prev => prev === sec.id ? null : sec.id)}
-                        onChange={patch => patchSection(idx, patch)}
-                        onDelete={sec.type === 'custom' || sec.fixedId ? () => deleteSection(idx) : undefined}
-                        onDuplicate={() => duplicateSection(idx)}
-                        onDragStart={i => { dragIdx.current = i }}
-                        onDragOver={i => { overIdx.current = i }}
-                        onDrop={handleDrop}
+                {/* ── Éditeur sections ─────────────────────────────── */}
+                <div style={{ flex:1, minWidth:0 }}>
+                  {/* Mode unique */}
+                  {draft.mode === 'unique' ? (
+                    <div>
+                      <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
+                        En mode <strong style={{ color:C.text }}>Texte unique</strong>, une seule lettre est générée pour tous les DPE, sans sections conditionnelles.
+                        Utilisez les variables disponibles pour personnaliser dynamiquement.
+                      </div>
+                      <div style={{ marginBottom:8, display:'flex', gap:8, flexWrap:'wrap' }}>
+                        {ALL_VARIABLES.map(v => (
+                          <span key={v.key} title={`Exemple : ${v.example}`}
+                            style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(96,165,250,0.1)', color:'#93C5FD', border:'1px solid rgba(96,165,250,0.2)', fontFamily:'monospace', cursor:'help' }}>
+                            {v.key}
+                          </span>
+                        ))}
+                      </div>
+                      <RichEditor
+                        value={draft.unique_text ?? ''}
+                        onChange={html => patchDraft({ unique_text: html || null })}
+                        placeholder="Rédigez votre courrier unique ici… Utilisez les variables {typeBien}, {dpe}, etc."
+                        vars={ALL_VARIABLES.map(v => v.key)}
                       />
-                    ))}
+                    </div>
+                  ) : (
+                    /* Mode sections */
+                    <div>
+                      <div style={{ fontSize:12, color:C.dim, marginBottom:12 }}>
+                        Glissez les sections pour les réordonner · Cliquez sur une section pour l'éditer
+                      </div>
 
-                    <button onClick={addCustomSection}
-                      style={{ width:'100%', padding:'10px', borderRadius:8, border:`1px dashed ${C.border}`, background:'rgba(255,255,255,0.02)', color:C.muted, fontSize:13, cursor:'pointer', marginTop:4, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                      + Ajouter une section personnalisée
-                    </button>
+                      {sections.map((sec, idx) => (
+                        <SectionItem key={sec.id}
+                          section={sec}
+                          index={idx}
+                          expanded={expandedSec === sec.id}
+                          isConflict={conflictIds.has(sec.id)}
+                          onToggle={() => setExpandedSec(prev => prev === sec.id ? null : sec.id)}
+                          onChange={patch => patchSection(idx, patch)}
+                          onDelete={sec.type === 'custom' || sec.fixedId ? () => deleteSection(idx) : undefined}
+                          onDuplicate={() => duplicateSection(idx)}
+                          onDragStart={i => { dragIdx.current = i }}
+                          onDragOver={i => { overIdx.current = i }}
+                          onDrop={handleDrop}
+                        />
+                      ))}
+
+                      <button onClick={addCustomSection}
+                        style={{ width:'100%', padding:'10px', borderRadius:8, border:`1px dashed ${C.border}`, background:'rgba(255,255,255,0.02)', color:C.muted, fontSize:13, cursor:'pointer', marginTop:4, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                        + Ajouter une section personnalisée
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Flowchart (mode sections uniquement) ─────────── */}
+                {draft.mode === 'sections' && (
+                  <div style={{ width:240, flexShrink:0, position:'sticky', top:0, background:C.card2, borderRadius:8, border:`1px solid ${C.border}`, padding:'12px 10px' }}>
+                    <SectionFlowchart
+                      sections={sections}
+                      conflictIds={conflictIds}
+                      onFocus={focusSection}
+                    />
                   </div>
                 )}
               </div>

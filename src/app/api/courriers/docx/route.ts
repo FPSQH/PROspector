@@ -176,6 +176,54 @@ function buildEnvelopeParas(template: TemplateV2, letter: DpeAdresseData, ville:
   ]
 }
 
+// ── Image dans un bloc : table 2 col (image | texte) ou image pleine largeur ────
+function wrapWithImage(sec: TemplateSection, paras: Paragraph[]): (Paragraph | Table)[] {
+  if (!sec.image_enabled || !sec.image_data || !sec.image_mime) return paras
+  const pct   = Math.max(20, Math.min(80, sec.image_width_pct ?? 35))
+  const raw   = Buffer.from(sec.image_data, 'base64')
+  const mime  = (sec.image_mime.split('/')[1] as any) || 'png'
+  const cellNil = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
+  const noBorder = { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil }
+  // Largeur image en DXA puis en px (aprox 72 DPI)
+  const totalDxa = 9360
+  if (sec.image_position === 'fullwidth') {
+    const imgW = Math.round(totalDxa / 914.4)   // 914.4 DXA ≈ 1 cm → adapt
+    const natW = sec.image_natural_width  ?? 200
+    const natH = sec.image_natural_height ?? 150
+    const scale = Math.min(imgW / natW, 1)
+    const imgPara = new Paragraph({
+      children: [new ImageRun({ data: raw, type: mime,
+        transformation: { width: Math.round(natW * scale), height: Math.round(natH * scale) } })],
+      alignment: AlignmentType.CENTER, spacing: { after: 120 },
+    })
+    return [imgPara, ...paras]
+  }
+  const imgDxa = Math.round(totalDxa * pct / 100)
+  const txtDxa = totalDxa - imgDxa
+  const imgPx  = Math.round(imgDxa / 914.4 * 10)
+  const natW   = sec.image_natural_width  ?? 200
+  const natH   = sec.image_natural_height ?? 150
+  const scl    = imgPx / natW
+  const imgH   = Math.round(natH * scl)
+  const imgCell = new TableCell({
+    width: { size: imgDxa, type: WidthType.DXA }, borders: noBorder,
+    children: [new Paragraph({
+      children: [new ImageRun({ data: raw, type: mime, transformation: { width: imgPx, height: imgH } })],
+      alignment: AlignmentType.CENTER,
+    })]
+  })
+  const txtCell = new TableCell({
+    width: { size: txtDxa, type: WidthType.DXA }, borders: noBorder,
+    children: paras.length ? paras : [new Paragraph({ children: [] })]
+  })
+  const [left, right] = sec.image_position === 'right' ? [txtCell, imgCell] : [imgCell, txtCell]
+  return [new Table({
+    width: { size: totalDxa, type: WidthType.DXA }, columnWidths: [imgDxa, txtDxa],
+    borders: { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil, insideH: cellNil, insideV: cellNil },
+    rows: [new TableRow({ children: [left, right] })]
+  })]
+}
+
 // ── Génération lettre V2 (templates avec sections_config) ────────────────────
 function buildLetterV2(letter: DpeAdresseData, commercial: any, template: TemplateV2): (Paragraph | Table)[] {
   const vars    = buildVars(letter, commercial)
@@ -248,7 +296,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       // ── Intro ──────────────────────────────────────────────────────────────
       case 'intro': {
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           paras.push(body(getIntroCtx(dpeGroup, ctx, typeBien, null)))
         }
@@ -259,7 +307,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       case 'dpe': {
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           const { intro: dpeIntro, detail: dpeDetail } = getDpeTexts(dpe, typeBien, null)
           paras.push(new Paragraph({
@@ -284,7 +332,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
         if (!scenarios.length) break
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           paras.push(bodyRich([
             { text: `Un audit énergétique (n° ` },
@@ -310,7 +358,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       case 'estimation': {
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           const estimText = getEstimationText(typeBien, null)
           const parts = estimText.split('estimation gratuite et sans engagement')
@@ -327,7 +375,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       case 'vente': {
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           paras.push(body(getVenteText(dpeGroup, dpe, typeBien, null)))
         }
@@ -338,7 +386,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       case 'gestion_locative': {
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           paras.push(body(getGLText(isAppt, null)))
         }
@@ -349,7 +397,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       case 'renovation': {
         if (sec.showTitle) paras.push(secTitleFromSection(sec))
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           // Lien cliquable par défaut
           paras.push(new Paragraph({
@@ -370,7 +418,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       // ── Politesse ──────────────────────────────────────────────────────────
       case 'politesse': {
         if (sec.bodyHtml) {
-          paras.push(...htmlParas(sec.bodyHtml, vars))
+          paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         } else {
           paras.push(body(getPolitesse1(null)))
           paras.push(body(getPolitesse2(null)))
@@ -382,7 +430,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       default: {
         if (sec.type === 'custom') {
           if (sec.showTitle) paras.push(secTitleFromSection(sec))
-          if (sec.bodyHtml) paras.push(...htmlParas(sec.bodyHtml, vars))
+          if (sec.bodyHtml) paras.push(...wrapWithImage(sec, htmlParas(sec.bodyHtml, vars)))
         }
         break
       }

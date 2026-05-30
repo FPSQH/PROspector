@@ -34,6 +34,14 @@ export interface TemplateSection {
   titleUnderline: boolean
   bodyHtml:       string | null // null = généré automatiquement selon DPE
   condition?:     SectionCondition // undefined = pas de filtre (affichage systématique)
+  // ── Image dans le bloc ──────────────────────────────────────────────────
+  image_enabled?:        boolean                          // false par défaut
+  image_data?:           string | null                   // base64
+  image_mime?:           string | null
+  image_position?:       'left' | 'right' | 'fullwidth' // défaut 'left'
+  image_width_pct?:      number                          // % de la largeur totale (20–80), défaut 35
+  image_natural_width?:  number                          // dimensions mesurées à l'upload
+  image_natural_height?: number
 }
 
 export interface TemplateV2 {
