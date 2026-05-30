@@ -37,16 +37,28 @@ export async function POST(request: Request) {
 
   const isDefault = (count ?? 0) === 0
 
+  // Champs optionnels (duplication d'un template existant)
+  const mode      = body.mode === 'unique' ? 'unique' : 'sections'
+  const logoPos   = body.logo_position === 'footer' ? 'footer' : 'header'
+
   const { data, error } = await supabase
     .from('lettre_templates_v2')
     .insert({
       commercial_id:    user.id,
       name,
       is_default:       isDefault,
-      mode:             'sections',
-      sections_config:  DEFAULT_SECTIONS as unknown as TemplateSection[],
-      envelope_enabled: false,
-      envelope_line1:   'Mr et ou Mme le Propriétaire',
+      mode,
+      unique_text:      body.unique_text      ?? null,
+      logo_data:        body.logo_data        ?? null,
+      logo_mime:        body.logo_mime        ?? null,
+      logo_width:       body.logo_width       ?? null,
+      logo_height:      body.logo_height      ?? null,
+      logo_scale_pct:   body.logo_scale_pct   ?? 100,
+      logo_position:    logoPos,
+      sections_config:  body.sections_config  ?? DEFAULT_SECTIONS as unknown as TemplateSection[],
+      envelope_enabled: body.envelope_enabled ?? false,
+      envelope_line1:   body.envelope_line1   ?? 'Monsieur Madame le Propriétaire',
+      envelope_line2:   body.envelope_line2   ?? '',
     })
     .select()
     .single()

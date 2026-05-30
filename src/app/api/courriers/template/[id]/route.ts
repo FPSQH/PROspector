@@ -48,8 +48,9 @@ export async function PUT(request: Request, { params }: Ctx) {
   if ('unique_text'      in body) patch.unique_text      = body.unique_text      ?? null
   if ('logo_data'        in body) patch.logo_data        = body.logo_data        ?? null
   if ('logo_mime'        in body) patch.logo_mime        = body.logo_mime        ?? null
-  if (typeof body.logo_width    === 'number')  patch.logo_width    = Math.max(20, Math.min(300, body.logo_width))
-  if (typeof body.logo_height   === 'number')  patch.logo_height   = Math.max(10, Math.min(200, body.logo_height))
+  if (typeof body.logo_width     === 'number')  patch.logo_width     = Math.max(1, Math.min(600, body.logo_width))
+  if (typeof body.logo_height    === 'number')  patch.logo_height    = Math.max(1, Math.min(400, body.logo_height))
+  if (typeof body.logo_scale_pct === 'number')  patch.logo_scale_pct = Math.max(10, Math.min(200, body.logo_scale_pct))
   if (body.logo_position === 'header' || body.logo_position === 'footer') patch.logo_position = body.logo_position
   if ('sections_config'  in body) patch.sections_config  = body.sections_config  ?? null
   if (typeof body.envelope_enabled === 'boolean') patch.envelope_enabled = body.envelope_enabled

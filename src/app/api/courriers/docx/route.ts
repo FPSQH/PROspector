@@ -136,31 +136,45 @@ function buildVars(letter: DpeAdresseData, commercial: any): Record<string, stri
 }
 
 // ── Bloc adresse enveloppe AFNOR NF Z 10-011, format DL ─────────────────────────
-// Positionné à droite (indent ~95mm) pour passer dans la fenêtre DL
-// quand l'A4 est plié en 3 (C-fold), feuille retournée côté imprimé.
-function buildEnvelopeParas(template: TemplateV2, letter: DpeAdresseData, ville: string): Paragraph[] {
+// Table 55% vide | 45% adresse → fenêtre à droite de la page.
+function buildEnvelopeParas(template: TemplateV2, letter: DpeAdresseData, ville: string): (Paragraph | Table)[] {
   const dest  = template.envelope_line1 || 'Monsieur Madame le Propriétaire'
   const compl = template.envelope_line2 || ''
   const adr   = afnorLine(letter.adresse_brute || '')
   const cpv   = afnorLine([letter.code_postal, ville].filter(Boolean).join(' '))
   const lines = [dest, compl ? afnorLine(compl) : '', adr, cpv].filter(Boolean)
-  // Indent = 5400 DXA ≈ 95mm (zone droite de la page pour fenêtre DL gauche)
-  const indent = { left: 5400 }
-  const paras: Paragraph[] = []
-  paras.push(new Paragraph({ children: [], spacing: { after: 400 } }))
-  for (const l of lines) {
-    paras.push(new Paragraph({
-      children: [T(l, { size: 20 })],
-      indent,
-      spacing: { after: 40 },
-    }))
-  }
-  paras.push(new Paragraph({ children: [], spacing: { after: 560 } }))
-  return paras
+  const cellNil = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
+  const noBorder = { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil }
+  // 9360 DXA = largeur de la zone texte. Colonne gauche 55% (5148), droite 45% (4212).
+  const addrTable = new Table({
+    width: { size: 9360, type: WidthType.DXA },
+    columnWidths: [5148, 4212],
+    borders: { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil, insideH: cellNil, insideV: cellNil },
+    rows: [new TableRow({
+      children: [
+        new TableCell({
+          width: { size: 5148, type: WidthType.DXA }, borders: noBorder,
+          children: [new Paragraph({ children: [] })],
+        }),
+        new TableCell({
+          width: { size: 4212, type: WidthType.DXA }, borders: noBorder,
+          children: lines.map(l => new Paragraph({
+            children: [T(l, { size: 20 })],
+            spacing: { after: 40 },
+          })),
+        }),
+      ]
+    })]
+  })
+  return [
+    new Paragraph({ children: [], spacing: { after: 400 } }),
+    addrTable,
+    new Paragraph({ children: [], spacing: { after: 560 } }),
+  ]
 }
 
 // ── Génération lettre V2 (templates avec sections_config) ────────────────────
-function buildLetterV2(letter: DpeAdresseData, commercial: any, template: TemplateV2): Paragraph[] {
+function buildLetterV2(letter: DpeAdresseData, commercial: any, template: TemplateV2): (Paragraph | Table)[] {
   const vars    = buildVars(letter, commercial)
   const today   = new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
   const ville   = vars.ville
@@ -375,7 +389,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   return paras
 }
 
-function appendSignature(paras: Paragraph[], agentNom: string, commercial: any) {
+function appendSignature(paras: (Paragraph | Table)[], agentNom: string, commercial: any) {
   paras.push(new Paragraph({ children: [], spacing: { before: 400 } }))
   paras.push(new Paragraph({
     children: [T(agentNom, { bold: true, size: 22 })],
@@ -399,8 +413,9 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
 
   const hasLogo       = !!(template?.logo_data && template?.logo_mime)
   const logoInFooter  = template?.logo_position === 'footer'
-  const logoW         = template?.logo_width  ?? 60
-  const logoH         = template?.logo_height ?? 40
+  const scale         = ((template?.logo_scale_pct ?? 100) / 100)
+  const logoW         = Math.round((template?.logo_width  ?? 60) * scale)
+  const logoH         = Math.round((template?.logo_height ?? 40) * scale)
 
   // Colonne logo : vide si logo est en pied de page
   const logoCell = new TableCell({
@@ -449,8 +464,9 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
 function buildFooter(template: TemplateV2): Table {
   const cellNil   = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
   const topLine   = { bottom: cellNil, left: cellNil, right: cellNil, top: { style: BorderStyle.SINGLE, size: 8, color: TEAL } }
-  const logoW     = template.logo_width  ?? 60
-  const logoH     = template.logo_height ?? 40
+  const scale2    = (template.logo_scale_pct ?? 100) / 100
+  const logoW     = Math.round((template.logo_width  ?? 60) * scale2)
+  const logoH     = Math.round((template.logo_height ?? 40) * scale2)
   return new Table({
     width: { size: 9360, type: WidthType.DXA },
     columnWidths: [9360],

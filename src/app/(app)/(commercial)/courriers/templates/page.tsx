@@ -90,8 +90,9 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
 
   // ── En-tête identique au DOCX : logo | agence | agent ──────────────────────
   const logoInFooter = template.logo_position === 'footer'
-  const logoW = template.logo_width  ?? 60
-  const logoH = template.logo_height ?? 40
+  const logoScale = (template.logo_scale_pct ?? 100) / 100
+  const logoW = Math.round((template.logo_width  ?? 60) * logoScale)
+  const logoH = Math.round((template.logo_height ?? 40) * logoScale)
   const logoHtml = (template.logo_data && template.logo_mime && !logoInFooter)
     ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="width:${logoW}px;height:${logoH}px;object-fit:contain;display:block;margin:0 auto;" />`
     : `<span style="font-size:18px;font-weight:700;color:#009597;font-family:Arial,sans-serif;">SQH</span>`
@@ -139,7 +140,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
       const adr   = (data.adresse_brute || '').toUpperCase()
       const cpv   = [data.code_postal, ville].filter(Boolean).join(' ').toUpperCase()
       const lines = [dest, compl ? compl.toUpperCase() : '', adr, cpv].filter(Boolean)
-      parts.push(`<div style="border:1px solid #c8c8c8;padding:14px 18px;margin:0 0 24px 55%;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:220px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div>`)
+      parts.push(`<div style="display:flex;justify-content:flex-end;margin:0 0 24px;"><div style="border:1px solid #c8c8c8;padding:12px 16px;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:200px;max-width:260px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div></div>`)
     }
     parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
     parts.push(p(fillVarsHtml(template.unique_text, vars)))
@@ -631,6 +632,37 @@ export default function TemplatesPage() {
     setSaveErr('')
   }
 
+  // ── Dupliquer un template ─────────────────────────────────────────────────
+  const duplicateTemplate = async (t: TemplateV2) => {
+    try {
+      const r = await fetch('/api/courriers/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:             t.name + ' (copie)',
+          mode:             t.mode,
+          unique_text:      t.unique_text,
+          logo_data:        t.logo_data,
+          logo_mime:        t.logo_mime,
+          logo_width:       t.logo_width,
+          logo_height:      t.logo_height,
+          logo_scale_pct:   t.logo_scale_pct,
+          logo_position:    t.logo_position,
+          sections_config:  t.sections_config,
+          envelope_enabled: t.envelope_enabled,
+          envelope_line1:   t.envelope_line1,
+          envelope_line2:   t.envelope_line2,
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error ?? 'Erreur lors de la duplication'); return }
+      const newT = d.template as TemplateV2
+      setTemplates(prev => [...prev, newT])
+      setActiveId(newT.id); setSaved(newT); setDraft(hydrate(newT))
+      setExpandedSec(null); setTab('sections')
+    } catch { alert('Erreur réseau') }
+  }
+
   // ── Créer un nouveau template ──────────────────────────────────────────────
   const createTemplate = async () => {
     const name = prompt('Nom du nouveau template :')
@@ -768,11 +800,20 @@ export default function TemplatesPage() {
     if (file.size > 1_500_000) { alert('Logo trop lourd (max 1,5 Mo)'); return }
     const reader = new FileReader()
     reader.onload = () => {
-      const data = reader.result as string
+      const dataUrl = reader.result as string
       const mime = file.type
-      // Enlever le préfixe data:image/xxx;base64,
-      const base64 = data.split(',')[1]
-      patchDraft({ logo_data: base64, logo_mime: mime })
+      const base64 = dataUrl.split(',')[1]
+      // Mesure les dimensions naturelles pour le slider 100 %
+      const img = new Image()
+      img.onload = () => {
+        // Taille de référence capped à 120×80 pour éviter les logos géants en DOCX
+        const maxW = 120, maxH = 80
+        const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1)
+        const natW = Math.round(img.naturalWidth  * ratio)
+        const natH = Math.round(img.naturalHeight * ratio)
+        patchDraft({ logo_data: base64, logo_mime: mime, logo_width: natW, logo_height: natH, logo_scale_pct: 100 })
+      }
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }
@@ -834,18 +875,35 @@ export default function TemplatesPage() {
 
         <nav style={{ flex:1, overflowY:'auto', padding:'8px 8px' }}>
           {templates.map(t => (
-            <button key={t.id} onClick={() => switchTemplate(t.id)}
-              style={{
-                width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:7,
-                border:`1px solid ${activeId===t.id ? C.primary+'40' : 'transparent'}`,
-                background: activeId===t.id ? 'rgba(29,158,117,0.10)' : 'transparent',
-                color: activeId===t.id ? C.primary : C.mid,
-                fontWeight: activeId===t.id ? 600 : 400,
-                fontSize:13, cursor:'pointer', marginBottom:2, display:'flex', alignItems:'center', gap:6,
-              }}>
-              <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</span>
-              {t.is_default && <span style={{ fontSize:9, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'1px 5px', borderRadius:3 }}>défaut</span>}
-            </button>
+            <div key={t.id} style={{ position:'relative', marginBottom:2 }}>
+              <button onClick={() => switchTemplate(t.id)}
+                title={t.updated_at ? `Modifié le ${new Date(t.updated_at).toLocaleDateString('fr-FR')}` : undefined}
+                style={{
+                  width:'100%', textAlign:'left', padding:'7px 30px 7px 8px', borderRadius:7,
+                  border:`1px solid ${activeId===t.id ? C.primary+'40' : 'transparent'}`,
+                  background: activeId===t.id ? 'rgba(29,158,117,0.10)' : 'transparent',
+                  color: activeId===t.id ? C.primary : C.mid,
+                  fontWeight: activeId===t.id ? 600 : 400,
+                  fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:5,
+                }}>
+                {/* Badge mode */}
+                <span style={{ fontSize:9, fontWeight:700, padding:'1px 4px', borderRadius:3, flexShrink:0,
+                  background: t.mode==='unique' ? 'rgba(217,119,6,0.15)' : 'rgba(96,165,250,0.12)',
+                  color: t.mode==='unique' ? C.gold : '#93C5FD' }}>
+                  {t.mode==='unique' ? 'T' : 'S'}
+                </span>
+                <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</span>
+                {t.is_default && <span style={{ fontSize:9, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'1px 5px', borderRadius:3, flexShrink:0 }}>défaut</span>}
+              </button>
+              {/* Bouton dupliquer */}
+              <button onClick={e => { e.stopPropagation(); duplicateTemplate(t) }}
+                title="Dupliquer ce template"
+                style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
+                  padding:'1px 5px', borderRadius:4, border:`1px solid ${C.border}`,
+                  background:'rgba(255,255,255,0.04)', color:C.dim, fontSize:12, cursor:'pointer', lineHeight:1.4 }}>
+                ⧉
+              </button>
+            </div>
           ))}
         </nav>
 
@@ -1042,39 +1100,34 @@ export default function TemplatesPage() {
                         </div>
                       </div>
 
-                      {/* Taille */}
+                      {/* Taille — slider % */}
                       <div>
                         <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Taille dans le DOCX :</div>
-                        <div style={{ display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
-                          <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-                            <span style={{ fontSize:12, color:C.muted, minWidth:52 }}>Largeur</span>
-                            <input type="number" min={20} max={300}
-                              value={draft.logo_width ?? 60}
-                              onChange={e => patchDraft({ logo_width: Math.max(20, Math.min(300, Number(e.target.value))) })}
-                              style={{ width:70, background:'rgba(255,255,255,0.06)', border:`1px solid ${C.borderl}`, borderRadius:6, color:C.text, fontSize:13, padding:'4px 8px' }}
-                            />
-                            <span style={{ fontSize:11, color:C.dim }}>px</span>
-                          </label>
-                          <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-                            <span style={{ fontSize:12, color:C.muted, minWidth:48 }}>Hauteur</span>
-                            <input type="number" min={10} max={200}
-                              value={draft.logo_height ?? 40}
-                              onChange={e => patchDraft({ logo_height: Math.max(10, Math.min(200, Number(e.target.value))) })}
-                              style={{ width:70, background:'rgba(255,255,255,0.06)', border:`1px solid ${C.borderl}`, borderRadius:6, color:C.text, fontSize:13, padding:'4px 8px' }}
-                            />
-                            <span style={{ fontSize:11, color:C.dim }}>px</span>
-                          </label>
-                          {/* Mini-aperçu taille */}
-                          <div style={{ padding:6, background:'#fff', borderRadius:5 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <span style={{ fontSize:11, color:C.dim, minWidth:28 }}>10%</span>
+                          <input type="range" min={10} max={200} step={5}
+                            value={draft.logo_scale_pct ?? 100}
+                            onChange={e => patchDraft({ logo_scale_pct: Number(e.target.value) })}
+                            style={{ flex:1, accentColor:C.primary }}
+                          />
+                          <span style={{ fontSize:13, fontWeight:700, color:C.text, minWidth:40, textAlign:'right' }}>
+                            {draft.logo_scale_pct ?? 100}%
+                          </span>
+                          {/* Mini-aperçu proportionnel */}
+                          <div style={{ padding:6, background:'#fff', borderRadius:5, flexShrink:0, minWidth:50, minHeight:30, display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <img
                               src={`data:${draft.logo_mime ?? 'image/png'};base64,${draft.logo_data}`}
                               alt="Aperçu"
-                              style={{ width: draft.logo_width ?? 60, height: draft.logo_height ?? 40, objectFit:'contain', display:'block' }}
+                              style={{
+                                width:  Math.round((draft.logo_width  ?? 60) * ((draft.logo_scale_pct ?? 100) / 100)),
+                                height: Math.round((draft.logo_height ?? 40) * ((draft.logo_scale_pct ?? 100) / 100)),
+                                objectFit:'contain', display:'block',
+                              }}
                             />
                           </div>
                         </div>
                         <div style={{ fontSize:11, color:C.dim, marginTop:6 }}>
-                          Taille exacte dans le DOCX. Allez dans l'onglet Aperçu pour voir le rendu complet.
+                          100 % = taille de référence du logo. Allez dans Aperçu pour voir le rendu complet.
                         </div>
                       </div>
                     </div>
