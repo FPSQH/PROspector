@@ -416,7 +416,8 @@ function SectionItem({
   const [showTitleFmt,    setShowTitleFmt]     = useState(false)
   const [showConditions,  setShowConditions]   = useState(false)
   const [prefillType,     setPrefillType]      = useState<'appartement'|'maison'>('appartement')
-  const meta = section.type === 'fixed' ? SECTION_META[section.id] : null
+  const effectiveId = section.fixedId ?? section.id  // UUID pour les copies, id natif pour les originaux
+  const meta = section.type === 'fixed' ? SECTION_META[effectiveId] : null
   const vars = ALL_VARIABLES.map(v => v.key)
 
   // ── Gestion des conditions ───────────────────────────────────────────────
@@ -446,7 +447,7 @@ function SectionItem({
 
   // ── Pré-remplissage du texte par défaut ──────────────────────────────────
   const loadDefault = (dpe: string) => {
-    const html = getDefaultSectionHtml(section.id, dpe, prefillType)
+    const html = getDefaultSectionHtml(effectiveId, dpe, prefillType)
     if (html !== null) onChange({ bodyHtml: html })
   }
 
@@ -711,7 +712,7 @@ function SectionItem({
             </div>
 
             {/* ── Pré-remplissage depuis le texte par défaut ── */}
-            {meta && section.id !== 'audit' && (
+            {meta && effectiveId !== 'audit' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '6px 10px', background: C.card, borderRadius: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: C.dim, flexShrink: 0 }}>Charger le texte par défaut pour DPE :</span>
                 {['A','B','C','D','E','F','G'].map(l => (
