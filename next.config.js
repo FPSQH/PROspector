@@ -2,6 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  webpack(config) {
+    config.resolve.alias['mapbox-gl'] = 'maplibre-gl'
+    return config
+  },
+
   // Ignorer les erreurs TypeScript au build (corrigées phase par phase)
   typescript: {
     ignoreBuildErrors: true,

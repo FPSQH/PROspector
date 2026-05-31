@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { GL_DRAW_STYLES, createSnapPolygonMode } from '@/lib/map/glDrawConfig'
 
 interface Zone {
   id:               string
@@ -26,13 +27,15 @@ export default function ZoneEditorMap({
   splitAxis, splitPosition,
   onZoneClick, onPolygonChange,
 }: Props) {
-  const containerRef    = useRef<HTMLDivElement>(null)
-  const mapRef          = useRef<any>(null)
-  const drawingRef      = useRef<[number,number][]>([])
-  const zonesRef        = useRef<Zone[]>([])
-  const onZoneClickRef  = useRef<(zone: Zone) => void>(onZoneClick)
+  const containerRef       = useRef<HTMLDivElement>(null)
+  const mapRef             = useRef<any>(null)
+  const drawRef            = useRef<any>(null)           // instance MapboxDraw
+  const drawVerticesRef    = useRef<[number,number][]>([]) // vertices trackés pour undo
+  const zonesRef           = useRef<Zone[]>([])
+  const onZoneClickRef     = useRef<(zone: Zone) => void>(onZoneClick)
+  const allAdressesRef     = useRef<any[]>([])           // adresses pour snap
   const [mapLoaded, setMapLoaded] = useState(false)
-  const [drawPoints, setDrawPoints] = useState<[number,number][]>([])
+  const [drawVertexCount, setDrawVertexCount] = useState(0)
   const [editVertices, setEditVertices] = useState<[number,number][]>([])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [nbAdresses, setNbAdresses]           = useState<number | null>(null)
@@ -64,6 +67,7 @@ export default function ZoneEditorMap({
   // Garder les refs à jour à chaque render pour éviter les closures stale
   useEffect(() => { zonesRef.current = zones }, [zones])
   useEffect(() => { onZoneClickRef.current = onZoneClick }, [onZoneClick])
+  useEffect(() => { allAdressesRef.current = allAdresses }, [allAdresses])
 
   // Basculer entre OSM et satellite
   useEffect(() => {
@@ -119,8 +123,6 @@ export default function ZoneEditorMap({
         map.addSource('zones-bg',     { type: 'geojson', data: emptyFC() })
         map.addSource('zones-sel',    { type: 'geojson', data: emptyFC() })
         map.addSource('split-line',   { type: 'geojson', data: emptyFC() })
-        map.addSource('draw-poly',    { type: 'geojson', data: emptyFC() })
-        map.addSource('draw-points',  { type: 'geojson', data: emptyFC() })
         map.addSource('edit-vertices',{ type: 'geojson', data: emptyFC() })
         map.addSource('adresses-zone',  { type: 'geojson', data: emptyFC() })
         map.addSource('all-adresses',   { type: 'geojson', data: emptyFC() })
@@ -142,17 +144,7 @@ export default function ZoneEditorMap({
         map.addLayer({ id: 'split-line-layer', type: 'line', source: 'split-line',
           paint: { 'line-color': '#d97706', 'line-width': 2, 'line-dasharray': [4,2] } })
 
-        // Polygone en cours de dessin
-        map.addLayer({ id: 'draw-poly-fill', type: 'fill', source: 'draw-poly',
-          paint: { 'fill-color': '#1D9E75', 'fill-opacity': 0.15 } })
-        map.addLayer({ id: 'draw-poly-line', type: 'line', source: 'draw-poly',
-          paint: { 'line-color': '#1D9E75', 'line-width': 2 } })
-
-        // Points du dessin
-        map.addLayer({ id: 'draw-points-layer', type: 'circle', source: 'draw-points',
-          paint: { 'circle-radius': 6, 'circle-color': '#1D9E75', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
-
-        // Sommets éditables
+        // Sommets éditables (mode edit — GL Draw gère le mode draw)
         map.addLayer({ id: 'edit-vertices-layer', type: 'circle', source: 'edit-vertices',
           paint: {
             'circle-radius': ['case', ['==', ['get', 'midpoint'], true], 4, 7],
@@ -303,70 +295,122 @@ export default function ZoneEditorMap({
     ;(map.getSource('split-line') as any)?.setData({ type: 'FeatureCollection', features: [line] })
   }, [mapLoaded, mode, splitAxis, splitPosition, selectedZoneId])
 
-  // ── Mode dessin — gestion des clics ────────────────────────────────
+  // ── GL Draw — mode dessin (remplace le dessin custom) ──────────────
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return
     const map = mapRef.current
 
+    // Quitter le mode dessin : nettoyer GL Draw
     if (mode !== 'draw') {
-      map.getCanvas().style.cursor = ''
-      ;(map.getSource('draw-poly') as any)?.setData(emptyFC())
-      ;(map.getSource('draw-points') as any)?.setData(emptyFC())
-      setDrawPoints([])
-      drawingRef.current = []
+      if (drawRef.current) {
+        try { map.removeControl(drawRef.current) } catch { /* déjà retiré */ }
+        drawRef.current = null
+      }
+      drawVerticesRef.current = []
+      setDrawVertexCount(0)
       return
     }
 
-    map.getCanvas().style.cursor = 'crosshair'
+    // Init GL Draw (import dynamique → SSR-safe)
+    let cancelled = false
+    const keyHandler = (e: KeyboardEvent) => {
+      if (!drawRef.current) return
+      // Ctrl+Z / Cmd+Z : annuler le dernier sommet
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        const verts = drawVerticesRef.current
+        if (verts.length === 0) return
+        // Supprimer le dernier vertex de notre suivi
+        drawVerticesRef.current = verts.slice(0, -1)
+        const remaining = drawVerticesRef.current
+        setDrawVertexCount(remaining.length)
 
-    const onClick = (e: any) => {
-      // Ignorer les clics droits
-      if (e.originalEvent?.button === 2) return
-      const pt: [number,number] = [e.lngLat.lng, e.lngLat.lat]
-      drawingRef.current = [...drawingRef.current, pt]
-      setDrawPoints([...drawingRef.current])
-    }
-
-    // Clic droit : supprimer le dernier point
-    const onContextMenu = (e: any) => {
-      e.preventDefault()
-      if (drawingRef.current.length === 0) return
-      drawingRef.current = drawingRef.current.slice(0, -1)
-      setDrawPoints([...drawingRef.current])
-    }
-
-    const onDblClick = (e: any) => {
-      e.preventDefault()
-      const pts = drawingRef.current
-      const finalPts = autocompletePolygon(pts)
-      if (!finalPts) return
-      const closed = [...finalPts, finalPts[0]]
-      const geojson = {
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [closed] },
+        // Reconstruire le dessin : supprimer l'actuel + rejouer les vertices
+        // via direct_select si ≥ 3 points, sinon reset complet
+        const draw = drawRef.current
+        draw.deleteAll()
+        if (remaining.length >= 3) {
+          const id = `undo-${Date.now()}`
+          draw.add({
+            id,
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[...remaining, remaining[0]]],
+            },
+          })
+          draw.changeMode('direct_select', { featureId: id })
+        } else {
+          draw.changeMode('draw_polygon')
+        }
       }
-      onPolygonChange(geojson)
-      updateDrawLayers(map, finalPts)
     }
 
-    const canvas = map.getCanvas()
-    canvas.addEventListener('contextmenu', onContextMenu)
-    map.on('click', onClick)
-    map.on('dblclick', onDblClick)
+    const initDraw = async () => {
+      const { default: MapboxDraw } = await import('@mapbox/mapbox-gl-draw')
+      await import('@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css')
+      if (cancelled) return
+
+      const onVertexAdded = (pt: [number, number]) => {
+        drawVerticesRef.current = [...drawVerticesRef.current, pt]
+        setDrawVertexCount(drawVerticesRef.current.length)
+      }
+
+      const snapMode = createSnapPolygonMode(
+        () => allAdressesRef.current
+          .filter((a) => a.lat && a.lon)
+          .map((a): [number, number] => [a.lon, a.lat]),
+        onVertexAdded,
+        10 // rayon snap en mètres
+      )
+
+      const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        styles: GL_DRAW_STYLES,
+        modes: snapMode
+          ? { ...MapboxDraw.modes, draw_polygon: snapMode }
+          : MapboxDraw.modes,
+      })
+
+      map.addControl(draw)
+      draw.changeMode('draw_polygon')
+      drawRef.current = draw
+      drawVerticesRef.current = []
+
+      // Polygone terminé (double-clic pour fermer)
+      const onCreate = (e: any) => {
+        const feature = e.features?.[0]
+        if (!feature) return
+        onPolygonChange(feature)
+        // Nettoyer et relancer un nouveau dessin
+        draw.deleteAll()
+        draw.changeMode('draw_polygon')
+        drawVerticesRef.current = []
+        setDrawVertexCount(0)
+      }
+
+      map.on('draw.create', onCreate)
+      window.addEventListener('keydown', keyHandler)
+
+      return () => {
+        map.off('draw.create', onCreate)
+        window.removeEventListener('keydown', keyHandler)
+        if (drawRef.current) {
+          try { map.removeControl(drawRef.current) } catch { /* ok */ }
+          drawRef.current = null
+        }
+      }
+    }
+
+    const cleanupPromise = initDraw()
     return () => {
-      canvas.removeEventListener('contextmenu', onContextMenu)
-      map.off('click', onClick)
-      map.off('dblclick', onDblClick)
+      cancelled = true
+      window.removeEventListener('keydown', keyHandler)
+      cleanupPromise.then((fn) => fn?.())
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded, mode])
-
-  // Mise à jour du dessin sur la carte
-  useEffect(() => {
-    if (!mapLoaded || !mapRef.current || mode !== 'draw') return
-    updateDrawLayers(mapRef.current, drawPoints)
-  }, [mapLoaded, drawPoints, mode])
 
   // ── Chargement des adresses de la zone sélectionnée ────────────────
   useEffect(() => {
@@ -512,63 +556,10 @@ export default function ZoneEditorMap({
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  // Auto-complétion : si < 3 points, génère les points manquants pour former un polygone
-  // avec le tracé existant comme base (bounding box légèrement étendue)
-  function autocompletePolygon(pts: [number,number][]): [number,number][] | null {
-    if (pts.length === 0) return null
-    if (pts.length >= 3) return pts
-
-    if (pts.length === 1) {
-      // 1 point : carré de ~200m autour du point
-      const d = 0.001
-      const [lon, lat] = pts[0]
-      return [
-        [lon - d, lat - d],
-        [lon + d, lat - d],
-        [lon + d, lat + d],
-        [lon - d, lat + d],
-      ]
-    }
-
-    // 2 points : rectangle autour des 2 points avec buffer
-    const lons = pts.map((p) => p[0])
-    const lats = pts.map((p) => p[1])
-    const minLon = Math.min(...lons), maxLon = Math.max(...lons)
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats)
-    const padLon = Math.max((maxLon - minLon) * 0.3, 0.0005)
-    const padLat = Math.max((maxLat - minLat) * 0.3, 0.0005)
-    return [
-      pts[0],
-      pts[1],
-      [maxLon + padLon, minLat - padLat],
-      [minLon - padLon, minLat - padLat],
-    ]
-  }
   function emptyFC() { return { type: 'FeatureCollection', features: [] } }
   function fc(features: any[]) { return { type: 'FeatureCollection', features } }
   function feature(geometry: any, properties: any) { return { type: 'Feature', properties, geometry } }
   function parseGeo(g: any) { return typeof g === 'string' ? JSON.parse(g) : g }
-
-  function updateDrawLayers(map: any, pts: [number,number][]) {
-    const ptFeatures = pts.map((p) => ({
-      type: 'Feature', properties: {},
-      geometry: { type: 'Point', coordinates: p },
-    }))
-    ;(map.getSource('draw-points') as any)?.setData(fc(ptFeatures))
-
-    if (pts.length >= 3) {
-      const closed = [...pts, pts[0]]
-      ;(map.getSource('draw-poly') as any)?.setData(fc([{
-        type: 'Feature', properties: {},
-        geometry: { type: 'Polygon', coordinates: [closed] },
-      }]))
-    } else if (pts.length >= 2) {
-      ;(map.getSource('draw-poly') as any)?.setData(fc([{
-        type: 'Feature', properties: {},
-        geometry: { type: 'LineString', coordinates: pts },
-      }]))
-    }
-  }
 
   function updateVertexLayer(map: any, ring: [number,number][]) {
     const mainVerts = ring.map((p, i) => ({
@@ -706,7 +697,7 @@ export default function ZoneEditorMap({
         color: '#5F5E5A', border: '1px solid #e8e7e0',
         pointerEvents: 'none',
       }}>
-        {mode === 'draw' && `${drawPoints.length} sommet${drawPoints.length !== 1 ? 's' : ''} — clic droit pour annuler · double-clic pour fermer`}
+        {mode === 'draw' && `${drawVertexCount} sommet${drawVertexCount !== 1 ? 's' : ''} — Ctrl+Z pour annuler · double-clic pour fermer`}
         {mode === 'edit' && `${editVertices.length} sommets — glissez pour déplacer`}
         {mode === 'merge' && 'Shift+clic sur la zone à fusionner'}
         {mode === 'split' && 'Ajustez la ligne de coupe dans le panneau'}
