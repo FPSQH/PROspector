@@ -266,7 +266,7 @@ export function getDefaultSectionHtml(
       return `<div>${getPolitesse1()}</div><div>${getPolitesse2()}</div>`
     }
     case 'audit':
-      return null  // dépend des données d'audit réelles — pas de texte statique
+      return `<div>Un audit énergétique a été réalisé pour ${typeBien}. Il identifie plusieurs scénarios de rénovation permettant d'améliorer significativement la performance énergétique.</div><div>Pour en savoir plus, contactez {agentNom} au {agenceTel} ou par e-mail à {agenceEmail}.</div>`
     default:
       return null
   }

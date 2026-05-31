@@ -40,6 +40,7 @@ export interface TemplateSection {
   image_mime?:           string | null
   image_position?:       'left' | 'right' | 'fullwidth' // défaut 'left'
   image_width_pct?:      number                          // % de la largeur totale (20–80), défaut 35
+  image_valign?:         'top' | 'middle' | 'bottom'    // alignement vertical image/texte (left/right), défaut 'top'
   image_natural_width?:  number                          // dimensions mesurées à l'upload
   image_natural_height?: number
 }
@@ -61,8 +62,20 @@ export interface TemplateV2 {
   envelope_enabled: boolean
   envelope_line1:   string   // ligne 1 — destinataire (ex: "Monsieur Madame le Propriétaire")
   envelope_line2?:  string   // ligne 2 — complément optionnel (ex: "Apt 3B - Bât A")
+  // ── Image en mode Texte unique ─────────────────────────────────────────────
+  unique_image?:    UniqueImageConfig | null
   created_at?:      string
   updated_at?:      string
+}
+
+export interface UniqueImageConfig {
+  data:            string
+  mime:            string
+  position?:       'left' | 'right' | 'fullwidth'
+  width_pct?:      number
+  valign?:         'top' | 'middle' | 'bottom'
+  natural_width?:  number
+  natural_height?: number
 }
 
 // ── Sections par défaut ────────────────────────────────────────────────────────

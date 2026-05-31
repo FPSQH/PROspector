@@ -53,6 +53,7 @@ export async function PUT(request: Request, { params }: Ctx) {
   if (typeof body.logo_scale_pct === 'number')  patch.logo_scale_pct = Math.max(10, Math.min(200, body.logo_scale_pct))
   if (body.logo_position === 'header' || body.logo_position === 'footer') patch.logo_position = body.logo_position
   if ('sections_config'  in body) patch.sections_config  = body.sections_config  ?? null
+  if ('unique_image'     in body) patch.unique_image     = body.unique_image     ?? null
   if (typeof body.envelope_enabled === 'boolean') patch.envelope_enabled = body.envelope_enabled
   if (typeof body.envelope_line1   === 'string')  patch.envelope_line1   = body.envelope_line1
   if (typeof body.envelope_line2   === 'string')  patch.envelope_line2   = body.envelope_line2

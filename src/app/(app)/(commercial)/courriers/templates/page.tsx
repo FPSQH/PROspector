@@ -148,8 +148,17 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
       parts.push(`<div style="display:flex;justify-content:flex-end;margin:0 0 24px;"><div style="border:1px solid #c8c8c8;padding:12px 16px;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:200px;max-width:260px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div></div>`)
     }
     parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
-    parts.push(p(fillVarsHtml(template.unique_text, vars)))
-    // En mode unique l'utilisateur gère sa propre signature via {agentNom}/{agenceNom}
+    const uBody = p(fillVarsHtml(template.unique_text, vars))
+    const ui = template.unique_image
+    if (ui?.data && ui?.mime) {
+      parts.push(wrapImgPreview(
+        { data: ui.data, mime: ui.mime, position: ui.position,
+          width_pct: ui.width_pct, valign: ui.valign },
+        uBody,
+      ))
+    } else {
+      parts.push(uBody)
+    }
     if (footerHtml) parts.push(footerHtml)
     return parts.join('\n')
   }
@@ -175,19 +184,24 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   parts.push(p(`Je me permets de vous contacter au sujet de ${typeBien} situé : <strong>${data.adresse_brute}</strong>`))
 
   // ── Wrapper image pour l'aperçu ──────────────────────────────────────────
-  const wrapImgPreview = (sec: TemplateSection, content: string): string => {
-    if (!sec.image_enabled || !sec.image_data || !sec.image_mime) return content
-    const src = `data:${sec.image_mime};base64,${sec.image_data}`
-    const pct = sec.image_width_pct ?? 35
-    if (sec.image_position === 'fullwidth') {
+  // Reçoit uniquement le CORPS (sans le titre) — le titre est toujours poussé séparément.
+  const wrapImgPreview = (
+    img: { data: string; mime: string; position?: string; width_pct?: number; valign?: string },
+    content: string,
+  ): string => {
+    const src = `data:${img.mime};base64,${img.data}`
+    const pct = img.width_pct ?? 35
+    if (img.position === 'fullwidth') {
       return `<div style="text-align:center;margin:0 0 10px;"><img src="${src}" style="max-width:100%;height:auto;border-radius:4px;" /></div>${content}`
     }
-    const isLeft  = (sec.image_position ?? 'left') !== 'right'
+    const isLeft  = (img.position ?? 'left') !== 'right'
     const pad     = isLeft ? 'padding-right:14px' : 'padding-left:14px'
+    const valignMap: Record<string,string> = { top:'flex-start', middle:'center', bottom:'flex-end' }
+    const align   = valignMap[img.valign ?? 'top'] ?? 'flex-start'
     const imgDiv  = `<div style="flex-shrink:0;width:${pct}%;${pad};"><img src="${src}" style="width:100%;height:auto;border-radius:4px;" /></div>`
     const txtDiv  = `<div style="flex:1;">${content}</div>`
     const [l, r]  = isLeft ? [imgDiv, txtDiv] : [txtDiv, imgDiv]
-    return `<div style="display:flex;align-items:flex-start;">${l}${r}</div>`
+    return `<div style="display:flex;align-items:${align};">${l}${r}</div>`
   }
 
   const previewConflicts = getSectionConflicts(sections)
@@ -196,14 +210,16 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
     if (previewConflicts.has(sec.id)) continue  // conflit → exclu
     if (!sectionMatchesCondition(sec, dpe, typeBienRaw, hasAuditPreview)) continue
 
-    const startIdx = parts.length
+    // Le titre est toujours pleine largeur, séparé du corps
+    const titleHtml = h4(sec)
+    if (titleHtml) parts.push(titleHtml)
+    const startIdx = parts.length  // on marque APRÈS le titre
 
     switch (sectionContentKey(sec)) {
       case 'intro':
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getIntroCtx(dpeGroup, ctx, typeBien, null)))
         break
       case 'dpe': {
-        parts.push(h4(sec))
         if (sec.bodyHtml) {
           parts.push(p(fillVarsHtml(sec.bodyHtml, vars)))
         } else {
@@ -219,7 +235,6 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
       }
       case 'audit':
         if (!data.audit?.n_audit) break  // sécurité contenu
-        parts.push(h4(sec))
         if (sec.bodyHtml) {
           parts.push(p(fillVarsHtml(sec.bodyHtml, vars)))
         } else {
@@ -231,19 +246,15 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
         }
         break
       case 'estimation':
-        parts.push(h4(sec))
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getEstimationText(typeBien, null).replace('estimation gratuite et sans engagement', '<strong>estimation gratuite et sans engagement</strong>')))
         break
       case 'vente':
-        parts.push(h4(sec))
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getVenteText(dpeGroup, dpe, typeBien, null)))
         break
       case 'gestion_locative':
-        parts.push(h4(sec))
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getGLText(isAppt, null)))
         break
       case 'renovation':
-        parts.push(h4(sec))
         parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getRenovationCaHTML(null)))
         break
       case 'politesse':
@@ -256,15 +267,18 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
         break
       default:
         if (sec.type === 'custom' && sec.bodyHtml) {
-          parts.push(h4(sec))
           parts.push(p(fillVarsHtml(sec.bodyHtml, vars)))
         }
     }
 
-    // ── Wrap avec image si activée ────────────────────────────────────────
-    if (sec.image_enabled && sec.image_data && parts.length > startIdx) {
+    // ── Wrap corps avec image (titre déjà poussé séparément avant startIdx) ─
+    if (sec.image_enabled && sec.image_data && sec.image_mime && parts.length > startIdx) {
       const merged = parts.splice(startIdx).join('\n')
-      parts.push(wrapImgPreview(sec, merged))
+      parts.push(wrapImgPreview(
+        { data: sec.image_data, mime: sec.image_mime, position: sec.image_position,
+          width_pct: sec.image_width_pct, valign: sec.image_valign },
+        merged,
+      ))
     }
   }
 
@@ -858,7 +872,7 @@ function SectionItem({
             </div>
 
             {/* ── Pré-remplissage depuis le texte par défaut ── */}
-            {meta && effectiveId !== 'audit' && (
+            {meta && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '6px 10px', background: C.card, borderRadius: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: C.dim, flexShrink: 0 }}>Charger le texte par défaut pour DPE :</span>
                 {['A','B','C','D','E','F','G'].map(l => (
@@ -945,17 +959,38 @@ function SectionItem({
                   </div>
                 </div>
 
-                {/* Slider largeur (2 colonnes seulement) */}
+                {/* Alignement vertical + Slider largeur (2 colonnes seulement) */}
                 {(section.image_position ?? 'left') !== 'fullwidth' && (
-                  <div>
-                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
-                      Largeur image : <strong style={{ color: C.text }}>{section.image_width_pct ?? 35}%</strong>
-                      <span style={{ color: C.dim }}> · texte : {100 - (section.image_width_pct ?? 35)}%</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Alignement vertical de l'image :</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {(['top', 'middle', 'bottom'] as const).map(va => {
+                          const vaLabels: Record<string, string> = { top: '↑ Haut', middle: '↕ Centre', bottom: '↓ Bas' }
+                          const active = (section.image_valign ?? 'top') === va
+                          return (
+                            <button key={va} onClick={() => onChange({ image_valign: va })}
+                              style={{ padding: '3px 9px', borderRadius: 4,
+                                border: `1px solid ${active ? C.primary : C.border}`,
+                                background: active ? 'rgba(29,158,117,0.1)' : 'transparent',
+                                color: active ? C.primary : C.muted,
+                                fontSize: 11, cursor: 'pointer', fontWeight: active ? 600 : 400 }}>
+                              {vaLabels[va]}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                    <input type="range" min={20} max={70} step={5}
-                      value={section.image_width_pct ?? 35}
-                      onChange={e => onChange({ image_width_pct: Number(e.target.value) })}
-                      style={{ width: '100%', accentColor: C.primary }} />
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
+                        Largeur image : <strong style={{ color: C.text }}>{section.image_width_pct ?? 35}%</strong>
+                        <span style={{ color: C.dim }}> · texte : {100 - (section.image_width_pct ?? 35)}%</span>
+                      </div>
+                      <input type="range" min={20} max={70} step={5}
+                        value={section.image_width_pct ?? 35}
+                        onChange={e => onChange({ image_width_pct: Number(e.target.value) })}
+                        style={{ width: '100%', accentColor: C.primary }} />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1151,7 +1186,7 @@ export default function TemplatesPage() {
         id: crypto.randomUUID(),
         // Pour les sections fixes : mémoriser le type d'origine dans fixedId
         fixedId: orig.type === 'fixed' ? (orig.fixedId ?? orig.id) : undefined,
-        title: orig.title + ' (copie)',
+        title: orig.title,
       }
       secs.splice(idx + 1, 0, copy)
       return { ...prev, sections_config: secs }
@@ -1436,6 +1471,125 @@ export default function TemplatesPage() {
                         placeholder="Rédigez votre courrier unique ici… Utilisez les variables {typeBien}, {dpe}, etc."
                         vars={ALL_VARIABLES.map(v => v.key)}
                       />
+
+                      {/* ── Image en mode Texte unique ── */}
+                      <div style={{ marginTop:16, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
+                        <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:C.mid }}>
+                          <input type="checkbox" checked={!!(draft.unique_image?.data)}
+                            onChange={e => {
+                              if (!e.target.checked) patchDraft({ unique_image: null })
+                            }}
+                            style={{ accentColor:C.primary, cursor:'pointer' }} />
+                          Inclure une image dans cette lettre
+                        </label>
+
+                        {draft.unique_image?.data ? (
+                          <div style={{ marginTop:10 }}>
+                            {/* Aperçu + actions */}
+                            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                              <img src={`data:${draft.unique_image.mime ?? 'image/png'};base64,${draft.unique_image.data}`}
+                                style={{ maxWidth:80, maxHeight:60, objectFit:'contain', background:'#fff', borderRadius:4, padding:4 }} alt="Aperçu" />
+                              <button onClick={() => patchDraft({ unique_image: null })}
+                                style={{ fontSize:11, padding:'3px 8px', borderRadius:4, border:`1px solid rgba(239,68,68,0.3)`, background:'rgba(239,68,68,0.05)', color:C.danger, cursor:'pointer' }}>
+                                Supprimer
+                              </button>
+                              <label style={{ fontSize:11, padding:'3px 8px', borderRadius:4, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, cursor:'pointer' }}>
+                                Changer
+                                <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
+                                  const file = e.target.files?.[0]
+                                  if (!file) return
+                                  if (file.size > 2_000_000) { alert('Image trop lourde (max 2 Mo)'); return }
+                                  const reader = new FileReader()
+                                  reader.onload = () => {
+                                    const dataUrl = reader.result as string
+                                    const img = new Image()
+                                    img.onload = () => patchDraft({ unique_image: {
+                                      ...draft.unique_image,
+                                      data: dataUrl.split(',')[1], mime: file.type,
+                                      natural_width: img.naturalWidth, natural_height: img.naturalHeight,
+                                    }})
+                                    img.src = dataUrl
+                                  }
+                                  reader.readAsDataURL(file)
+                                }} />
+                              </label>
+                            </div>
+
+                            {/* Position */}
+                            <div style={{ marginBottom:8 }}>
+                              <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>Position :</div>
+                              <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                                {(['left','right','fullwidth'] as const).map(pos => {
+                                  const labels: Record<string,string> = { left:'◧ Gauche', right:'◨ Droite', fullwidth:'▬ Pleine largeur' }
+                                  const active = (draft.unique_image?.position ?? 'left') === pos
+                                  return (
+                                    <button key={pos} onClick={() => patchDraft({ unique_image: { ...draft.unique_image!, position: pos } })}
+                                      style={{ padding:'3px 9px', borderRadius:4, border:`1px solid ${active ? C.primary : C.border}`,
+                                        background: active ? 'rgba(29,158,117,0.1)' : 'transparent',
+                                        color: active ? C.primary : C.muted, fontSize:11, cursor:'pointer', fontWeight: active ? 600 : 400 }}>
+                                      {labels[pos]}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Alignement vertical + largeur (2 colonnes) */}
+                            {(draft.unique_image?.position ?? 'left') !== 'fullwidth' && (
+                              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                <div>
+                                  <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>Alignement vertical de l'image :</div>
+                                  <div style={{ display:'flex', gap:4 }}>
+                                    {(['top','middle','bottom'] as const).map(va => {
+                                      const vaLabels: Record<string,string> = { top:'↑ Haut', middle:'↕ Centre', bottom:'↓ Bas' }
+                                      const active = (draft.unique_image?.valign ?? 'top') === va
+                                      return (
+                                        <button key={va} onClick={() => patchDraft({ unique_image: { ...draft.unique_image!, valign: va } })}
+                                          style={{ padding:'3px 9px', borderRadius:4, border:`1px solid ${active ? C.primary : C.border}`,
+                                            background: active ? 'rgba(29,158,117,0.1)' : 'transparent',
+                                            color: active ? C.primary : C.muted, fontSize:11, cursor:'pointer', fontWeight: active ? 600 : 400 }}>
+                                          {vaLabels[va]}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>
+                                    Largeur image : <strong style={{ color:C.text }}>{draft.unique_image?.width_pct ?? 35}%</strong>
+                                    <span style={{ color:C.dim }}> · texte : {100 - (draft.unique_image?.width_pct ?? 35)}%</span>
+                                  </div>
+                                  <input type="range" min={20} max={70} step={5}
+                                    value={draft.unique_image?.width_pct ?? 35}
+                                    onChange={e => patchDraft({ unique_image: { ...draft.unique_image!, width_pct: Number(e.target.value) } })}
+                                    style={{ width:'100%', accentColor:C.primary }} />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <label style={{ display:'inline-block', marginTop:10, padding:'6px 14px', borderRadius:6, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, fontSize:11, cursor:'pointer' }}>
+                            Choisir une image
+                            <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              if (file.size > 2_000_000) { alert('Image trop lourde (max 2 Mo)'); return }
+                              const reader = new FileReader()
+                              reader.onload = () => {
+                                const dataUrl = reader.result as string
+                                const img = new Image()
+                                img.onload = () => patchDraft({ unique_image: {
+                                  data: dataUrl.split(',')[1], mime: file.type,
+                                  position: 'left', width_pct: 35, valign: 'top',
+                                  natural_width: img.naturalWidth, natural_height: img.naturalHeight,
+                                }})
+                                img.src = dataUrl
+                              }
+                              reader.readAsDataURL(file)
+                            }} />
+                          </label>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     /* Mode sections */

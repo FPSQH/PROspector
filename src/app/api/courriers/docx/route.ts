@@ -177,19 +177,27 @@ function buildEnvelopeParas(template: TemplateV2, letter: DpeAdresseData, ville:
 }
 
 // ── Image dans un bloc : table 2 col (image | texte) ou image pleine largeur ────
-function wrapWithImage(sec: TemplateSection, paras: Paragraph[]): (Paragraph | Table)[] {
-  if (!sec.image_enabled || !sec.image_data || !sec.image_mime) return paras
-  const pct   = Math.max(20, Math.min(80, sec.image_width_pct ?? 35))
-  const raw   = Buffer.from(sec.image_data, 'base64')
-  const mime  = (sec.image_mime.split('/')[1] as any) || 'png'
+type ImageConfig = {
+  data: string; mime: string
+  position?: 'left' | 'right' | 'fullwidth'
+  width_pct?: number; valign?: 'top' | 'middle' | 'bottom'
+  natural_width?: number; natural_height?: number
+}
+
+function buildImageBlock(img: ImageConfig, paras: Paragraph[]): (Paragraph | Table)[] {
+  const pct   = Math.max(20, Math.min(80, img.width_pct ?? 35))
+  const raw   = Buffer.from(img.data, 'base64')
+  const mime  = (img.mime.split('/')[1] as any) || 'png'
   const cellNil = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
   const noBorder = { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil }
-  // Largeur image en DXA puis en px (aprox 72 DPI)
   const totalDxa = 9360
-  if (sec.image_position === 'fullwidth') {
-    const imgW = Math.round(totalDxa / 914.4)   // 914.4 DXA ≈ 1 cm → adapt
-    const natW = sec.image_natural_width  ?? 200
-    const natH = sec.image_natural_height ?? 150
+  const vAlignMap: Record<string, any> = { top: VerticalAlign.TOP, middle: VerticalAlign.CENTER, bottom: VerticalAlign.BOTTOM }
+  const vAlign = vAlignMap[img.valign ?? 'top'] ?? VerticalAlign.TOP
+
+  if (img.position === 'fullwidth') {
+    const imgW  = Math.round(totalDxa / 914.4)
+    const natW  = img.natural_width  ?? 200
+    const natH  = img.natural_height ?? 150
     const scale = Math.min(imgW / natW, 1)
     const imgPara = new Paragraph({
       children: [new ImageRun({ data: raw, type: mime,
@@ -201,12 +209,13 @@ function wrapWithImage(sec: TemplateSection, paras: Paragraph[]): (Paragraph | T
   const imgDxa = Math.round(totalDxa * pct / 100)
   const txtDxa = totalDxa - imgDxa
   const imgPx  = Math.round(imgDxa / 914.4 * 10)
-  const natW   = sec.image_natural_width  ?? 200
-  const natH   = sec.image_natural_height ?? 150
+  const natW   = img.natural_width  ?? 200
+  const natH   = img.natural_height ?? 150
   const scl    = imgPx / natW
   const imgH   = Math.round(natH * scl)
   const imgCell = new TableCell({
     width: { size: imgDxa, type: WidthType.DXA }, borders: noBorder,
+    verticalAlign: vAlign,
     children: [new Paragraph({
       children: [new ImageRun({ data: raw, type: mime, transformation: { width: imgPx, height: imgH } })],
       alignment: AlignmentType.CENTER,
@@ -214,14 +223,25 @@ function wrapWithImage(sec: TemplateSection, paras: Paragraph[]): (Paragraph | T
   })
   const txtCell = new TableCell({
     width: { size: txtDxa, type: WidthType.DXA }, borders: noBorder,
+    verticalAlign: vAlign,
     children: paras.length ? paras : [new Paragraph({ children: [] })]
   })
-  const [left, right] = sec.image_position === 'right' ? [txtCell, imgCell] : [imgCell, txtCell]
+  const [left, right] = img.position === 'right' ? [txtCell, imgCell] : [imgCell, txtCell]
   return [new Table({
     width: { size: totalDxa, type: WidthType.DXA }, columnWidths: [imgDxa, txtDxa],
     borders: { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil, insideH: cellNil, insideV: cellNil },
     rows: [new TableRow({ children: [left, right] })]
   })]
+}
+
+function wrapWithImage(sec: TemplateSection, paras: Paragraph[]): (Paragraph | Table)[] {
+  if (!sec.image_enabled || !sec.image_data || !sec.image_mime) return paras
+  return buildImageBlock({
+    data: sec.image_data, mime: sec.image_mime,
+    position: sec.image_position, width_pct: sec.image_width_pct,
+    valign: sec.image_valign,
+    natural_width: sec.image_natural_width, natural_height: sec.image_natural_height,
+  }, paras)
 }
 
 // ── Génération lettre V2 (templates avec sections_config) ────────────────────
@@ -241,8 +261,7 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
 
   // Mode unique
   if (template.mode === 'unique' && template.unique_text) {
-    const paras: Paragraph[] = []
-    // Bloc enveloppe AFNOR NF Z 10-011 (si activé, même en mode unique)
+    const paras: (Paragraph | Table)[] = []
     if (template.envelope_enabled) {
       paras.push(...buildEnvelopeParas(template, letter, ville))
     }
@@ -250,8 +269,18 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
       children: [T(`${ville ? ville + ', le ' : 'Le '}${today}`, { size: 18, color: GREY, italics: true })],
       alignment: AlignmentType.RIGHT, spacing: { after: 240 }
     }))
-    paras.push(...htmlParas(template.unique_text, vars))
-    // En mode unique l'utilisateur gère lui-même la signature dans son template
+    const bodyParas = htmlParas(template.unique_text, vars)
+    const ui = template.unique_image
+    if (ui?.data && ui?.mime) {
+      paras.push(...buildImageBlock({
+        data: ui.data, mime: ui.mime,
+        position: ui.position, width_pct: ui.width_pct,
+        valign: ui.valign,
+        natural_width: ui.natural_width, natural_height: ui.natural_height,
+      }, bodyParas))
+    } else {
+      paras.push(...bodyParas)
+    }
     return paras
   }
 
