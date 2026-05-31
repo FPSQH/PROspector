@@ -194,11 +194,14 @@ function buildImageBlock(img: ImageConfig, paras: Paragraph[]): (Paragraph | Tab
   const vAlignMap: Record<string, any> = { top: VerticalAlign.TOP, middle: VerticalAlign.CENTER, bottom: VerticalAlign.BOTTOM }
   const vAlign = vAlignMap[img.valign ?? 'top'] ?? VerticalAlign.TOP
 
+  // Conversion DXA → pixels : 1440 DXA = 1 inch = 96 px (96 DPI)
+  const dxaToPx = (dxa: number) => Math.round(dxa * 96 / 1440)
+
   if (img.position === 'fullwidth') {
-    const imgW  = Math.round(totalDxa / 914.4)
+    const imgW  = dxaToPx(totalDxa)        // largeur totale du contenu en px
     const natW  = img.natural_width  ?? 200
     const natH  = img.natural_height ?? 150
-    const scale = Math.min(imgW / natW, 1)
+    const scale = Math.min(imgW / natW, 1) // ne pas agrandir au-delà de la taille naturelle
     const imgPara = new Paragraph({
       children: [new ImageRun({ data: raw, type: mime,
         transformation: { width: Math.round(natW * scale), height: Math.round(natH * scale) } })],
@@ -208,16 +211,16 @@ function buildImageBlock(img: ImageConfig, paras: Paragraph[]): (Paragraph | Tab
   }
   const imgDxa = Math.round(totalDxa * pct / 100)
   const txtDxa = totalDxa - imgDxa
-  const imgPx  = Math.round(imgDxa / 914.4 * 10)
+  const imgPx  = dxaToPx(imgDxa)          // largeur de la colonne image en px
   const natW   = img.natural_width  ?? 200
   const natH   = img.natural_height ?? 150
-  const scl    = imgPx / natW
+  const scl    = Math.min(imgPx / natW, 1) // ne pas agrandir au-delà de la taille naturelle
   const imgH   = Math.round(natH * scl)
   const imgCell = new TableCell({
     width: { size: imgDxa, type: WidthType.DXA }, borders: noBorder,
     verticalAlign: vAlign,
     children: [new Paragraph({
-      children: [new ImageRun({ data: raw, type: mime, transformation: { width: imgPx, height: imgH } })],
+      children: [new ImageRun({ data: raw, type: mime, transformation: { width: Math.round(natW * scl), height: imgH } })],
       alignment: AlignmentType.CENTER,
     })]
   })
