@@ -2,11 +2,12 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
+import { useOnboarding, STEPS } from '@/contexts/OnboardingContext'
 
 interface Tab {
   href: string
   label: string
-  icon: (active: boolean) => React.ReactNode
+  icon: (active: boolean, spotlight: boolean) => React.ReactNode
   center?: boolean
 }
 
@@ -14,8 +15,8 @@ const tabs: Tab[] = [
   {
     href: '/dashboard',
     label: 'Accueil',
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
         <polyline points="9,22 9,12 15,12 15,22"/>
       </svg>
@@ -24,18 +25,19 @@ const tabs: Tab[] = [
   {
     href: '/zones',
     label: 'Zones',
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21"/>
         <line x1="9" y1="3" x2="9" y2="18"/>
         <line x1="15" y1="6" x2="15" y2="21"/>
       </svg>
     ),
-  },  {
+  },
+  {
     href: '/courriers',
     label: 'Courrier',
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="4" width="20" height="16" rx="2"/>
         <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
       </svg>
@@ -45,7 +47,7 @@ const tabs: Tab[] = [
     href: '/terrain',
     label: 'Terrain',
     center: true,
-    icon: (_active: boolean) => (
+    icon: (_active, _spotlight) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="10" r="3"/>
         <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
@@ -55,8 +57,8 @@ const tabs: Tab[] = [
   {
     href: '/contacts',
     label: 'Contacts',
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
         <circle cx="9" cy="7" r="4"/>
         <path d="M23 21v-2a4 4 0 00-3-3.87"/>
@@ -64,12 +66,11 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
-
   {
     href: '/planning',
     label: 'Planning',
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
         <line x1="16" y1="2" x2="16" y2="6"/>
         <line x1="8" y1="2" x2="8" y2="6"/>
@@ -80,11 +81,22 @@ const tabs: Tab[] = [
   {
     href: '/historique',
     label: 'Historique',
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9"/>
         <polyline points="12 7 12 12 15 15"/>
         <path d="M5.5 5L4 3.5M4 6.5H7"/>
+      </svg>
+    ),
+  },
+  {
+    href: '/aide',
+    label: 'Aide',
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M9 9.5C9 8.12 10.12 7 11.5 7C12.88 7 14 8.12 14 9.5C14 10.88 12 12 12 12V13.5"/>
+        <circle cx="12" cy="17" r="0.8" fill={active || spotlight ? '#1D9E75' : '#9ca3af'} stroke="none"/>
       </svg>
     ),
   },
@@ -92,11 +104,21 @@ const tabs: Tab[] = [
 
 export default function BottomTabBar() {
   const pathname = usePathname()
-  // Masquer sur terrain (navigation propre) et zones/edit (plein ecran)
+  const { activeStep, isActive } = useOnboarding()
+
   if (pathname.startsWith('/terrain') || pathname.startsWith('/zones/edit')) return null
+
+  const spotlightHref = isActive && activeStep !== null ? STEPS[activeStep].href : null
 
   return (
     <>
+      <style>{`
+        @keyframes tab-pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(29,158,117,0.7); }
+          70%  { box-shadow: 0 0 0 8px rgba(29,158,117,0); }
+          100% { box-shadow: 0 0 0 0 rgba(29,158,117,0); }
+        }
+      `}</style>
       <div style={{ height: 'calc(68px + env(safe-area-inset-bottom, 0px))', flexShrink: 0 }} />
       <nav
         style={{
@@ -114,7 +136,8 @@ export default function BottomTabBar() {
         }}
       >
         {tabs.map((tab) => {
-          const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/')
+          const isActiveTab = pathname === tab.href || pathname.startsWith(tab.href + '/')
+          const spotlight   = spotlightHref === tab.href
 
           if (tab.center) {
             return (
@@ -133,23 +156,20 @@ export default function BottomTabBar() {
                   paddingBottom: 4,
                 }}
               >
-                <div
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: '50%',
-                    background: isActive ? '#0F6E56' : '#1D9E75',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(29,158,117,0.35)',
-                    marginTop: -20,
-                    border: '3px solid #fff',
-                  }}
-                >
-                  {tab.icon(true)}
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: isActiveTab ? '#0F6E56' : '#1D9E75',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: spotlight
+                    ? '0 4px 16px rgba(29,158,117,0.5), 0 0 0 3px rgba(29,158,117,0.4)'
+                    : '0 4px 16px rgba(29,158,117,0.35)',
+                  marginTop: -20,
+                  border: '3px solid #fff',
+                  animation: spotlight ? 'tab-pulse 1.5s ease infinite' : 'none',
+                }}>
+                  {tab.icon(true, spotlight)}
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? '#1D9E75' : '#9ca3af', letterSpacing: '0.02em' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: isActiveTab ? '#1D9E75' : '#9ca3af', letterSpacing: '0.02em' }}>
                   {tab.label}
                 </span>
               </Link>
@@ -173,21 +193,23 @@ export default function BottomTabBar() {
                 position: 'relative',
               }}
             >
-              {tab.icon(isActive)}
-              <span style={{ fontSize: 10, fontWeight: isActive ? 600 : 400, color: isActive ? '#1D9E75' : '#9ca3af', letterSpacing: '0.02em' }}>
+              <div style={{
+                borderRadius: 10, padding: '4px 6px',
+                ...(spotlight ? {
+                  background: 'rgba(29,158,117,0.08)',
+                  animation: 'tab-pulse 1.5s ease infinite',
+                } : {}),
+              }}>
+                {tab.icon(isActiveTab, spotlight)}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: isActiveTab || spotlight ? 600 : 400, color: isActiveTab || spotlight ? '#1D9E75' : '#9ca3af', letterSpacing: '0.02em' }}>
                 {tab.label}
               </span>
-              {isActive && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    width: 32,
-                    height: 2.5,
-                    borderRadius: '0 0 3px 3px',
-                    background: '#1D9E75',
-                  }}
-                />
+              {(isActiveTab) && (
+                <div style={{
+                  position: 'absolute', top: 0, width: 32, height: 2.5,
+                  borderRadius: '0 0 3px 3px', background: '#1D9E75',
+                }} />
               )}
             </Link>
           )

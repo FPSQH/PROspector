@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useState } from 'react'
+import { useOnboarding, STEPS } from '@/contexts/OnboardingContext'
 
 interface NavItem {
   href:  string
@@ -79,6 +80,13 @@ const NavIcon = {
       <path d="M4.5 4L3 2.5M3 5H5.5" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
+  aide: (c: string) => (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="9" r="7" stroke={c} strokeWidth="1.5"/>
+      <path d="M7 7.2C7 6.09 7.9 5.2 9 5.2C10.1 5.2 11 6.09 11 7.2C11 8.31 9 9.2 9 9.2V10.5" stroke={c} strokeWidth="1.5" strokeLinecap="round"/>
+      <circle cx="9" cy="13" r="0.9" fill={c}/>
+    </svg>
+  ),
   settings: (c: string) => (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <circle cx="9" cy="9" r="2.5" stroke={c} strokeWidth="1.5"/>
@@ -107,162 +115,212 @@ interface Props {
 export default function AppShell({ children, userName, userInitials }: Props) {
   const pathname  = usePathname()
   const [expanded, setExpanded] = useState(false)
+  const { activeStep, isActive } = useOnboarding()
 
   const fullscreen = ['/zones/edit'].some((p) => pathname.startsWith(p))
   if (fullscreen) return <>{children}</>
 
-  const isActive = (item: NavItem) =>
+  const isActive_ = (item: NavItem) =>
     item.match.some((m) => pathname === m || pathname.startsWith(m + '/'))
+
+  // Index dans NAV_ITEMS correspondant à STEPS (1:1)
+  const spotlightHref = isActive && activeStep !== null ? STEPS[activeStep].href : null
 
   const sidebarW = expanded ? 180 : 56
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
+    <>
+      <style>{`
+        @keyframes sidebar-pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(217,119,6,0.9), 0 0 0 2px rgba(217,119,6,0.7); }
+          70%  { box-shadow: 0 0 0 8px rgba(217,119,6,0),  0 0 0 2px rgba(217,119,6,0.7); }
+          100% { box-shadow: 0 0 0 0 rgba(217,119,6,0),   0 0 0 2px rgba(217,119,6,0.7); }
+        }
+      `}</style>
 
-      {/* ── Sidebar ── */}
-      <aside
-        onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => setExpanded(false)}
-        style={{
-          width:         sidebarW,
-          minWidth:      sidebarW,
-          background:    SIDE_BG,
-          borderRight:   `1px solid ${BORDER}`,
-          display:       'flex',
-          flexDirection: 'column',
-          overflow:      'hidden',
-          transition:    'width 0.18s ease, min-width 0.18s ease',
-          zIndex:        100,
-          flexShrink:    0,
-        }}
-      >
-        {/* Logo */}
-        <div style={{
-          height:       56,
-          display:      'flex',
-          alignItems:   'center',
-          padding:      '0 11px',
-          borderBottom: `1px solid ${BORDER}`,
-          gap:          10,
-          overflow:     'hidden',
-          flexShrink:   0,
-        }}>
+      <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
+
+        {/* ── Sidebar ── z-index 200 pour rester au-dessus de l'overlay guide (z-index 100) */}
+        <aside
+          onMouseEnter={() => setExpanded(true)}
+          onMouseLeave={() => setExpanded(false)}
+          style={{
+            width:         sidebarW,
+            minWidth:      sidebarW,
+            background:    SIDE_BG,
+            borderRight:   `1px solid ${BORDER}`,
+            display:       'flex',
+            flexDirection: 'column',
+            overflow:      'hidden',
+            transition:    'width 0.18s ease, min-width 0.18s ease',
+            zIndex:        200,
+            flexShrink:    0,
+          }}
+        >
+          {/* Logo */}
           <div style={{
-            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-            background: `linear-gradient(135deg, ${GOLD}, #F59E0B)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: `0 2px 12px rgba(217,119,6,0.35)`,
+            height:       56,
+            display:      'flex',
+            alignItems:   'center',
+            padding:      '0 11px',
+            borderBottom: `1px solid ${BORDER}`,
+            gap:          10,
+            overflow:     'hidden',
+            flexShrink:   0,
           }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>P</span>
-          </div>
-          {expanded && (
-            <span style={{
-              fontWeight: 700, fontSize: '0.875rem', color: TEXT,
-              whiteSpace: 'nowrap',
-            }}>
-              PROspector
-            </span>
-          )}
-        </div>
-
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: '10px 9px', overflowY: 'auto', overflowX: 'hidden' }}>
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(item)
-            return (
-              <div key={item.href} style={{ marginBottom: 2, position: 'relative' }}>
-                {/* Active indicator bar */}
-                {active && (
-                  <div style={{
-                    position: 'absolute', left: -9, top: '50%', transform: 'translateY(-50%)',
-                    width: 3, height: 18, borderRadius: '0 2px 2px 0',
-                    background: GOLD,
-                  }} />
-                )}
-                <Link href={item.href} style={{ textDecoration: 'none' }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 9px', borderRadius: 8,
-                    background: active ? GOLD_BG : 'transparent',
-                    border:     active ? `1px solid ${GOLD_BDR}` : '1px solid transparent',
-                    whiteSpace: 'nowrap', overflow: 'hidden',
-                    transition: 'background 0.12s, border-color 0.12s',
-                  }}>
-                    <span style={{ flexShrink: 0 }}>{item.icon(active ? GOLD : DIM)}</span>
-                    {expanded && (
-                      <span style={{
-                        fontSize: '0.82rem',
-                        fontWeight: active ? 600 : 400,
-                        color: active ? TEXT : MUTED,
-                      }}>
-                        {item.label}
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              </div>
-            )
-          })}
-        </nav>
-
-        {/* Bottom */}
-        <div style={{ borderTop: `1px solid ${BORDER}`, padding: '8px 9px', flexShrink: 0 }}>
-          <div style={{ position: 'relative', marginBottom: 4 }}>
-            {pathname === '/settings' && (
-              <div style={{
-                position: 'absolute', left: -9, top: '50%', transform: 'translateY(-50%)',
-                width: 3, height: 18, borderRadius: '0 2px 2px 0', background: GOLD,
-              }} />
-            )}
-            <Link href="/settings" style={{ textDecoration: 'none' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 9px', borderRadius: 8,
-                background: pathname === '/settings' ? GOLD_BG : 'transparent',
-                border: pathname === '/settings' ? `1px solid ${GOLD_BDR}` : '1px solid transparent',
-                whiteSpace: 'nowrap', overflow: 'hidden',
-              }}>
-                <span style={{ flexShrink: 0 }}>{NavIcon.settings(pathname === '/settings' ? GOLD : DIM)}</span>
-                {expanded && (
-                  <span style={{
-                    fontSize: '0.82rem',
-                    fontWeight: pathname === '/settings' ? 600 : 400,
-                    color: pathname === '/settings' ? TEXT : MUTED,
-                  }}>Paramètres</span>
-                )}
-              </div>
-            </Link>
-          </div>
-
-          {/* Avatar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 9px', overflow: 'hidden' }}>
             <div style={{
-              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-              background: 'rgba(217,119,6,0.15)',
-              border: '1.5px solid rgba(217,119,6,0.3)',
-              color: GOLD,
+              width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+              background: `linear-gradient(135deg, ${GOLD}, #F59E0B)`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.68rem', fontWeight: 700,
+              boxShadow: `0 2px 12px rgba(217,119,6,0.35)`,
             }}>
-              {userInitials ?? 'FP'}
+              <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>P</span>
             </div>
             {expanded && (
               <span style={{
-                fontSize: '0.78rem', color: MUTED,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontWeight: 700, fontSize: '0.875rem', color: TEXT,
+                whiteSpace: 'nowrap',
               }}>
-                {userName ?? 'Commercial'}
+                PROspector
               </span>
             )}
           </div>
-        </div>
-      </aside>
 
-      {/* ── Contenu principal ── */}
-      <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-        {children}
-      </main>
+          {/* Nav */}
+          <nav style={{ flex: 1, padding: '10px 9px', overflowY: 'auto', overflowX: 'hidden' }}>
+            {NAV_ITEMS.map((item) => {
+              const active    = isActive_(item)
+              const spotlight = spotlightHref === item.href
+              return (
+                <div key={item.href} style={{ marginBottom: 2, position: 'relative' }}>
+                  {active && (
+                    <div style={{
+                      position: 'absolute', left: -9, top: '50%', transform: 'translateY(-50%)',
+                      width: 3, height: 18, borderRadius: '0 2px 2px 0',
+                      background: GOLD,
+                    }} />
+                  )}
+                  <Link href={item.href} style={{ textDecoration: 'none' }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 9px', borderRadius: 8,
+                      background: active ? GOLD_BG : 'transparent',
+                      border:     active ? `1px solid ${GOLD_BDR}` : '1px solid transparent',
+                      whiteSpace: 'nowrap', overflow: 'hidden',
+                      transition: 'background 0.12s, border-color 0.12s',
+                      // Spotlight : anneau doré pulsant
+                      ...(spotlight ? {
+                        animation: 'sidebar-pulse 1.5s ease infinite',
+                        border:    `1px solid rgba(217,119,6,0.7)`,
+                        background: 'rgba(217,119,6,0.15)',
+                      } : {}),
+                    }}>
+                      <span style={{ flexShrink: 0 }}>{item.icon(active || spotlight ? GOLD : DIM)}</span>
+                      {expanded && (
+                        <span style={{
+                          fontSize: '0.82rem',
+                          fontWeight: active || spotlight ? 600 : 400,
+                          color: active || spotlight ? TEXT : MUTED,
+                        }}>
+                          {item.label}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                </div>
+              )
+            })}
+          </nav>
 
-    </div>
+          {/* Bottom — Aide + Paramètres + Avatar */}
+          <div style={{ borderTop: `1px solid ${BORDER}`, padding: '8px 9px', flexShrink: 0 }}>
+
+            {/* Aide */}
+            <div style={{ position: 'relative', marginBottom: 4 }}>
+              {pathname === '/aide' && (
+                <div style={{
+                  position: 'absolute', left: -9, top: '50%', transform: 'translateY(-50%)',
+                  width: 3, height: 18, borderRadius: '0 2px 2px 0', background: GOLD,
+                }} />
+              )}
+              <Link href="/aide" style={{ textDecoration: 'none' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 9px', borderRadius: 8,
+                  background: pathname === '/aide' ? GOLD_BG : 'transparent',
+                  border: pathname === '/aide' ? `1px solid ${GOLD_BDR}` : '1px solid transparent',
+                  whiteSpace: 'nowrap', overflow: 'hidden',
+                }}>
+                  <span style={{ flexShrink: 0 }}>{NavIcon.aide(pathname === '/aide' ? GOLD : DIM)}</span>
+                  {expanded && (
+                    <span style={{
+                      fontSize: '0.82rem',
+                      fontWeight: pathname === '/aide' ? 600 : 400,
+                      color: pathname === '/aide' ? TEXT : MUTED,
+                    }}>Aide</span>
+                  )}
+                </div>
+              </Link>
+            </div>
+
+            {/* Paramètres */}
+            <div style={{ position: 'relative', marginBottom: 4 }}>
+              {pathname === '/settings' && (
+                <div style={{
+                  position: 'absolute', left: -9, top: '50%', transform: 'translateY(-50%)',
+                  width: 3, height: 18, borderRadius: '0 2px 2px 0', background: GOLD,
+                }} />
+              )}
+              <Link href="/settings" style={{ textDecoration: 'none' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 9px', borderRadius: 8,
+                  background: pathname === '/settings' ? GOLD_BG : 'transparent',
+                  border: pathname === '/settings' ? `1px solid ${GOLD_BDR}` : '1px solid transparent',
+                  whiteSpace: 'nowrap', overflow: 'hidden',
+                }}>
+                  <span style={{ flexShrink: 0 }}>{NavIcon.settings(pathname === '/settings' ? GOLD : DIM)}</span>
+                  {expanded && (
+                    <span style={{
+                      fontSize: '0.82rem',
+                      fontWeight: pathname === '/settings' ? 600 : 400,
+                      color: pathname === '/settings' ? TEXT : MUTED,
+                    }}>Paramètres</span>
+                  )}
+                </div>
+              </Link>
+            </div>
+
+            {/* Avatar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 9px', overflow: 'hidden' }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                background: 'rgba(217,119,6,0.15)',
+                border: '1.5px solid rgba(217,119,6,0.3)',
+                color: GOLD,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.68rem', fontWeight: 700,
+              }}>
+                {userInitials ?? 'FP'}
+              </div>
+              {expanded && (
+                <span style={{
+                  fontSize: '0.78rem', color: MUTED,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {userName ?? 'Commercial'}
+                </span>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* ── Contenu principal ── */}
+        <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
+          {children}
+        </main>
+
+      </div>
+    </>
   )
 }

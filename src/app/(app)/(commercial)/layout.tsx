@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
 import BottomTabBar from '@/components/layout/BottomTabBar'
+import { OnboardingProvider } from '@/contexts/OnboardingContext'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 
 export default async function CommercialLayout({
   children,
@@ -28,9 +30,12 @@ export default async function CommercialLayout({
   const initials = [prenom?.[0], nom?.[0]].filter(Boolean).join('').toUpperCase() || 'FP'
 
   return (
-    <AppShell userName={userName} userInitials={initials}>
-      {children}
-      <BottomTabBar />
-    </AppShell>
+    <OnboardingProvider>
+      <AppShell userName={userName} userInitials={initials}>
+        {children}
+        <BottomTabBar />
+      </AppShell>
+      <OnboardingGuide />
+    </OnboardingProvider>
   )
 }

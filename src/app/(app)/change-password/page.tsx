@@ -30,7 +30,7 @@ export default function ChangePasswordPage() {
     await fetch('/api/auth/clear-password-flag', { method: 'POST' })
     setSuccess(true)
     setLoading(false)
-    setTimeout(() => router.replace('/dashboard'), 1500)
+    setTimeout(() => router.replace('/aide?welcome=true'), 1500)
   }
 
   const wrapStyle: React.CSSProperties = {
