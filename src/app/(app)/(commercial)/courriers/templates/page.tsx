@@ -137,6 +137,28 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   }
   const p = (t: string) => `<p style="font-size:13px;line-height:1.75;margin:0 0 10px;text-align:justify;color:#1A1A1A;">${t}</p>`
 
+  // ── Wrapper image pour l'aperçu ──────────────────────────────────────────
+  // Déclaré AVANT le bloc mode unique (TDZ prod : const ne hoise pas)
+  // Reçoit uniquement le CORPS (sans le titre) — le titre est toujours poussé séparément.
+  const wrapImgPreview = (
+    img: { data: string; mime: string; position?: string; width_pct?: number; valign?: string },
+    content: string,
+  ): string => {
+    const src = `data:${img.mime};base64,${img.data}`
+    const pct = img.width_pct ?? 35
+    if (img.position === 'fullwidth') {
+      return `<div style="text-align:center;margin:0 0 10px;"><img src="${src}" style="max-width:100%;height:auto;border-radius:4px;" /></div>${content}`
+    }
+    const isLeft  = (img.position ?? 'left') !== 'right'
+    const pad     = isLeft ? 'padding-right:14px' : 'padding-left:14px'
+    const valignMap: Record<string,string> = { top:'flex-start', middle:'center', bottom:'flex-end' }
+    const align   = valignMap[img.valign ?? 'top'] ?? 'flex-start'
+    const imgDiv  = `<div style="flex-shrink:0;width:${pct}%;${pad};"><img src="${src}" style="width:100%;height:auto;border-radius:4px;" /></div>`
+    const txtDiv  = `<div style="flex:1;">${content}</div>`
+    const [l, r]  = isLeft ? [imgDiv, txtDiv] : [txtDiv, imgDiv]
+    return `<div style="display:flex;align-items:${align};">${l}${r}</div>`
+  }
+
   if (template.mode === 'unique' && template.unique_text) {
     const parts: string[] = [headerHtml]
     if (template.envelope_enabled) {
@@ -182,27 +204,6 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
   parts.push(p('Madame, Monsieur,'))
   parts.push(p(`Je me permets de vous contacter au sujet de ${typeBien} situé : <strong>${data.adresse_brute}</strong>`))
-
-  // ── Wrapper image pour l'aperçu ──────────────────────────────────────────
-  // Reçoit uniquement le CORPS (sans le titre) — le titre est toujours poussé séparément.
-  const wrapImgPreview = (
-    img: { data: string; mime: string; position?: string; width_pct?: number; valign?: string },
-    content: string,
-  ): string => {
-    const src = `data:${img.mime};base64,${img.data}`
-    const pct = img.width_pct ?? 35
-    if (img.position === 'fullwidth') {
-      return `<div style="text-align:center;margin:0 0 10px;"><img src="${src}" style="max-width:100%;height:auto;border-radius:4px;" /></div>${content}`
-    }
-    const isLeft  = (img.position ?? 'left') !== 'right'
-    const pad     = isLeft ? 'padding-right:14px' : 'padding-left:14px'
-    const valignMap: Record<string,string> = { top:'flex-start', middle:'center', bottom:'flex-end' }
-    const align   = valignMap[img.valign ?? 'top'] ?? 'flex-start'
-    const imgDiv  = `<div style="flex-shrink:0;width:${pct}%;${pad};"><img src="${src}" style="width:100%;height:auto;border-radius:4px;" /></div>`
-    const txtDiv  = `<div style="flex:1;">${content}</div>`
-    const [l, r]  = isLeft ? [imgDiv, txtDiv] : [txtDiv, imgDiv]
-    return `<div style="display:flex;align-items:${align};">${l}${r}</div>`
-  }
 
   const previewConflicts = getSectionConflicts(sections)
   for (const sec of sections) {
