@@ -25,7 +25,7 @@ export const STEPS: OnboardingStep[] = [
     label: 'Secteur',
     emoji: '🗺️',
     title: 'Configure ton secteur',
-    description: "Ajoute les communes que tu prospectes. PROspector va charger toutes les adresses et données DPE de ton territoire pour préparer tes sorties terrain.",
+    description: "Ajoute les communes que tu prospectes. PROspector charge toutes les adresses et données DPE de ton territoire, puis propose automatiquement un découpage en zones de prospection optimisées pour préparer tes sorties terrain.",
     tip: "C'est la première étape indispensable — sans secteur configuré, pas de données !",
   },
   {
@@ -41,7 +41,7 @@ export const STEPS: OnboardingStep[] = [
     label: 'Courrier DPE',
     emoji: '✉️',
     title: 'Prépare tes courriers DPE',
-    description: "Génère des courriers personnalisés à destination des propriétaires avec un logement énergivore. Configure ton agence et choisis tes modèles de lettres.",
+    description: "Génère des courriers personnalisés à destination des propriétaires selon leur DPE. Tous les profils sont intéressants : qu'il s'agisse d'un bien à valoriser ou à rénover, adapte ton message à chaque situation.",
     tip: "Renseigne les infos de ton agence dans Paramètres avant de générer tes courriers.",
   },
   {
@@ -49,8 +49,8 @@ export const STEPS: OnboardingStep[] = [
     label: 'Terrain',
     emoji: '🏘️',
     title: 'Pars en terrain !',
-    description: "Lance la carte interactive lors de tes tournées. Visualise chaque bien, marque les portes frappées, filtre par DPE et note tes contacts directement.",
-    tip: "Utilise PROspector depuis ton mobile pour noter chaque contact sur le vif !",
+    description: "Connecte-toi depuis ton smartphone pour te géolocaliser en temps réel sur ta zone. Visualise chaque bien, marque les portes frappées, filtre par DPE et enregistre tes contacts directement pendant ta prospection — sans perdre une seconde.",
+    tip: "Ouvre PROspector sur ton mobile avant de partir : la géolocalisation te guide pas à pas dans ta zone !",
   },
   {
     href: '/planning',
@@ -75,6 +75,14 @@ export const STEPS: OnboardingStep[] = [
     title: 'Consulte ton historique',
     description: "Reviens sur toutes tes actions passées : portes visitées, contacts pris, courriers envoyés. Un récap complet de ton activité pour mesurer ta progression.",
     tip: "Analyse ton historique régulièrement pour ajuster ta stratégie de prospection.",
+  },
+  {
+    href: '/settings',
+    label: 'Paramètres',
+    emoji: '⚙️',
+    title: 'Personnalise ton profil',
+    description: "Renseigne tes informations personnelles et les coordonnées de ton agence : elles apparaîtront automatiquement sur tes courriers DPE. Tu peux aussi changer ton mot de passe à tout moment depuis cette page.",
+    tip: "Commence par compléter ton profil agence — des courriers bien personnalisés, c'est une image pro dès le premier envoi !",
   },
 ]
 

@@ -15,7 +15,7 @@ const MODULES = [
     href: '/onboarding',
     emoji: '🗺️',
     label: 'Secteur',
-    desc: "Définis ton territoire de prospection en ajoutant tes communes cibles. PROspector charge automatiquement l'intégralité des adresses et données DPE pour que tu sois opérationnel en quelques minutes.",
+    desc: "Définis ton territoire en ajoutant tes communes cibles. PROspector charge toutes les adresses et données DPE, puis propose automatiquement un découpage en zones de prospection optimisées pour que tu sois opérationnel en quelques minutes.",
   },
   {
     href: '/zones',
@@ -27,13 +27,13 @@ const MODULES = [
     href: '/courriers',
     emoji: '✉️',
     label: 'Courrier DPE',
-    desc: "Génère des courriers de prospection ciblés vers les propriétaires de logements énergivores (DPE E, F, G). Personnalise tes modèles avec les infos de ton agence et envoie en masse.",
+    desc: "Génère des courriers de prospection personnalisés selon le DPE du bien. Tous les profils sont pertinents : adapte ton message à chaque situation, bien à valoriser ou à rénover. Personnalise tes modèles avec les infos de ton agence.",
   },
   {
     href: '/terrain',
     emoji: '🏘️',
     label: 'Terrain',
-    desc: "La carte de terrain interactive pour tes sorties prospection. Visualise chaque bien avec son DPE, marque les portes frappées, enregistre les contacts rencontrés directement depuis ton téléphone.",
+    desc: "Connecte-toi depuis ton smartphone pour te géolocaliser en temps réel dans ta zone. Visualise chaque bien avec son DPE, marque les portes frappées et enregistre tes contacts directement pendant ta prospection, sans perdre une seconde.",
   },
   {
     href: '/planning',
@@ -52,6 +52,12 @@ const MODULES = [
     emoji: '🕐',
     label: 'Historique',
     desc: "Récapitulatif complet de toutes tes actions : portes visitées par date, contacts enregistrés, courriers envoyés, zones couvertes. Analyse ta progression et identifie tes meilleures périodes.",
+  },
+  {
+    href: '/settings',
+    emoji: '⚙️',
+    label: 'Paramètres',
+    desc: "Personnalise ton profil et les coordonnées de ton agence : nom, adresse, téléphone, email. Ces informations apparaissent automatiquement sur tes courriers DPE. Tu peux également changer ton mot de passe à tout moment depuis cette section.",
   },
 ]
 
@@ -112,7 +118,7 @@ export default function AidePage() {
               🚀 Guide de première connexion
             </div>
             <div style={{ fontSize: 13, color: '#9E9EAD', lineHeight: 1.5 }}>
-              Parcours interactif en 8 étapes pour découvrir toutes les fonctionnalités
+              Parcours interactif en 9 étapes pour découvrir toutes les fonctionnalités
             </div>
           </div>
           <button
