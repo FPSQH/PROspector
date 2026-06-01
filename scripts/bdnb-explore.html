@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BDNB Explorer — PROspector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    h1 { font-size: 1.4rem; font-weight: 700; color: #f8fafc; }
+    .subtitle { color: #64748b; font-size: 0.85rem; margin-top: 4px; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 180px; }
+    label { font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    input, select {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f1f5f9;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input:focus, select:focus { border-color: #6366f1; }
+    button {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+    }
+    button:hover { background: #4f46e5; }
+    button:disabled { background: #334155; cursor: not-allowed; }
+
+    .status { font-size: 0.82rem; color: #64748b; margin-top: 10px; min-height: 20px; }
+    .status.ok { color: #34d399; }
+    .status.err { color: #f87171; }
+
+    /* Résultats */
+    #results { margin-top: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+    .bat-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .bat-header {
+      background: #0f172a;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #334155;
+    }
+    .bat-header h3 { font-size: 0.95rem; font-weight: 600; flex: 1; }
+    .dpe-badge {
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .dpe-A { background: #059669; color: #fff; }
+    .dpe-B { background: #10b981; color: #fff; }
+    .dpe-C { background: #84cc16; color: #fff; }
+    .dpe-D { background: #eab308; color: #000; }
+    .dpe-E { background: #f97316; color: #fff; }
+    .dpe-F { background: #ef4444; color: #fff; }
+    .dpe-G { background: #7f1d1d; color: #fff; }
+    .dpe-NA { background: #334155; color: #94a3b8; font-size: 0.7rem; }
+
+    .bat-body { padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+
+    .section-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #6366f1;
+      margin-bottom: 8px;
+    }
+    .rows { display: flex; flex-direction: column; gap: 5px; }
+    .row { display: flex; justify-content: space-between; gap: 8px; font-size: 0.82rem; }
+    .row-key { color: #94a3b8; flex-shrink: 0; }
+    .row-val { color: #f1f5f9; font-weight: 500; text-align: right; word-break: break-word; }
+    .row-val.highlight { color: #fbbf24; }
+    .row-val.danger  { color: #f87171; font-weight: 700; }
+    .row-val.success { color: #34d399; }
+    .row-val.muted   { color: #64748b; font-style: italic; }
+
+    .raw-toggle {
+      padding: 10px 20px;
+      border-top: 1px solid #334155;
+      font-size: 0.78rem;
+      color: #64748b;
+      cursor: pointer;
+      user-select: none;
+    }
+    .raw-toggle:hover { color: #94a3b8; }
+    .raw-block {
+      display: none;
+      padding: 16px 20px;
+      border-top: 1px solid #1e293b;
+      background: #0f172a;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .empty { text-align: center; color: #475569; padding: 48px; font-size: 0.9rem; }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: #334155;
+      color: #94a3b8;
+      margin-left: 4px;
+    }
+    .tag.prospectable { background: #064e3b; color: #6ee7b7; }
+    .tag.social { background: #7f1d1d; color: #fca5a5; }
+
+    .pagination { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 16px; }
+    .page-info { color: #64748b; font-size: 0.82rem; }
+    .btn-sm {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .btn-sm:hover { background: #334155; }
+    .btn-sm:disabled { opacity: .4; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<h1>🏢 BDNB Explorer</h1>
+<p class="subtitle">Exploration des données BDNB Open pour évaluation PROspector — aucune clé API requise</p>
+
+<div class="card">
+  <div class="controls">
+    <div class="field">
+      <label>Code INSEE commune</label>
+      <input id="insee" type="text" value="75102" placeholder="ex: 75102, 69123, 13055" maxlength="10" />
+    </div>
+    <div class="field">
+      <label>Filtre type bâtiment</label>
+      <select id="filtre_type">
+        <option value="">Tous</option>
+        <option value="maison">Maison</option>
+        <option value="collectif">Collectif</option>
+        <option value="tertiaire">Tertiaire</option>
+      </select>
+    </div>
+    <div class="field" style="max-width:120px">
+      <label>Résultats</label>
+      <select id="limit">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+      </select>
+    </div>
+    <button id="btn-search" onclick="search(0)">🔍 Rechercher</button>
+  </div>
+  <div class="status" id="status">Entrez un code INSEE et lancez la recherche.</div>
+</div>
+
+<div id="results"><div class="empty">Les résultats s'afficheront ici.</div></div>
+
+<script>
+const BASE = "https://api-open.bdnb.io/v2";
+let currentOffset = 0;
+let currentTotal = 0;
+const PAGE_SIZE = () => parseInt(document.getElementById("limit").value);
+
+function val(v, unit = "", fallback = "—") {
+  if (v === null || v === undefined || v === "") return fallback;
+  if (Array.isArray(v)) return v.length ? v.join(", ") : fallback;
+  return unit ? `${v} ${unit}` : String(v);
+}
+
+function dpeClass(etiquette) {
+  if (!etiquette || etiquette === "—") return "dpe-NA";
+  return `dpe-${etiquette.trim().toUpperCase()}`;
+}
+
+function isPassoire(dpe) {
+  return dpe && ["F", "G"].includes(dpe.trim().toUpperCase());
+}
+
+function renderBat(b, index) {
+  const dpe = b.dpe_mix_arrete_2021_etiquette_dpe ?? null;
+  const isSocial = b.lib_type_rapport_bpi === "logement social" || b.parc_prive === false;
+  const isProspectable = !isSocial;
+  const adresse = b.libelle_adr_principale_ban ?? "Adresse inconnue";
+  const id = b.batiment_groupe_id ?? "—";
+
+  const tags = [
+    isSocial ? `<span class="tag social">Social</span>` : `<span class="tag prospectable">Prospectable</span>`,
+    isPassoire(dpe) ? `<span class="tag" style="background:#7f1d1d;color:#fca5a5">⚠️ Passoire</span>` : ""
+  ].join("");
+
+  const rawId = `raw-${index}`;
+
+  return `
+<div class="bat-card">
+  <div class="bat-header">
+    <div class="dpe-badge ${dpeClass(dpe)}">${dpe ?? "?"}</div>
+    <div>
+      <h3>${adresse} ${tags}</h3>
+      <div style="font-size:.73rem;color:#475569;margin-top:2px">${id}</div>
+    </div>
+  </div>
+  <div class="bat-body">
+
+    <div>
+      <div class="section-title">📍 Identité & foncier</div>
+      <div class="rows">
+        <div class="row"><span class="row-key">Code commune</span><span class="row-val">${val(b.code_commune_insee)}</span></div>
+        <div class="row"><span class="row-key">Clés BAN</span><span class="row-val">${val(b.l_cle_interop_adr)}</span></div>
+        <div class="row"><span class="row-key">Ref. cadastrale</span><span class="row-val">${val(b.code_departement_insee)}</span></div>
+        <div class="row"><span class="row-key">Lien BDTopo</span><span class="row-val">${val(b.ref_bdtopo_bat)}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">🏗️ Caractéristiques physiques</div>
+      <div class="rows">
+        <div class="row"><span class="row-key">Usage principal</span><span class="row-val highlight">${val(b.usage_niveau_1_txt)}</span></div>
+        <div class="row"><span class="row-key">Usage secondaire</span><span class="row-val">${val(b.usage_niveau_2_txt)}</span></div>
+        <div class="row"><span class="row-key">Type bâtiment</span><span class="row-val highlight">${val(b.type_batiment_txt)}</span></div>
+        <div class="row"><span class="row-key">Année construction</span><span class="row-val highlight">${val(b.annee_construction)}</span></div>
+        <div class="row"><span class="row-key">Nb logements</span><span class="row-val highlight">${val(b.nb_logements)}</span></div>
+        <div class="row"><span class="row-key">Surface (SHON)</span><span class="row-val">${val(b.surface_shon_bat, "m²")}</span></div>
+        <div class="row"><span class="row-key">Hauteur</span><span class="row-val">${val(b.hauteur_mean, "m")}</span></div>
+        <div class="row"><span class="row-key">Nb niveaux</span><span class="row-val">${val(b.nb_niveau)}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">⚡ Énergie & DPE</div>
+      <div class="rows">
+        <div class="row"><span class="row-key">DPE représentatif</span><span class="row-val ${isPassoire(dpe) ? "danger" : "highlight"}">${val(dpe)}</span></div>
+        <div class="row"><span class="row-key">GES représentatif</span><span class="row-val">${val(b.dpe_mix_arrete_2021_etiquette_ges)}</span></div>
+        <div class="row"><span class="row-key">Conso estimée</span><span class="row-val">${val(b.conso_ener_estim_inc, "kWh/m²/an")}</span></div>
+        <div class="row"><span class="row-key">Nb DPE reliés</span><span class="row-val">${val(b.nb_dpe_bati)}</span></div>
+        <div class="row"><span class="row-key">Passoire F/G</span><span class="row-val ${isPassoire(dpe) ? "danger" : "success"}">${isPassoire(dpe) ? "⚠️ OUI" : "Non"}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">🔧 Matériaux & équipements</div>
+      <div class="rows">
+        <div class="row"><span class="row-key">Matériaux murs</span><span class="row-val">${val(b.mat_mur_txt)}</span></div>
+        <div class="row"><span class="row-key">Matériaux toiture</span><span class="row-val">${val(b.mat_toit_txt)}</span></div>
+        <div class="row"><span class="row-key">Type chauffage</span><span class="row-val">${val(b.type_chauffage_agregat)}</span></div>
+        <div class="row"><span class="row-key">Énergie chauffage</span><span class="row-val">${val(b.energie_chauffage_agregat)}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">🏘️ Statut & foncier</div>
+      <div class="rows">
+        <div class="row"><span class="row-key">Logement social</span><span class="row-val ${isSocial ? "danger" : "success"}">${isSocial ? "Oui" : "Non"}</span></div>
+        <div class="row"><span class="row-key">Parc privé</span><span class="row-val">${val(b.parc_prive)}</span></div>
+        <div class="row"><span class="row-key">Type rapport BPI</span><span class="row-val">${val(b.lib_type_rapport_bpi)}</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">🗺️ Géométrie</div>
+      <div class="rows">
+        ${renderGeom(b.geom_groupe)}
+      </div>
+    </div>
+
+  </div>
+  <div class="raw-toggle" onclick="toggleRaw('${rawId}', this)">▶ Voir tous les champs bruts (JSON)</div>
+  <div class="raw-block" id="${rawId}">${JSON.stringify(b, null, 2)}</div>
+</div>`;
+}
+
+function renderGeom(geomRaw) {
+  if (!geomRaw) return `<div class="row"><span class="row-key">Géométrie</span><span class="row-val muted">Absent</span></div>`;
+  try {
+    const g = typeof geomRaw === "string" ? JSON.parse(geomRaw) : geomRaw;
+    const coords = g.coordinates?.[0]?.[0] ?? g.coordinates?.[0] ?? [];
+    if (!coords.length) return `<div class="row"><span class="row-key">Type</span><span class="row-val">${g.type}</span></div>`;
+    const lons = coords.map(c => c[0]);
+    const lats = coords.map(c => c[1]);
+    return `
+      <div class="row"><span class="row-key">Type</span><span class="row-val success">${g.type} ✓</span></div>
+      <div class="row"><span class="row-key">Points polygone</span><span class="row-val">${coords.length}</span></div>
+      <div class="row"><span class="row-key">Centre approx.</span><span class="row-val">${((Math.min(...lats)+Math.max(...lats))/2).toFixed(5)}, ${((Math.min(...lons)+Math.max(...lons))/2).toFixed(5)}</span></div>
+    `;
+  } catch {
+    return `<div class="row"><span class="row-key">Géométrie</span><span class="row-val muted">Parse error</span></div>`;
+  }
+}
+
+function toggleRaw(id, el) {
+  const block = document.getElementById(id);
+  const open = block.style.display === "block";
+  block.style.display = open ? "none" : "block";
+  el.textContent = open ? "▶ Voir tous les champs bruts (JSON)" : "▼ Masquer les champs bruts";
+}
+
+async function search(offset = 0) {
+  const insee = document.getElementById("insee").value.trim();
+  const filtreType = document.getElementById("filtre_type").value;
+  const limit = PAGE_SIZE();
+  const btn = document.getElementById("btn-search");
+  const status = document.getElementById("status");
+  const results = document.getElementById("results");
+
+  if (!insee) { status.textContent = "⚠️ Entrez un code INSEE."; status.className = "status err"; return; }
+
+  btn.disabled = true;
+  status.className = "status";
+  status.textContent = "⏳ Chargement…";
+  results.innerHTML = "";
+
+  const params = new URLSearchParams({
+    "code_commune_insee": `eq.${insee}`,
+    "limit": String(limit),
+    "offset": String(offset),
+    "select": "*",
+    "order": "nb_logements.desc.nullslast",
+  });
+  if (filtreType) params.set("type_batiment_txt", `ilike.*${filtreType}*`);
+
+  try {
+    const res = await fetch(`${BASE}/batiment_groupe?${params}`, {
+      headers: { "Accept": "application/json", "Prefer": "count=exact" }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
+
+    const data = await res.json();
+    const rangeHeader = res.headers.get("content-range");
+    const total = rangeHeader ? parseInt(rangeHeader.split("/")[1]) || 0 : data.length;
+
+    currentOffset = offset;
+    currentTotal = total;
+
+    status.className = "status ok";
+    status.textContent = `✅ ${total} bâtiment(s) trouvé(s) pour la commune ${insee}${filtreType ? ` · type: ${filtreType}` : ""}`;
+
+    if (!data.length) {
+      results.innerHTML = `<div class="empty">Aucun résultat pour cette commune.</div>`;
+    } else {
+      results.innerHTML = data.map((b, i) => renderBat(b, offset + i)).join("");
+      results.innerHTML += renderPagination(offset, limit, total);
+    }
+  } catch (err) {
+    status.className = "status err";
+    status.textContent = `❌ Erreur : ${err.message}`;
+    results.innerHTML = `<div class="empty">Impossible de contacter l'API BDNB.<br><br>
+      <small>Vérifiez votre connexion internet ou que l'URL <code>https://api-open.bdnb.io</code> est accessible.</small></div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderPagination(offset, limit, total) {
+  if (total <= limit) return "";
+  const page = Math.floor(offset / limit) + 1;
+  const pages = Math.ceil(total / limit);
+  return `<div class="pagination">
+    <button class="btn-sm" onclick="search(${offset - limit})" ${offset === 0 ? "disabled" : ""}>← Précédent</button>
+    <span class="page-info">Page ${page} / ${pages}</span>
+    <button class="btn-sm" onclick="search(${offset + limit})" ${offset + limit >= total ? "disabled" : ""}>Suivant →</button>
+  </div>`;
+}
+
+document.getElementById("insee").addEventListener("keydown", e => { if (e.key === "Enter") search(0); });
+</script>
+</body>
+</html>
