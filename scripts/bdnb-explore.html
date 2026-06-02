@@ -283,6 +283,9 @@ function renderBat(b, index) {
       <div class="section-title">⚡ Énergie & DPE</div>
       <div class="rows">
         <div class="row"><span class="row-key">DPE bilan</span><span class="row-val ${isPassoire(dpe) ? "danger" : "highlight"}">${val(dpe)}</span></div>
+        <div class="row"><span class="row-key">Date réception DPE</span><span class="row-val">${val(b.date_reception_dpe)}</span></div>
+        <div class="row"><span class="row-key">Identifiant DPE</span><span class="row-val">${val(b.identifiant_dpe)}</span></div>
+        <div class="row"><span class="row-key">Arrêté 2021</span><span class="row-val">${val(b.arrete_2021)}</span></div>
         <div class="row"><span class="row-key">Classe conso énergie</span><span class="row-val">${val(b.classe_conso_energie_arrete_2012)}</span></div>
         <div class="row"><span class="row-key">Conso 5 usages EP</span><span class="row-val">${val(b.conso_5_usages_ep_m2, "kWh/m²/an")}</span></div>
         <div class="row"><span class="row-key">Émissions GES</span><span class="row-val">${val(b.emission_ges_5_usages_m2, "kgCO₂/m²/an")}</span></div>
