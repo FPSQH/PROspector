@@ -283,11 +283,8 @@ export async function POST(request: Request) {
       allRows.push(...page)
       if (page.length < LIMIT) break
       offset += LIMIT
-<<<<<<< HEAD
-=======
       // Petite pause pour respecter le rate limit de l'API Open
       await new Promise(r => setTimeout(r, 200))
->>>>>>> origin/claude/dazzling-ritchie-BfB7a
     }
 
     console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom}`)
