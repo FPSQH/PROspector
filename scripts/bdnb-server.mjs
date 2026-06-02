@@ -70,12 +70,17 @@ const server = http.createServer((req, res) => {
   // ── Debug : teste plusieurs chemins BDNB ────────────────────────────────
   if (url.pathname === "/debug") {
     const candidates = [
-      "/",
-      "/batiment_groupe?limit=1",
-      "/v1/batiment_groupe?limit=1",
-      "/v2/batiment_groupe?limit=1",
-      "/api/batiment_groupe?limit=1",
-      "/open/batiment_groupe?limit=1",
+      { host: "api-open.bdnb.io",    path: "/" },
+      { host: "api-open.bdnb.io",    path: "/batiment_groupe?limit=1" },
+      { host: "bdnb.io",             path: "/" },
+      { host: "bdnb.io",             path: "/api/batiment_groupe?limit=1" },
+      { host: "open.bdnb.io",        path: "/" },
+      { host: "open.bdnb.io",        path: "/batiment_groupe?limit=1" },
+      { host: "data.bdnb.io",        path: "/" },
+      { host: "data.bdnb.io",        path: "/batiment_groupe?limit=1" },
+      { host: "api.bdnb.io",         path: "/" },
+      { host: "api.bdnb.io",         path: "/batiment_groupe?limit=1" },
+      { host: "api-portail.bdnb.io", path: "/" },
     ];
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" });
     res.write("Test des chemins BDNB Open API\n" + "=".repeat(50) + "\n\n");
@@ -83,22 +88,20 @@ const server = http.createServer((req, res) => {
     let done = 0;
     const results = new Array(candidates.length).fill("");
 
-    candidates.forEach((p, i) => {
+    candidates.forEach(({ host, path: p }, i) => {
       const req2 = https.request(
-        { hostname: BDNB_BASE, path: p, method: "GET", headers: { Accept: "application/json" } },
+        { hostname: host, path: p, method: "GET", headers: { Accept: "application/json" } },
         (up) => {
           let body = "";
           up.on("data", (d) => body += d);
           up.on("end", () => {
-            results[i] = `[${up.statusCode}] ${BDNB_BASE}${p}\n    ${body.slice(0, 200)}\n`;
-            if (++done === candidates.length) {
-              res.end(results.join("\n"));
-            }
+            results[i] = `[${up.statusCode}] https://${host}${p}\n    ${body.slice(0, 300)}\n`;
+            if (++done === candidates.length) res.end(results.join("\n"));
           });
         }
       );
       req2.on("error", (e) => {
-        results[i] = `[ERR] ${BDNB_BASE}${p} → ${e.message}\n`;
+        results[i] = `[ERR] https://${host}${p} → ${e.message}\n`;
         if (++done === candidates.length) res.end(results.join("\n"));
       });
       req2.end();
