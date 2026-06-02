@@ -220,15 +220,20 @@ function isPassoire(dpe) {
   return dpe && ["F", "G"].includes(dpe.trim().toUpperCase());
 }
 
+function nbDpe(b) {
+  return (b.nb_classe_bilan_dpe_a||0)+(b.nb_classe_bilan_dpe_b||0)+(b.nb_classe_bilan_dpe_c||0)
+        +(b.nb_classe_bilan_dpe_d||0)+(b.nb_classe_bilan_dpe_e||0)+(b.nb_classe_bilan_dpe_f||0)
+        +(b.nb_classe_bilan_dpe_g||0) || null;
+}
+
 function renderBat(b, index) {
-  const dpe = b.dpe_mix_arrete_2021_etiquette_dpe ?? null;
-  const isSocial = b.lib_type_rapport_bpi === "logement social" || b.parc_prive === false;
-  const isProspectable = !isSocial;
-  const adresse = b.libelle_adr_principale_ban ?? "Adresse inconnue";
+  const dpe = b.classe_bilan_dpe ?? null;
+  const isSocial = b.quartier_prioritaire === true;
+  const adresse = b.libelle_adr_principale_ban ?? (b.l_libelle_adr?.[0]) ?? "Adresse inconnue";
   const id = b.batiment_groupe_id ?? "—";
 
   const tags = [
-    isSocial ? `<span class="tag social">Social</span>` : `<span class="tag prospectable">Prospectable</span>`,
+    isSocial ? `<span class="tag social">QPV</span>` : `<span class="tag prospectable">Prospectable</span>`,
     isPassoire(dpe) ? `<span class="tag" style="background:#7f1d1d;color:#fca5a5">⚠️ Passoire</span>` : ""
   ].join("");
 
@@ -248,35 +253,44 @@ function renderBat(b, index) {
     <div>
       <div class="section-title">📍 Identité & foncier</div>
       <div class="rows">
-        <div class="row"><span class="row-key">Code commune</span><span class="row-val">${val(b.code_commune_insee)}</span></div>
-        <div class="row"><span class="row-key">Clés BAN</span><span class="row-val">${val(b.l_cle_interop_adr)}</span></div>
-        <div class="row"><span class="row-key">Ref. cadastrale</span><span class="row-val">${val(b.code_departement_insee)}</span></div>
-        <div class="row"><span class="row-key">Lien BDTopo</span><span class="row-val">${val(b.ref_bdtopo_bat)}</span></div>
+        <div class="row"><span class="row-key">Commune INSEE</span><span class="row-val">${val(b.code_commune_insee)} · ${val(b.libelle_commune_insee)}</span></div>
+        <div class="row"><span class="row-key">IRIS</span><span class="row-val">${val(b.code_iris)}</span></div>
+        <div class="row"><span class="row-key">Clé BAN principale</span><span class="row-val">${val(b.cle_interop_adr_principale_ban)}</span></div>
+        <div class="row"><span class="row-key">Parcelles cadastre</span><span class="row-val">${val(b.l_parcelle_id)}</span></div>
+        <div class="row"><span class="row-key">Nb adresses BAN</span><span class="row-val">${val(b.nb_adresse_valid_ban)}</span></div>
+        <div class="row"><span class="row-key">Propriétaires</span><span class="row-val">${val(b.l_denomination_proprietaire)}</span></div>
       </div>
     </div>
 
     <div>
       <div class="section-title">🏗️ Caractéristiques physiques</div>
       <div class="rows">
-        <div class="row"><span class="row-key">Usage principal</span><span class="row-val highlight">${val(b.usage_niveau_1_txt)}</span></div>
-        <div class="row"><span class="row-key">Usage secondaire</span><span class="row-val">${val(b.usage_niveau_2_txt)}</span></div>
-        <div class="row"><span class="row-key">Type bâtiment</span><span class="row-val highlight">${val(b.type_batiment_txt)}</span></div>
+        <div class="row"><span class="row-key">Usage BDNB</span><span class="row-val highlight">${val(b.usage_principal_bdnb_open)}</span></div>
+        <div class="row"><span class="row-key">Usage niveau 1</span><span class="row-val">${val(b.usage_niveau_1_txt)}</span></div>
+        <div class="row"><span class="row-key">Type bâtiment DPE</span><span class="row-val highlight">${val(b.type_batiment_dpe)}</span></div>
         <div class="row"><span class="row-key">Année construction</span><span class="row-val highlight">${val(b.annee_construction)}</span></div>
-        <div class="row"><span class="row-key">Nb logements</span><span class="row-val highlight">${val(b.nb_logements)}</span></div>
-        <div class="row"><span class="row-key">Surface (SHON)</span><span class="row-val">${val(b.surface_shon_bat, "m²")}</span></div>
-        <div class="row"><span class="row-key">Hauteur</span><span class="row-val">${val(b.hauteur_mean, "m")}</span></div>
+        <div class="row"><span class="row-key">Nb logements</span><span class="row-val highlight">${val(b.nb_log)}</span></div>
+        <div class="row"><span class="row-key">Nb logements (RNC)</span><span class="row-val">${val(b.nb_log_rnc)}</span></div>
+        <div class="row"><span class="row-key">Surface emprise sol</span><span class="row-val">${val(b.surface_emprise_sol, "m²")}</span></div>
+        <div class="row"><span class="row-key">Hauteur moyenne</span><span class="row-val">${val(b.hauteur_mean, "m")}</span></div>
         <div class="row"><span class="row-key">Nb niveaux</span><span class="row-val">${val(b.nb_niveau)}</span></div>
+        <div class="row"><span class="row-key">Traversant</span><span class="row-val">${val(b.traversant)}</span></div>
+        <div class="row"><span class="row-key">Balcon</span><span class="row-val">${val(b.presence_balcon)}</span></div>
       </div>
     </div>
 
     <div>
       <div class="section-title">⚡ Énergie & DPE</div>
       <div class="rows">
-        <div class="row"><span class="row-key">DPE représentatif</span><span class="row-val ${isPassoire(dpe) ? "danger" : "highlight"}">${val(dpe)}</span></div>
-        <div class="row"><span class="row-key">GES représentatif</span><span class="row-val">${val(b.dpe_mix_arrete_2021_etiquette_ges)}</span></div>
-        <div class="row"><span class="row-key">Conso estimée</span><span class="row-val">${val(b.conso_ener_estim_inc, "kWh/m²/an")}</span></div>
-        <div class="row"><span class="row-key">Nb DPE reliés</span><span class="row-val">${val(b.nb_dpe_bati)}</span></div>
+        <div class="row"><span class="row-key">DPE bilan</span><span class="row-val ${isPassoire(dpe) ? "danger" : "highlight"}">${val(dpe)}</span></div>
+        <div class="row"><span class="row-key">Classe conso énergie</span><span class="row-val">${val(b.classe_conso_energie_arrete_2012)}</span></div>
+        <div class="row"><span class="row-key">Conso 5 usages EP</span><span class="row-val">${val(b.conso_5_usages_ep_m2, "kWh/m²/an")}</span></div>
+        <div class="row"><span class="row-key">Émissions GES</span><span class="row-val">${val(b.emission_ges_5_usages_m2, "kgCO₂/m²/an")}</span></div>
+        <div class="row"><span class="row-key">Nb DPE reliés</span><span class="row-val">${val(nbDpe(b))}</span></div>
+        <div class="row"><span class="row-key">Répartition DPE</span><span class="row-val">${["A","B","C","D","E","F","G"].map(l => { const n = b[`nb_classe_bilan_dpe_${l.toLowerCase()}`]; return n ? `${l}:${n}` : ""; }).filter(Boolean).join(" ")}</span></div>
         <div class="row"><span class="row-key">Passoire F/G</span><span class="row-val ${isPassoire(dpe) ? "danger" : "success"}">${isPassoire(dpe) ? "⚠️ OUI" : "Non"}</span></div>
+        <div class="row"><span class="row-key">Conso élec rés. 2020</span><span class="row-val">${val(b.conso_res_dle_elec_2020, "MWh")}</span></div>
+        <div class="row"><span class="row-key">Conso gaz rés. 2020</span><span class="row-val">${val(b.conso_res_dle_gaz_2020, "MWh")}</span></div>
       </div>
     </div>
 
@@ -284,18 +298,30 @@ function renderBat(b, index) {
       <div class="section-title">🔧 Matériaux & équipements</div>
       <div class="rows">
         <div class="row"><span class="row-key">Matériaux murs</span><span class="row-val">${val(b.mat_mur_txt)}</span></div>
+        <div class="row"><span class="row-key">Structure mur ext.</span><span class="row-val">${val(b.materiaux_structure_mur_exterieur)}</span></div>
         <div class="row"><span class="row-key">Matériaux toiture</span><span class="row-val">${val(b.mat_toit_txt)}</span></div>
-        <div class="row"><span class="row-key">Type chauffage</span><span class="row-val">${val(b.type_chauffage_agregat)}</span></div>
-        <div class="row"><span class="row-key">Énergie chauffage</span><span class="row-val">${val(b.energie_chauffage_agregat)}</span></div>
+        <div class="row"><span class="row-key">Isolation mur ext.</span><span class="row-val">${val(b.type_isolation_mur_exterieur)}</span></div>
+        <div class="row"><span class="row-key">Isolation plancher haut</span><span class="row-val">${val(b.type_isolation_plancher_haut)}</span></div>
+        <div class="row"><span class="row-key">Type chauffage</span><span class="row-val">${val(b.type_installation_chauffage)}</span></div>
+        <div class="row"><span class="row-key">Énergie chauffage</span><span class="row-val">${val(b.type_energie_chauffage)}</span></div>
+        <div class="row"><span class="row-key">Générateur chauffage</span><span class="row-val">${val(b.type_generateur_chauffage)}</span></div>
+        <div class="row"><span class="row-key">Ventilation</span><span class="row-val">${val(b.type_ventilation)}</span></div>
+        <div class="row"><span class="row-key">Type vitrage</span><span class="row-val">${val(b.type_vitrage)}</span></div>
+        <div class="row"><span class="row-key">Chauffage solaire</span><span class="row-val">${val(b.chauffage_solaire)}</span></div>
+        <div class="row"><span class="row-key">ECS solaire</span><span class="row-val">${val(b.ecs_solaire)}</span></div>
       </div>
     </div>
 
     <div>
-      <div class="section-title">🏘️ Statut & foncier</div>
+      <div class="section-title">🏘️ Contexte & patrimoine</div>
       <div class="rows">
-        <div class="row"><span class="row-key">Logement social</span><span class="row-val ${isSocial ? "danger" : "success"}">${isSocial ? "Oui" : "Non"}</span></div>
-        <div class="row"><span class="row-key">Parc privé</span><span class="row-val">${val(b.parc_prive)}</span></div>
-        <div class="row"><span class="row-key">Type rapport BPI</span><span class="row-val">${val(b.lib_type_rapport_bpi)}</span></div>
+        <div class="row"><span class="row-key">Quartier prioritaire</span><span class="row-val ${b.quartier_prioritaire ? "danger" : "success"}">${b.quartier_prioritaire ? `Oui — ${val(b.nom_qp)}` : "Non"}</span></div>
+        <div class="row"><span class="row-key">Monument historique</span><span class="row-val">${val(b.denomination_monument_historique) !== "—" ? val(b.denomination_monument_historique) : val(b.nom_batiment_historique_plus_proche)}</span></div>
+        <div class="row"><span class="row-key">Distance MH</span><span class="row-val">${val(b.distance_monument_historique, "m")}</span></div>
+        <div class="row"><span class="row-key">Aléa argile</span><span class="row-val">${val(b.alea_argile)}</span></div>
+        <div class="row"><span class="row-key">Réseau chaleur</span><span class="row-val">${val(b.id_reseau)}</span></div>
+        <div class="row"><span class="row-key">Valeur foncière rel.</span><span class="row-val">${val(b.valeur_fonciere_m2_residentiel_rel_commune)}</span></div>
+        <div class="row"><span class="row-key">Zonage PLU patrimonial</span><span class="row-val">${val(b.zone_plu_bati_patrimonial)}</span></div>
       </div>
     </div>
 
@@ -358,7 +384,7 @@ async function search(offset = 0) {
     "offset": String(offset),
     "order": "annee_construction.desc.nullslast",
   });
-  if (filtreType) params.set("type_batiment_txt", `ilike.*${filtreType}*`);
+  if (filtreType) params.set("usage_principal_bdnb_open", `ilike.*${filtreType}*`);
 
   try {
     const res = await fetch(`${BASE}/batiment_groupe_complet?${params}`, {
