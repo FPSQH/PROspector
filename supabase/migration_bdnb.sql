@@ -186,7 +186,12 @@ BEGIN
     AND a.batiment_groupe_id IS NULL
     AND (
       a.id = b.cle_interop_adr_principale_ban
+      OR b.cle_interop_adr_principale_ban LIKE (a.id || '%')
       OR b.l_cle_interop_adr @> to_jsonb(a.id)
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(b.l_cle_interop_adr) k
+        WHERE k LIKE (a.id || '%') OR a.id LIKE (k || '%')
+      )
     );
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;

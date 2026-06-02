@@ -15,7 +15,7 @@ import type { Database } from '@/types/database'
 // ══════════════════════════════════════════════════════════════════
 
 const BDNB_BASE = 'https://api.bdnb.io/v1/bdnb/donnees/batiment_groupe_complet'
-const LIMIT     = 100
+const LIMIT     = 10   // API BDNB Open sans clé : max 10 par page
 const BATCH_SIZE = 200
 
 // ── Conversion Lambert-93 (EPSG:2154) → WGS84 ────────────────────
@@ -283,6 +283,8 @@ export async function POST(request: Request) {
       allRows.push(...page)
       if (page.length < LIMIT) break
       offset += LIMIT
+      // Petite pause pour respecter le rate limit de l'API Open
+      await new Promise(r => setTimeout(r, 200))
     }
 
     console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom}`)
