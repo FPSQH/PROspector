@@ -53,6 +53,73 @@ export interface Adresse {
   statut_prospection?: StatutAdresse
 }
 
+export interface BdnbBatimentGroupe {
+  batiment_groupe_id: string
+  code_commune_insee: string | null
+  code_departement_insee: string | null
+  libelle_commune_insee: string | null
+  libelle_adr_principale_ban: string | null
+  cle_interop_adr_principale_ban: string | null
+  l_cle_interop_adr: string[] | null
+  l_parcelle_id: string[] | null
+  nb_adresse_valid_ban: number | null
+  // Géométrie
+  geom_groupe: Record<string, unknown> | null
+  s_geom_groupe: number | null
+  lat_centre: number | null
+  lon_centre: number | null
+  // Physique
+  usage_principal_bdnb_open: string | null
+  usage_niveau_1_txt: string | null
+  type_batiment_dpe: string | null
+  annee_construction: number | null
+  nb_log: number | null
+  nb_log_rnc: number | null
+  surface_emprise_sol: number | null
+  hauteur_mean: number | null
+  nb_niveau: number | null
+  traversant: boolean | null
+  presence_balcon: boolean | null
+  // DPE / Énergie
+  classe_bilan_dpe: string | null
+  classe_conso_energie_arrete_2012: string | null
+  identifiant_dpe: string | null
+  date_reception_dpe: string | null
+  conso_5_usages_ep_m2: number | null
+  emission_ges_5_usages_m2: number | null
+  nb_classe_bilan_dpe_a: number | null
+  nb_classe_bilan_dpe_b: number | null
+  nb_classe_bilan_dpe_c: number | null
+  nb_classe_bilan_dpe_d: number | null
+  nb_classe_bilan_dpe_e: number | null
+  nb_classe_bilan_dpe_f: number | null
+  nb_classe_bilan_dpe_g: number | null
+  // Matériaux
+  mat_mur_txt: string | null
+  mat_toit_txt: string | null
+  type_vitrage: string | null
+  type_isolation_mur_exterieur: string | null
+  type_isolation_plancher_bas: string | null
+  type_isolation_plancher_haut: string | null
+  // Chauffage / ECS
+  type_energie_chauffage: string | null
+  type_generateur_chauffage: string | null
+  type_installation_chauffage: string | null
+  type_ventilation: string | null
+  chauffage_solaire: boolean | null
+  ecs_solaire: boolean | null
+  type_production_energie_renouvelable: string | null
+  // Patrimoine
+  denomination_monument_historique: string | null
+  distance_monument_historique: number | null
+  quartier_prioritaire: boolean | null
+  // Foncier
+  valeur_fonciere_m2_residentiel_rel_commune: number | null
+  // Metadata
+  source: string
+  updated_at: string
+}
+
 export interface AdresseHistorique {
   id: string
   adresse_id: string
@@ -171,6 +238,7 @@ export interface Database {
       contacts: { Row: Contact; Insert: Omit<Contact, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Contact> }
       interactions: { Row: Interaction; Insert: Omit<Interaction, 'id' | 'created_at'>; Update: Partial<Interaction> }
       rendez_vous: { Row: RendezVous; Insert: Omit<RendezVous, 'id' | 'created_at' | 'updated_at'>; Update: Partial<RendezVous> }
+      bdnb_batiment_groupe: { Row: BdnbBatimentGroupe; Insert: Omit<BdnbBatimentGroupe, 'updated_at'>; Update: Partial<BdnbBatimentGroupe> }
     }
     Views: {
       stats_zones: { Row: Record<string, unknown> }
