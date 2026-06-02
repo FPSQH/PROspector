@@ -69,18 +69,19 @@ const server = http.createServer((req, res) => {
 
   // ── Debug : teste plusieurs chemins BDNB ────────────────────────────────
   if (url.pathname === "/debug") {
+    const UUID = "f4905edc-db58-3a3b-a8e5-c5dfc6692ee5";
     const candidates = [
       { host: "api-open.bdnb.io",    path: "/" },
-      { host: "api-open.bdnb.io",    path: "/batiment_groupe?limit=1" },
-      { host: "bdnb.io",             path: "/" },
-      { host: "bdnb.io",             path: "/api/batiment_groupe?limit=1" },
-      { host: "open.bdnb.io",        path: "/" },
-      { host: "open.bdnb.io",        path: "/batiment_groupe?limit=1" },
-      { host: "data.bdnb.io",        path: "/" },
-      { host: "data.bdnb.io",        path: "/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io",         path: "/" },
-      { host: "api.bdnb.io",         path: "/batiment_groupe?limit=1" },
+      { host: "api-open.bdnb.io",    path: "/docs" },
+      { host: "api-open.bdnb.io",    path: "/swagger" },
       { host: "api-portail.bdnb.io", path: "/" },
+      { host: "api-portail.bdnb.io", path: `/api/${UUID}/batiment_groupe?limit=1` },
+      { host: "api-portail.bdnb.io", path: `/catalog/api/${UUID}` },
+      { host: "bdnb.io",             path: "/" },
+      { host: "bdnb.io",             path: "/api/" },
+      { host: "bdnb.io",             path: "/api/v1/batiment_groupe?limit=1" },
+      { host: "tabular-api.bdnb.io", path: "/" },
+      { host: "tabular-api.bdnb.io", path: `/api/resources/${UUID}/data/?limit=1` },
     ];
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" });
     res.write("Test des chemins BDNB Open API\n" + "=".repeat(50) + "\n\n");
