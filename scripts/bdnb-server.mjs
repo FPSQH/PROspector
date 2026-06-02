@@ -20,7 +20,7 @@ const server = http.createServer((req, res) => {
 
   // ── Proxy BDNB ──────────────────────────────────────────────────────────
   if (url.pathname.startsWith("/bdnb/")) {
-    const bdnbPath = url.pathname.replace("/bdnb/", "/v2/") + url.search;
+    const bdnbPath = url.pathname.replace("/bdnb/", "/") + url.search;
     console.log(`[BDNB] → https://${BDNB_BASE}${bdnbPath}`);
 
     const options = {
