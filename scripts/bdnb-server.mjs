@@ -68,6 +68,32 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Schema : liste les colonnes d'une table BDNB ────────────────────────
+  if (url.pathname === "/schema") {
+    const table = url.searchParams.get("table") || "batiment_groupe_complet";
+    const bdnbPath = `${BDNB_PREFIX}/${table}?limit=1`;
+    const req2 = https.request(
+      { hostname: BDNB_HOST, path: bdnbPath, method: "GET", headers: { Accept: "application/json" } },
+      (up) => {
+        let body = "";
+        up.on("data", (d) => body += d);
+        up.on("end", () => {
+          try {
+            const rows = JSON.parse(body);
+            const cols = rows[0] ? Object.keys(rows[0]).sort() : [];
+            res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+            res.end(`Colonnes de ${table} (${cols.length}) :\n\n` + cols.join("\n"));
+          } catch {
+            res.writeHead(500); res.end(body);
+          }
+        });
+      }
+    );
+    req2.on("error", (e) => { res.writeHead(502); res.end(e.message); });
+    req2.end();
+    return;
+  }
+
   // ── Debug : teste plusieurs chemins BDNB ────────────────────────────────
   if (url.pathname === "/debug") {
     const candidates = [

@@ -356,7 +356,7 @@ async function search(offset = 0) {
     "code_commune_insee": `eq.${insee}`,
     "limit": String(limit),
     "offset": String(offset),
-    "order": "nb_logements.desc.nullslast",
+    "order": "annee_construction.desc.nullslast",
   });
   if (filtreType) params.set("type_batiment_txt", `ilike.*${filtreType}*`);
 
