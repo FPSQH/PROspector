@@ -356,13 +356,12 @@ async function search(offset = 0) {
     "code_commune_insee": `eq.${insee}`,
     "limit": String(limit),
     "offset": String(offset),
-    "select": "*",
     "order": "nb_logements.desc.nullslast",
   });
   if (filtreType) params.set("type_batiment_txt", `ilike.*${filtreType}*`);
 
   try {
-    const res = await fetch(`${BASE}/batiment_groupe?${params}`, {
+    const res = await fetch(`${BASE}/batiment_groupe_complet?${params}`, {
       headers: { "Accept": "application/json", "Prefer": "count=exact" }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);

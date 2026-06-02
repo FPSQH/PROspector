@@ -11,7 +11,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const PORT = 3456;
-const BDNB_BASE = "api-open.bdnb.io";
+const BDNB_HOST = "api.bdnb.io";
+const BDNB_PREFIX = "/v1/bdnb/donnees";
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const HTML_FILE = path.join(__dir, "bdnb-explore.html");
 
@@ -20,11 +21,11 @@ const server = http.createServer((req, res) => {
 
   // ── Proxy BDNB ──────────────────────────────────────────────────────────
   if (url.pathname.startsWith("/bdnb/")) {
-    const bdnbPath = url.pathname.replace("/bdnb/", "/") + url.search;
-    console.log(`[BDNB] → https://${BDNB_BASE}${bdnbPath}`);
+    const bdnbPath = BDNB_PREFIX + url.pathname.replace("/bdnb", "") + url.search;
+    console.log(`[BDNB] → https://${BDNB_HOST}${bdnbPath}`);
 
     const options = {
-      hostname: BDNB_BASE,
+      hostname: BDNB_HOST,
       path: bdnbPath,
       method: "GET",
       headers: {
@@ -70,17 +71,10 @@ const server = http.createServer((req, res) => {
   // ── Debug : teste plusieurs chemins BDNB ────────────────────────────────
   if (url.pathname === "/debug") {
     const candidates = [
-      { host: "api.bdnb.io", path: "/bdnb/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/open/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/bdnb-open/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/v1/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/v2/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/donnees/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/open-data/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/api/batiment_groupe?limit=1" },
-      { host: "api.bdnb.io", path: "/bdnb/" },
-      { host: "api.bdnb.io", path: "/open/" },
+      { host: "api.bdnb.io", path: "/v1/bdnb/donnees/batiment_groupe_complet?limit=1" },
+      { host: "api.bdnb.io", path: "/v1/bdnb/donnees/batiment_groupe?limit=1" },
+      { host: "api.bdnb.io", path: "/v1/bdnb/donnees/batiment_construction?limit=1" },
+      { host: "api.bdnb.io", path: "/v1/bdnb/donnees/adresse?limit=1" },
     ];
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" });
     res.write("Test des chemins BDNB Open API\n" + "=".repeat(50) + "\n\n");
