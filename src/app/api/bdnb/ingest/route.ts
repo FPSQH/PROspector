@@ -15,7 +15,7 @@ import type { Database } from '@/types/database'
 // ══════════════════════════════════════════════════════════════════
 
 const BDNB_BASE = 'https://api.bdnb.io/v1/bdnb/donnees/batiment_groupe_complet'
-const LIMIT     = 100
+const LIMIT     = 10   // API BDNB Open sans clé : max 10 par page
 const BATCH_SIZE = 200
 
 // ── Conversion Lambert-93 (EPSG:2154) → WGS84 ────────────────────
@@ -124,6 +124,9 @@ function mapRow(r: any): Record<string, any> {
     s_geom_groupe:                               r.s_geom_groupe != null ? Number(r.s_geom_groupe) : null,
     lat_centre,
     lon_centre,
+    geom_centre: (lat_centre != null && lon_centre != null)
+      ? `SRID=4326;POINT(${lon_centre} ${lat_centre})`
+      : null,
     usage_principal_bdnb_open:                   r.usage_principal_bdnb_open ?? null,
     usage_niveau_1_txt:                          r.usage_niveau_1_txt ?? null,
     type_batiment_dpe:                           r.type_batiment_dpe ?? null,
@@ -280,6 +283,11 @@ export async function POST(request: Request) {
       allRows.push(...page)
       if (page.length < LIMIT) break
       offset += LIMIT
+<<<<<<< HEAD
+=======
+      // Petite pause pour respecter le rate limit de l'API Open
+      await new Promise(r => setTimeout(r, 200))
+>>>>>>> origin/claude/dazzling-ritchie-BfB7a
     }
 
     console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom}`)
