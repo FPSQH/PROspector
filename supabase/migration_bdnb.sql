@@ -31,9 +31,7 @@ CREATE TABLE IF NOT EXISTS bdnb_batiment_groupe (
   s_geom_groupe FLOAT,
   lat_centre DOUBLE PRECISION,
   lon_centre DOUBLE PRECISION,
-  geom_centre GEOMETRY(Point, 4326) GENERATED ALWAYS AS (
-    ST_SetSRID(ST_MakePoint(lon_centre, lat_centre), 4326)
-  ) STORED,
+  geom_centre GEOMETRY(Point, 4326),
   -- Physique
   usage_principal_bdnb_open TEXT,
   usage_niveau_1_txt TEXT,

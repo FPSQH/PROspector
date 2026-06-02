@@ -124,6 +124,9 @@ function mapRow(r: any): Record<string, any> {
     s_geom_groupe:                               r.s_geom_groupe != null ? Number(r.s_geom_groupe) : null,
     lat_centre,
     lon_centre,
+    geom_centre: (lat_centre != null && lon_centre != null)
+      ? `SRID=4326;POINT(${lon_centre} ${lat_centre})`
+      : null,
     usage_principal_bdnb_open:                   r.usage_principal_bdnb_open ?? null,
     usage_niveau_1_txt:                          r.usage_niveau_1_txt ?? null,
     type_batiment_dpe:                           r.type_batiment_dpe ?? null,
