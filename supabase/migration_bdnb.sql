@@ -6,6 +6,15 @@
 ALTER TABLE adresses ADD COLUMN IF NOT EXISTS batiment_groupe_id TEXT;
 CREATE INDEX IF NOT EXISTS adresses_bdnb_id_idx ON adresses(batiment_groupe_id);
 
+-- Politique RLS : service_role peut mettre à jour batiment_groupe_id (requis pour le matching via API)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'adresses' AND policyname = 'service_role_bdnb_match'
+  ) THEN
+    EXECUTE 'CREATE POLICY "service_role_bdnb_match" ON adresses FOR UPDATE TO service_role USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
+
 -- 2. Main BDNB table with ALL fields from the API (134 columns observed)
 CREATE TABLE IF NOT EXISTS bdnb_batiment_groupe (
   -- Identité
@@ -202,6 +211,7 @@ CREATE OR REPLACE FUNCTION match_bdnb_by_ban_key(p_code_insee TEXT)
 RETURNS INTEGER AS $$
 DECLARE v_count INTEGER;
 BEGIN
+  SET LOCAL row_security = off;
   UPDATE adresses a
   SET batiment_groupe_id = b.batiment_groupe_id
   FROM bdnb_batiment_groupe b
@@ -220,7 +230,7 @@ BEGIN
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Passe 2 : fallback spatial (30 m – bâtiment le plus proche)
 -- Utilise COALESCE(geom_centre, ST_MakePoint(lon, lat)) pour robustesse
@@ -228,6 +238,7 @@ CREATE OR REPLACE FUNCTION match_bdnb_by_proximity(p_code_insee TEXT)
 RETURNS INTEGER AS $$
 DECLARE v_count INTEGER;
 BEGIN
+  SET LOCAL row_security = off;
   UPDATE adresses a
   SET batiment_groupe_id = sub.batiment_groupe_id
   FROM (
@@ -251,7 +262,7 @@ BEGIN
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Fonction de diagnostic
 CREATE OR REPLACE FUNCTION bdnb_diagnostic(p_code_insee TEXT)

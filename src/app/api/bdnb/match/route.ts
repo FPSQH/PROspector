@@ -15,7 +15,6 @@ import type { Database } from '@/types/database'
 // ══════════════════════════════════════════════════════════════════
 
 export async function POST(request: Request) {
-  // Auth : session cookie utilisateur OU x-internal-key (appels internes)
   const key = request.headers.get('x-internal-key')
   const supabaseAuth = await createClient()
   const { data: { user } } = await supabaseAuth.auth.getUser()
@@ -46,7 +45,6 @@ export async function POST(request: Request) {
     if (banError) {
       console.error('[BDNB] Erreur passe BAN:', banError.message, banError.code)
     }
-
     const matched_ban: number = banCount ?? 0
     console.log(`[BDNB] Passe 1 (BAN) : ${matched_ban} adresses liées`)
 
@@ -57,7 +55,6 @@ export async function POST(request: Request) {
     if (spatialError) {
       console.error('[BDNB] Erreur passe spatiale:', spatialError.message, spatialError.code)
     }
-
     const matched_spatial: number = spatialCount ?? 0
     console.log(`[BDNB] Passe 2 (spatial 30 m) : ${matched_spatial} adresses liées`)
 
@@ -70,7 +67,7 @@ export async function POST(request: Request) {
       matched_spatial,
       total_matched,
       errors: {
-        ban: banError ? { code: banError.code, message: banError.message } : null,
+        ban:     banError     ? { code: banError.code,     message: banError.message     } : null,
         spatial: spatialError ? { code: spatialError.code, message: spatialError.message } : null,
       },
     })
