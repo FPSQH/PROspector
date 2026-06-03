@@ -6,6 +6,15 @@
 ALTER TABLE adresses ADD COLUMN IF NOT EXISTS batiment_groupe_id TEXT;
 CREATE INDEX IF NOT EXISTS adresses_bdnb_id_idx ON adresses(batiment_groupe_id);
 
+-- Politique RLS : service_role peut mettre à jour batiment_groupe_id (requis pour le matching via API)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'adresses' AND policyname = 'service_role_bdnb_match'
+  ) THEN
+    EXECUTE 'CREATE POLICY "service_role_bdnb_match" ON adresses FOR UPDATE TO service_role USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
+
 -- 2. Main BDNB table with ALL fields from the API (134 columns observed)
 CREATE TABLE IF NOT EXISTS bdnb_batiment_groupe (
   -- Identité
