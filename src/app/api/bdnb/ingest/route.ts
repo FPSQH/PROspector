@@ -292,7 +292,6 @@ export async function POST(request: Request) {
     }
 
     const hasMore = pages >= MAX_PAGES
-    // Stop pagination if no valid rows found (e.g. all batiment_groupe_id null)
     const validRows = allRows.filter(r => r.batiment_groupe_id)
     const next_offset = (hasMore && validRows.length > 0) ? offset : null
 
@@ -304,20 +303,24 @@ export async function POST(request: Request) {
 
     // ── Upsert en batches de 200 ──────────────────────────────────
     let count = 0
+    let upsertError: string | null = null
     for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
       const batch = validRows.slice(i, i + BATCH_SIZE).map(mapRow)
       const { error } = await supabase
         .from('bdnb_batiment_groupe')
         .upsert(batch as any[], { onConflict: 'batiment_groupe_id', ignoreDuplicates: false })
       if (error) {
-        console.error(`[BDNB] Erreur batch offset ${i}:`, error.message)
+        console.error(`[BDNB] Erreur batch offset ${i}:`, error.message, error.code)
+        upsertError = error.message
       } else {
         count += batch.length
       }
     }
 
     console.log(`[BDNB] ✓ ${count} bâtiments insérés pour ${nom}`)
-    return NextResponse.json({ ok: true, count, next_offset })
+    // If upsert failed and nothing was inserted, don't continue pagination
+    const safe_next_offset = (count === 0 && upsertError) ? null : next_offset
+    return NextResponse.json({ ok: true, count, next_offset: safe_next_offset, upsert_error: upsertError ?? undefined })
 
   } catch (err: any) {
     console.error(`[BDNB] Erreur:`, err.message)
