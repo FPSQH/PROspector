@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { SearchCommune } from '@/components/onboarding/SearchCommune'
 import { SecteurMap } from '@/components/map/SecteurMap'
+import { BdnbSyncBanner } from '@/components/onboarding/BdnbSyncBanner'
+import { useBdnbSync } from '@/hooks/useBdnbSync'
 
 const C = {
   bg:      '#0C0C0E',
@@ -110,6 +112,8 @@ export default function OnboardingPage() {
     await loadCommunes()
   }
 
+  const { progress, isRunning, total: bdnbTotal, done: bdnbDone, percent, allDone, hasError } = useBdnbSync(communes)
+
   const communesInsee    = communes.filter(c => !!c.chargee_at || (c.nb_adresses ?? 0) > 0).map(c => c.code_insee)
   const nbEnCours        = communes.filter(c => !c.chargee_at).length
   const canGoToDashboard = communes.length > 0
@@ -148,6 +152,20 @@ export default function OnboardingPage() {
 
           <div style={{ padding:'16px 24px', borderBottom:`1px solid ${C.border}` }}>
             <SearchCommune onAdd={handleAdd} communesExistantes={communes.map(c => c.code_insee)} />
+          </div>
+
+          {/* BDNB sync progress banner */}
+          <div style={{ padding:'12px 16px 0' }}>
+            <BdnbSyncBanner
+              progress={progress}
+              isRunning={isRunning}
+              total={bdnbTotal}
+              done={bdnbDone}
+              percent={percent}
+              allDone={allDone}
+              hasError={hasError}
+              communes={communes}
+            />
           </div>
 
           <div style={{ flex:1, overflowY:'auto' }}>
