@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       .rpc('match_bdnb_by_ban_key', { p_code_insee: code_insee })
 
     if (banError) {
-      console.error('[BDNB] Erreur passe BAN:', banError.message)
+      console.error('[BDNB] Erreur passe BAN:', banError.message, banError.code)
     }
 
     const matched_ban: number = banCount ?? 0
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       .rpc('match_bdnb_by_proximity', { p_code_insee: code_insee })
 
     if (spatialError) {
-      console.error('[BDNB] Erreur passe spatiale:', spatialError.message)
+      console.error('[BDNB] Erreur passe spatiale:', spatialError.message, spatialError.code)
     }
 
     const matched_spatial: number = spatialCount ?? 0
@@ -64,7 +64,16 @@ export async function POST(request: Request) {
     const total_matched = matched_ban + matched_spatial
     console.log(`[BDNB] ✓ Total matching ${code_insee} : ${total_matched} adresses enrichies`)
 
-    return NextResponse.json({ ok: true, matched_ban, matched_spatial, total_matched })
+    return NextResponse.json({
+      ok: true,
+      matched_ban,
+      matched_spatial,
+      total_matched,
+      errors: {
+        ban: banError ? { code: banError.code, message: banError.message } : null,
+        spatial: spatialError ? { code: spatialError.code, message: spatialError.message } : null,
+      },
+    })
 
   } catch (err: any) {
     console.error(`[BDNB] Erreur matching:`, err.message)

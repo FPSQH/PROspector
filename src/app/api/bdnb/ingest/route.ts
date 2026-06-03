@@ -14,9 +14,11 @@ import type { Database } from '@/types/database'
 // Retourne : { ok, count }
 // ══════════════════════════════════════════════════════════════════
 
-const BDNB_BASE = 'https://api.bdnb.io/v1/bdnb/donnees/batiment_groupe_complet'
-const LIMIT     = 10   // API BDNB Open sans clé : max 10 par page
+const BDNB_BASE  = 'https://api.bdnb.io/v1/bdnb/donnees/batiment_groupe_complet'
+const LIMIT      = 10   // API BDNB Open sans clé : max 10 par page
 const BATCH_SIZE = 200
+// Max pages per request to avoid Vercel 10s timeout (~50 pages = 500 bâtiments)
+const MAX_PAGES  = 45
 
 // ── Conversion Lambert-93 (EPSG:2154) → WGS84 ────────────────────
 // Formule IGN NTG_71, validée sur Tréguier/Paris/Marseille
@@ -263,7 +265,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
   }
 
-  const { code_insee, nom = code_insee } = body
+  const { code_insee, nom = code_insee, start_offset = 0 } = body
 
   const supabase = createAdminClientDirect<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -274,23 +276,28 @@ export async function POST(request: Request) {
   try {
     console.log(`[BDNB] Ingestion ${nom} (${code_insee})...`)
 
-    // ── Pagination complète ───────────────────────────────────────
+    // ── Pagination par chunks (MAX_PAGES par appel pour éviter le timeout Vercel) ─
     const allRows: any[] = []
-    let offset = 0
+    let offset = start_offset
+    let pages = 0
 
-    while (true) {
+    while (pages < MAX_PAGES) {
       const page = await fetchBdnbPage(code_insee, offset)
       allRows.push(...page)
+      pages++
       if (page.length < LIMIT) break
       offset += LIMIT
-      // Petite pause pour respecter le rate limit de l'API Open
-      await new Promise(r => setTimeout(r, 200))
+      // Petite pause pour respecter le rate limit de l'API Open (120 req/min)
+      await new Promise(r => setTimeout(r, 300))
     }
 
-    console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom}`)
+    const hasMore = pages >= MAX_PAGES
+    const next_offset = hasMore ? offset : null
+
+    console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom} (offset ${start_offset}${hasMore ? ` → suite à ${next_offset}` : ''})`)
 
     if (allRows.length === 0) {
-      return NextResponse.json({ ok: true, count: 0 })
+      return NextResponse.json({ ok: true, count: 0, next_offset: null })
     }
 
     // ── Upsert en batches de 200 ──────────────────────────────────
@@ -309,7 +316,7 @@ export async function POST(request: Request) {
     }
 
     console.log(`[BDNB] ✓ ${count} bâtiments insérés pour ${nom}`)
-    return NextResponse.json({ ok: true, count })
+    return NextResponse.json({ ok: true, count, next_offset })
 
   } catch (err: any) {
     console.error(`[BDNB] Erreur:`, err.message)
