@@ -29,33 +29,31 @@ async function sleep(ms: number) {
 }
 
 export function useBdnbSync(communes: Commune[]) {
-  const [progress, setProgress] = useState<Record<string, CommuneProgress>>({})
-  const [isRunning, setIsRunning]   = useState(false)
-  const abortRef   = useRef(false)
-  const supabase   = createClient()
+  const [progress, setProgress]   = useState<Record<string, CommuneProgress>>({})
+  const [isRunning, setIsRunning] = useState(false)
+  const abortRef  = useRef(false)
+  const userIdRef = useRef<string | null>(null)
+  const supabase  = createClient()
 
-  // Load persisted progress from Supabase
-  const loadProgress = useCallback(async () => {
-    const insees = communes.map(c => c.code_insee)
-    if (insees.length === 0) return
-    const { data } = await supabase
-      .from('bdnb_sync_progress')
-      .select('*')
-      .in('code_insee', insees)
-    if (!data) return
-    const map: Record<string, CommuneProgress> = {}
-    for (const row of data) map[row.code_insee] = row as CommuneProgress
-    setProgress(map)
-  }, [communes.map(c => c.code_insee).join(',')])
+  // Resolve and cache the current user id
+  const getUserId = useCallback(async (): Promise<string | null> => {
+    if (userIdRef.current) return userIdRef.current
+    const { data: { user } } = await supabase.auth.getUser()
+    userIdRef.current = user?.id ?? null
+    return userIdRef.current
+  }, [])
 
-  // Persist a single commune progress row
+  // Persist a single commune progress row (scoped to current user)
   const saveProgress = useCallback(async (p: CommuneProgress) => {
     setProgress(prev => ({ ...prev, [p.code_insee]: p }))
+    const userId = await getUserId()
+    if (!userId) return
     await supabase.from('bdnb_sync_progress').upsert({
       ...p,
+      user_id:    userId,
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'code_insee' })
-  }, [])
+    }, { onConflict: 'user_id,code_insee' })
+  }, [getUserId])
 
   // Full sync loop for one commune
   const syncCommune = useCallback(async (commune: Commune, initial: CommuneProgress | undefined): Promise<void> => {
@@ -72,7 +70,7 @@ export function useBdnbSync(communes: Commune[]) {
     // Already done — skip
     if (base.status === 'done') return
 
-    let cur = { ...base, status: 'ingesting' as SyncStatus, started_at: base.started_at ?? new Date().toISOString() }
+    let cur = { ...base, status: 'ingesting' as SyncStatus, started_at: (base as any).started_at ?? new Date().toISOString() }
     await saveProgress(cur)
 
     // ── Phase 1 : ingest batiments ──────────────────────────────
@@ -166,11 +164,14 @@ export function useBdnbSync(communes: Commune[]) {
     let cancelled = false
 
     const init = async () => {
-      // Load persisted progress first
+      const userId = await getUserId()
+      if (!userId || cancelled) return
+
       const insees = chargees.map(c => c.code_insee)
       const { data } = await supabase
         .from('bdnb_sync_progress')
         .select('*')
+        .eq('user_id', userId)
         .in('code_insee', insees)
 
       if (cancelled) return
@@ -202,5 +203,5 @@ export function useBdnbSync(communes: Commune[]) {
   const percent  = total === 0 ? 0 : Math.round((done / total) * 100)
   const allDone  = total > 0 && done === total
 
-  return { progress, isRunning, total, done, percent, allDone, hasError, loadProgress }
+  return { progress, isRunning, total, done, percent, allDone, hasError, loadProgress: async () => {} }
 }
