@@ -17,8 +17,8 @@ import type { Database } from '@/types/database'
 const BDNB_BASE  = 'https://api.bdnb.io/v1/bdnb/donnees/batiment_groupe_complet'
 const LIMIT      = 10   // API BDNB Open sans clé : max 10 par page
 const BATCH_SIZE = 200
-// Max pages per request to avoid Vercel 10s timeout (~50 pages = 500 bâtiments)
-const MAX_PAGES  = 45
+// Max pages per request to stay under Vercel 10s timeout (8 × ~500ms ≈ 4s)
+const MAX_PAGES  = 8
 
 // ── Conversion Lambert-93 (EPSG:2154) → WGS84 ────────────────────
 // Formule IGN NTG_71, validée sur Tréguier/Paris/Marseille
@@ -292,9 +292,11 @@ export async function POST(request: Request) {
     }
 
     const hasMore = pages >= MAX_PAGES
-    const next_offset = hasMore ? offset : null
+    // Stop pagination if no valid rows found (e.g. all batiment_groupe_id null)
+    const validRows = allRows.filter(r => r.batiment_groupe_id)
+    const next_offset = (hasMore && validRows.length > 0) ? offset : null
 
-    console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom} (offset ${start_offset}${hasMore ? ` → suite à ${next_offset}` : ''})`)
+    console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom} (offset ${start_offset}${next_offset ? ` → suite à ${next_offset}` : ''})`)
 
     if (allRows.length === 0) {
       return NextResponse.json({ ok: true, count: 0, next_offset: null })
@@ -302,9 +304,8 @@ export async function POST(request: Request) {
 
     // ── Upsert en batches de 200 ──────────────────────────────────
     let count = 0
-    for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
-      const batch = allRows.slice(i, i + BATCH_SIZE).map(mapRow).filter(r => r.batiment_groupe_id)
-      if (batch.length === 0) continue
+    for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+      const batch = validRows.slice(i, i + BATCH_SIZE).map(mapRow)
       const { error } = await supabase
         .from('bdnb_batiment_groupe')
         .upsert(batch as any[], { onConflict: 'batiment_groupe_id', ignoreDuplicates: false })
