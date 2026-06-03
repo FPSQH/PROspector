@@ -92,6 +92,21 @@ async function fetchBdnbPage(code_insee: string, offset: number): Promise<any[]>
   return Array.isArray(data) ? data : []
 }
 
+// Convertit les valeurs booléennes de l'API BDNB (texte FR ou bool) vers boolean | null
+function parseBool(val: any): boolean | null {
+  if (val === null || val === undefined) return null
+  if (typeof val === 'boolean') return val
+  if (typeof val === 'string') {
+    const v = val.toLowerCase().trim()
+    if (v === 'true' || v === 'oui' || v === 'traversant' || v === 'oui traversant') return true
+    if (v === 'false' || v === 'non' || v === 'non traversant') return false
+    // Générique : commence par "non " → false, sinon → true
+    if (v.startsWith('non ')) return false
+    if (v.length > 0) return true
+  }
+  return null
+}
+
 // ── Mappe un enregistrement BDNB vers la ligne DB ─────────────────
 function mapRow(r: any): Record<string, any> {
   // Résoudre le centroïde Lambert-93 → WGS84
@@ -142,10 +157,10 @@ function mapRow(r: any): Record<string, any> {
     hauteur_mean:                                r.hauteur_mean != null ? Number(r.hauteur_mean) : null,
     nb_niveau:                                   r.nb_niveau != null ? Number(r.nb_niveau) : null,
     altitude_sol_mean:                           r.altitude_sol_mean != null ? Number(r.altitude_sol_mean) : null,
-    traversant:                                  r.traversant ?? null,
-    presence_balcon:                             r.presence_balcon ?? null,
-    contient_fictive_geom_groupe:                r.contient_fictive_geom_groupe ?? null,
-    croisement_geospx_reussi:                    r.croisement_geospx_reussi ?? null,
+    traversant:                                  parseBool(r.traversant),
+    presence_balcon:                             parseBool(r.presence_balcon),
+    contient_fictive_geom_groupe:                parseBool(r.contient_fictive_geom_groupe),
+    croisement_geospx_reussi:                    parseBool(r.croisement_geospx_reussi),
     classe_bilan_dpe:                            r.classe_bilan_dpe ?? null,
     classe_conso_energie_arrete_2012:            r.classe_conso_energie_arrete_2012 ?? null,
     classe_conso_energie_dpe_tertiaire:          r.classe_conso_energie_dpe_tertiaire ?? null,
@@ -221,8 +236,8 @@ function mapRow(r: any): Record<string, any> {
     type_generateur_climatisation:               r.type_generateur_climatisation ?? null,
     type_generateur_climatisation_anciennete:    r.type_generateur_climatisation_anciennete ?? null,
     type_ventilation:                            r.type_ventilation ?? null,
-    chauffage_solaire:                           r.chauffage_solaire ?? null,
-    ecs_solaire:                                 r.ecs_solaire ?? null,
+    chauffage_solaire:                           parseBool(r.chauffage_solaire),
+    ecs_solaire:                                 parseBool(r.ecs_solaire),
     type_production_energie_renouvelable:        r.type_production_energie_renouvelable ?? null,
     methode_application_dpe_tertiaire:           r.methode_application_dpe_tertiaire ?? null,
     denomination_monument_historique:            r.denomination_monument_historique ?? null,
@@ -234,7 +249,7 @@ function mapRow(r: any): Record<string, any> {
     contrainte_urbanisme_ac1:                    r.contrainte_urbanisme_ac1 ?? null,
     alea_argile:                                 r.alea_argile ?? null,
     alea_argiles:                                r.alea_argiles ?? null,
-    quartier_prioritaire:                        r.quartier_prioritaire ?? null,
+    quartier_prioritaire:                        parseBool(r.quartier_prioritaire),
     nom_qp:                                      r.nom_qp ?? null,
     nom_quartier_qpv:                            r.nom_quartier_qpv ?? null,
     code_qp:                                     r.code_qp ?? null,
