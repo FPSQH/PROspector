@@ -92,6 +92,13 @@ async function fetchBdnbPage(code_insee: string, offset: number): Promise<any[]>
   return Array.isArray(data) ? data : []
 }
 
+// Convertit en entier (l'API BDNB peut retourner "0.99" pour des champs INTEGER)
+function toInt(val: any): number | null {
+  if (val === null || val === undefined) return null
+  const n = Number(val)
+  return isNaN(n) ? null : Math.round(n)
+}
+
 // Convertit les valeurs booléennes de l'API BDNB (texte FR ou bool) vers boolean | null
 function parseBool(val: any): boolean | null {
   if (val === null || val === undefined) return null
@@ -135,7 +142,7 @@ function mapRow(r: any): Record<string, any> {
     l_parcelle_id:                               r.l_parcelle_id ?? null,
     l_denomination_proprietaire:                 r.l_denomination_proprietaire ?? null,
     l_siren:                                     r.l_siren ?? null,
-    nb_adresse_valid_ban:                        r.nb_adresse_valid_ban != null ? Number(r.nb_adresse_valid_ban) : null,
+    nb_adresse_valid_ban:                        toInt(r.nb_adresse_valid_ban),
     numero_immat_principal:                      r.numero_immat_principal ?? null,
     geom_groupe:                                 r.geom_groupe ?? null,
     s_geom_groupe:                               r.s_geom_groupe != null ? Number(r.s_geom_groupe) : null,
@@ -147,15 +154,15 @@ function mapRow(r: any): Record<string, any> {
     usage_principal_bdnb_open:                   r.usage_principal_bdnb_open ?? null,
     usage_niveau_1_txt:                          r.usage_niveau_1_txt ?? null,
     type_batiment_dpe:                           r.type_batiment_dpe ?? null,
-    annee_construction:                          r.annee_construction != null ? Number(r.annee_construction) : null,
-    annee_construction_dpe:                      r.annee_construction_dpe != null ? Number(r.annee_construction_dpe) : null,
-    nb_log:                                      r.nb_log != null ? Number(r.nb_log) : null,
-    nb_log_rnc:                                  r.nb_log_rnc != null ? Number(r.nb_log_rnc) : null,
-    nb_lot_garpark_rnc:                          r.nb_lot_garpark_rnc != null ? Number(r.nb_lot_garpark_rnc) : null,
-    nb_lot_tertiaire_rnc:                        r.nb_lot_tertiaire_rnc != null ? Number(r.nb_lot_tertiaire_rnc) : null,
+    annee_construction:                          toInt(r.annee_construction),
+    annee_construction_dpe:                      toInt(r.annee_construction_dpe),
+    nb_log:                                      toInt(r.nb_log),
+    nb_log_rnc:                                  toInt(r.nb_log_rnc),
+    nb_lot_garpark_rnc:                          toInt(r.nb_lot_garpark_rnc),
+    nb_lot_tertiaire_rnc:                        toInt(r.nb_lot_tertiaire_rnc),
     surface_emprise_sol:                         r.surface_emprise_sol != null ? Number(r.surface_emprise_sol) : null,
     hauteur_mean:                                r.hauteur_mean != null ? Number(r.hauteur_mean) : null,
-    nb_niveau:                                   r.nb_niveau != null ? Number(r.nb_niveau) : null,
+    nb_niveau:                                   toInt(r.nb_niveau),
     altitude_sol_mean:                           r.altitude_sol_mean != null ? Number(r.altitude_sol_mean) : null,
     traversant:                                  parseBool(r.traversant),
     presence_balcon:                             parseBool(r.presence_balcon),
@@ -173,29 +180,29 @@ function mapRow(r: any): Record<string, any> {
     conso_3_usages_ep_m2_arrete_2012:            r.conso_3_usages_ep_m2_arrete_2012 != null ? Number(r.conso_3_usages_ep_m2_arrete_2012) : null,
     emission_ges_5_usages_m2:                    r.emission_ges_5_usages_m2 != null ? Number(r.emission_ges_5_usages_m2) : null,
     emission_ges_3_usages_ep_m2_arrete_2012:     r.emission_ges_3_usages_ep_m2_arrete_2012 != null ? Number(r.emission_ges_3_usages_ep_m2_arrete_2012) : null,
-    nb_classe_bilan_dpe_a:                       r.nb_classe_bilan_dpe_a != null ? Number(r.nb_classe_bilan_dpe_a) : null,
-    nb_classe_bilan_dpe_b:                       r.nb_classe_bilan_dpe_b != null ? Number(r.nb_classe_bilan_dpe_b) : null,
-    nb_classe_bilan_dpe_c:                       r.nb_classe_bilan_dpe_c != null ? Number(r.nb_classe_bilan_dpe_c) : null,
-    nb_classe_bilan_dpe_d:                       r.nb_classe_bilan_dpe_d != null ? Number(r.nb_classe_bilan_dpe_d) : null,
-    nb_classe_bilan_dpe_e:                       r.nb_classe_bilan_dpe_e != null ? Number(r.nb_classe_bilan_dpe_e) : null,
-    nb_classe_bilan_dpe_f:                       r.nb_classe_bilan_dpe_f != null ? Number(r.nb_classe_bilan_dpe_f) : null,
-    nb_classe_bilan_dpe_g:                       r.nb_classe_bilan_dpe_g != null ? Number(r.nb_classe_bilan_dpe_g) : null,
-    nb_classe_conso_energie_arrete_2012_a:       r.nb_classe_conso_energie_arrete_2012_a != null ? Number(r.nb_classe_conso_energie_arrete_2012_a) : null,
-    nb_classe_conso_energie_arrete_2012_b:       r.nb_classe_conso_energie_arrete_2012_b != null ? Number(r.nb_classe_conso_energie_arrete_2012_b) : null,
-    nb_classe_conso_energie_arrete_2012_c:       r.nb_classe_conso_energie_arrete_2012_c != null ? Number(r.nb_classe_conso_energie_arrete_2012_c) : null,
-    nb_classe_conso_energie_arrete_2012_d:       r.nb_classe_conso_energie_arrete_2012_d != null ? Number(r.nb_classe_conso_energie_arrete_2012_d) : null,
-    nb_classe_conso_energie_arrete_2012_e:       r.nb_classe_conso_energie_arrete_2012_e != null ? Number(r.nb_classe_conso_energie_arrete_2012_e) : null,
-    nb_classe_conso_energie_arrete_2012_f:       r.nb_classe_conso_energie_arrete_2012_f != null ? Number(r.nb_classe_conso_energie_arrete_2012_f) : null,
-    nb_classe_conso_energie_arrete_2012_g:       r.nb_classe_conso_energie_arrete_2012_g != null ? Number(r.nb_classe_conso_energie_arrete_2012_g) : null,
-    nb_classe_conso_energie_arrete_2012_nc:      r.nb_classe_conso_energie_arrete_2012_nc != null ? Number(r.nb_classe_conso_energie_arrete_2012_nc) : null,
+    nb_classe_bilan_dpe_a:                       toInt(r.nb_classe_bilan_dpe_a),
+    nb_classe_bilan_dpe_b:                       toInt(r.nb_classe_bilan_dpe_b),
+    nb_classe_bilan_dpe_c:                       toInt(r.nb_classe_bilan_dpe_c),
+    nb_classe_bilan_dpe_d:                       toInt(r.nb_classe_bilan_dpe_d),
+    nb_classe_bilan_dpe_e:                       toInt(r.nb_classe_bilan_dpe_e),
+    nb_classe_bilan_dpe_f:                       toInt(r.nb_classe_bilan_dpe_f),
+    nb_classe_bilan_dpe_g:                       toInt(r.nb_classe_bilan_dpe_g),
+    nb_classe_conso_energie_arrete_2012_a:       toInt(r.nb_classe_conso_energie_arrete_2012_a),
+    nb_classe_conso_energie_arrete_2012_b:       toInt(r.nb_classe_conso_energie_arrete_2012_b),
+    nb_classe_conso_energie_arrete_2012_c:       toInt(r.nb_classe_conso_energie_arrete_2012_c),
+    nb_classe_conso_energie_arrete_2012_d:       toInt(r.nb_classe_conso_energie_arrete_2012_d),
+    nb_classe_conso_energie_arrete_2012_e:       toInt(r.nb_classe_conso_energie_arrete_2012_e),
+    nb_classe_conso_energie_arrete_2012_f:       toInt(r.nb_classe_conso_energie_arrete_2012_f),
+    nb_classe_conso_energie_arrete_2012_g:       toInt(r.nb_classe_conso_energie_arrete_2012_g),
+    nb_classe_conso_energie_arrete_2012_nc:      toInt(r.nb_classe_conso_energie_arrete_2012_nc),
     conso_res_dle_elec_2020:                     r.conso_res_dle_elec_2020 != null ? Number(r.conso_res_dle_elec_2020) : null,
     conso_res_dle_gaz_2020:                      r.conso_res_dle_gaz_2020 != null ? Number(r.conso_res_dle_gaz_2020) : null,
     conso_pro_dle_elec_2020:                     r.conso_pro_dle_elec_2020 != null ? Number(r.conso_pro_dle_elec_2020) : null,
     conso_pro_dle_gaz_2020:                      r.conso_pro_dle_gaz_2020 != null ? Number(r.conso_pro_dle_gaz_2020) : null,
-    nb_pdl_res_dle_elec_2020:                    r.nb_pdl_res_dle_elec_2020 != null ? Number(r.nb_pdl_res_dle_elec_2020) : null,
-    nb_pdl_res_dle_gaz_2020:                     r.nb_pdl_res_dle_gaz_2020 != null ? Number(r.nb_pdl_res_dle_gaz_2020) : null,
-    nb_pdl_pro_dle_elec_2020:                    r.nb_pdl_pro_dle_elec_2020 != null ? Number(r.nb_pdl_pro_dle_elec_2020) : null,
-    nb_pdl_pro_dle_gaz_2020:                     r.nb_pdl_pro_dle_gaz_2020 != null ? Number(r.nb_pdl_pro_dle_gaz_2020) : null,
+    nb_pdl_res_dle_elec_2020:                    toInt(r.nb_pdl_res_dle_elec_2020),
+    nb_pdl_res_dle_gaz_2020:                     toInt(r.nb_pdl_res_dle_gaz_2020),
+    nb_pdl_pro_dle_elec_2020:                    toInt(r.nb_pdl_pro_dle_elec_2020),
+    nb_pdl_pro_dle_gaz_2020:                     toInt(r.nb_pdl_pro_dle_gaz_2020),
     mat_mur_txt:                                 r.mat_mur_txt ?? null,
     mat_toit_txt:                                r.mat_toit_txt ?? null,
     materiaux_structure_mur_exterieur:           r.materiaux_structure_mur_exterieur ?? null,
@@ -219,9 +226,9 @@ function mapRow(r: any): Record<string, any> {
     u_plancher_haut_deperditif:                  r.u_plancher_haut_deperditif != null ? Number(r.u_plancher_haut_deperditif) : null,
     uw:                                          r.uw != null ? Number(r.uw) : null,
     type_installation_chauffage:                 r.type_installation_chauffage ?? null,
-    nb_installation_chauffage:                   r.nb_installation_chauffage != null ? Number(r.nb_installation_chauffage) : null,
+    nb_installation_chauffage:                   toInt(r.nb_installation_chauffage),
     type_installation_ecs:                       r.type_installation_ecs ?? null,
-    nb_installation_ecs:                         r.nb_installation_ecs != null ? Number(r.nb_installation_ecs) : null,
+    nb_installation_ecs:                         toInt(r.nb_installation_ecs),
     type_energie_chauffage:                      r.type_energie_chauffage ?? null,
     type_energie_chauffage_appoint:              r.type_energie_chauffage_appoint ?? null,
     type_energie_chauffage_tertiaire:            r.type_energie_chauffage_tertiaire ?? null,
@@ -307,7 +314,14 @@ export async function POST(request: Request) {
     }
 
     const hasMore = pages >= MAX_PAGES
-    const validRows = allRows.filter(r => r.batiment_groupe_id)
+    // Deduplicate by batiment_groupe_id (API may return same building across pages)
+    const seen = new Set<string>()
+    const validRows = allRows.filter(r => {
+      if (!r.batiment_groupe_id) return false
+      if (seen.has(r.batiment_groupe_id)) return false
+      seen.add(r.batiment_groupe_id)
+      return true
+    })
     const next_offset = (hasMore && validRows.length > 0) ? offset : null
 
     console.log(`[BDNB] ${allRows.length} bâtiments récupérés pour ${nom} (offset ${start_offset}${next_offset ? ` → suite à ${next_offset}` : ''})`)
