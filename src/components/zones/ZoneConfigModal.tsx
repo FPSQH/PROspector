@@ -235,8 +235,10 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
               Pre-qualification depuis les DPE
             </p>
             <p style={{ fontSize:12, color: C.mid, marginBottom:12, lineHeight:1.5 }}>
-              Qualifie automatiquement les adresses ayant un DPE : maison, appartement ou immeuble mixte (appart + commerce).
-              Les qualifications manuelles existantes ne sont pas ecrasees.
+              Met à jour le type de chaque adresse depuis 2 sources (par ordre de fiabilité) :
+              <br/>① <strong style={{ color: C.text }}>BDNB</strong> — type bâtiment officiel (maison / appartement / tertiaire)
+              <br/>② <strong style={{ color: C.text }}>DPE</strong> — type déclaré lors du diagnostic (fallback)
+              <br/>Les qualifications manuelles existantes ne sont pas écrasées.
             </p>
             <button onClick={runPrequalifier} disabled={prequalLoading} style={{
               width:'100%', padding:'9px 16px', borderRadius:8,
