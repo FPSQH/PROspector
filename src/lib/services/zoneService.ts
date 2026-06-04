@@ -49,18 +49,26 @@ export class ZoneService {
 
     if (adresses.length === 0) throw new Error('Aucune adresse trouvée')
 
-    const dpeMap = await this.fetchDpeMap(codesInsee, options.dpe_poids, options.dpe_fenetre_mois)
+    const dpeMap  = await this.fetchDpeMap(codesInsee, options.dpe_poids, options.dpe_fenetre_mois)
+    const bdnbMap = await this.fetchBdnbTypeMap(adresses)
 
-    const points: GeoPoint[] = adresses.map((a: any) => ({
-      id: a.id,
-      lat: a.lat,
-      lon: a.lon,
-      prospectable: true,
-      code_insee: a.code_insee,
-      type_bien: a.type_bien ?? 'inconnu',
-      dpe_chauds: dpeMap.get(a.id)?.chauds ?? 0,
-      dpe_tiedes: dpeMap.get(a.id)?.tiedes ?? 0,
-    }))
+    const points: GeoPoint[] = adresses.map((a: any) => {
+      const bdnb    = bdnbMap.get(a.batiment_groupe_id)
+      const dpe     = dpeMap.get(a.id)
+      return {
+        id:                  a.id,
+        lat:                 a.lat,
+        lon:                 a.lon,
+        prospectable:        true,
+        code_insee:          a.code_insee,
+        type_bien:           a.type_bien ?? 'inconnu',
+        type_batiment_bdnb:  bdnb?.type_batiment_dpe ?? null,
+        // Signal transaction : DPE dans la fenêtre OU DPE connu dans la BDNB
+        has_dpe:             (dpe != null) || (bdnb?.classe_bilan_dpe != null),
+        dpe_chauds:          dpe?.chauds ?? 0,
+        dpe_tiedes:          dpe?.tiedes ?? 0,
+      }
+    })
 
     const dpeParams: DpeParams = {
       poids: options.dpe_poids,
@@ -97,7 +105,7 @@ export class ZoneService {
       while (true) {
         let query = this.supabase
           .from('adresses')
-          .select('id, lat, lon, type_bien, prospectable, code_insee')
+          .select('id, lat, lon, type_bien, prospectable, code_insee, batiment_groupe_id')
           .in('code_insee', batchInsee)
           .eq('prospectable', true)
           .neq('type_bien', 'logement_social')
@@ -116,6 +124,28 @@ export class ZoneService {
       }
     }
     return adresses
+  }
+
+  // Récupère le type BDNB (type_batiment_dpe, classe_bilan_dpe) pour chaque batiment_groupe_id
+  private async fetchBdnbTypeMap(adresses: any[]): Promise<Map<string, { type_batiment_dpe: string | null; classe_bilan_dpe: string | null }>> {
+    const map = new Map<string, { type_batiment_dpe: string | null; classe_bilan_dpe: string | null }>()
+    const ids = [...new Set(adresses.map((a: any) => a.batiment_groupe_id).filter(Boolean))]
+    if (ids.length === 0) return map
+
+    const batches = this.chunk(ids, 500)
+    for (const batch of batches) {
+      const { data } = await this.supabase
+        .from('bdnb_batiment_groupe')
+        .select('batiment_groupe_id, type_batiment_dpe, classe_bilan_dpe')
+        .in('batiment_groupe_id', batch)
+      for (const row of (data ?? [])) {
+        map.set(row.batiment_groupe_id, {
+          type_batiment_dpe: row.type_batiment_dpe ?? null,
+          classe_bilan_dpe:  row.classe_bilan_dpe  ?? null,
+        })
+      }
+    }
+    return map
   }
 
   private async fetchDpeMap(codesInsee: string[], dpePoids: number, dpeFenetreMois: number) {
