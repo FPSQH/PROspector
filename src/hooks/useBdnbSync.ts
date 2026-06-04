@@ -127,6 +127,10 @@ export function useBdnbSync(communes: Commune[]) {
         body:    JSON.stringify({ code_insee: commune.code_insee }),
       })
       const match = await res.json()
+
+      // Enrichir type_bien depuis BDNB (passe silencieuse — non bloquante)
+      fetch('/api/adresses/prequalifier', { method: 'POST' }).catch(() => {})
+
       cur = {
         ...cur,
         status:            'done',
