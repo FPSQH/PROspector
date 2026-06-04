@@ -1,19 +1,26 @@
 // ── Algorithme glouton hotspot — tous candidats + centroid convergent ────────
 //
-// Fix 1 : chaque adresse est testee comme centre candidat (pas de déduplication)
-//         -> meilleure detection des pics de densité réels
+// Fix 1 : chaque adresse est testee comme centre candidat
 // Fix 2 : centroid convergent (max 5 iterations) -> zones plus denses
 // Fix 3 : rayon adaptatif (jusqu'à 3x R) pour zones rurales peu denses
+//
+// Scoring (v2) :
+//   - type_batiment_bdnb (BDNB) prioritaire sur type_bien (BAN)
+//   - maison = 1.0 | appartement = poids_collectif (0 par défaut) | tertiaire = 0
+//   - has_dpe = présence d'un DPE quelque soit la note (signal de transaction)
 
 export interface GeoPoint {
-  id:           string
-  lat:          number
-  lon:          number
-  prospectable: boolean
-  code_insee?:  string
-  dpe_chauds?:  number
-  dpe_tiedes?:  number
-  type_bien?:   string
+  id:                  string
+  lat:                 number
+  lon:                 number
+  prospectable:        boolean
+  code_insee?:         string
+  type_bien?:          string          // BAN (fallback)
+  type_batiment_bdnb?: string          // BDNB: 'maison' | 'appartement' | 'tertiaire' | null
+  has_dpe?:            boolean         // Présence d'un DPE (signal de transaction, toute note)
+  // Champs legacy conservés pour compatibilité
+  dpe_chauds?:         number
+  dpe_tiedes?:         number
 }
 
 export interface DensityZone {
@@ -27,9 +34,19 @@ export interface DensityZone {
 }
 
 export interface DpeParams {
-  poids:           number   // 0..2 (0% a 200%)
+  poids:           number   // 0..2 (0% a 200%) — poids du signal DPE dans le score
   seuil_inclusion: number
-  poids_collectif: number   // 0..1 (0% a 100%) — ponderation habitat collectif vs individuel
+  poids_collectif: number   // 0..1 — ponderation habitat collectif (0 = exclu)
+}
+
+// Retourne le poids de prospection d'une adresse selon son type de bâtiment.
+// Priorité : type BDNB > type BAN > inconnu (traité comme maison)
+function getPoidsHabitat(p: GeoPoint, poidsCollectif: number): number {
+  const type = (p.type_batiment_bdnb ?? p.type_bien ?? 'inconnu').toLowerCase()
+  if (type === 'maison' || type === 'inconnu') return 1.0
+  if (type === 'appartement')                  return poidsCollectif
+  // tertiaire, commerce, logement_social, industriel → exclu de la prospection
+  return 0
 }
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -54,17 +71,18 @@ export function generateDensityZones(
   nb_zones:       number,
   capacite_cible: number,
   rayon_metres:   number,
-  dpeParams:      DpeParams = { poids: 0, seuil_inclusion: 10 }
+  dpeParams:      DpeParams = { poids: 0, seuil_inclusion: 10, poids_collectif: 0 }
 ): { zones: DensityZone[]; horsZone: GeoPoint[] } {
 
   if (points.length === 0) return { zones: [], horsZone: [] }
 
-  const rayonMax   = rayon_metres * 3
-  const seuilExt   = Math.max(Math.floor(capacite_cible * 0.3), 5)
-  const avgLat     = points.reduce((s, p) => s + p.lat, 0) / points.length
-  const cosLat     = Math.cos(avgLat * Math.PI / 180)
-  const mPerDegLat = 111000
-  const mPerDegLon = 111000 * cosLat
+  const poidsCollectif = dpeParams.poids_collectif ?? 0
+  const rayonMax       = rayon_metres * 3
+  const seuilExt       = Math.max(Math.floor(capacite_cible * 0.3), 5)
+  const avgLat         = points.reduce((s, p) => s + p.lat, 0) / points.length
+  const cosLat         = Math.cos(avgLat * Math.PI / 180)
+  const mPerDegLat     = 111000
+  const mPerDegLon     = 111000 * cosLat
 
   function distSq(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const dlat = (lat2 - lat1) * mPerDegLat
@@ -88,7 +106,6 @@ export function generateDensityZones(
     return h
   }
 
-  // Voisins dans 5x5 buckets (garantit de couvrir le cercle de rayon R avec bucket R/2)
   function getNeighbors(h: Map<string, GeoPoint[]>, lat: number, lon: number): GeoPoint[] {
     const bi = Math.floor(lat / bucketDeg)
     const bj = Math.floor(lon / bucketDeg)
@@ -101,28 +118,26 @@ export function generateDensityZones(
     return out
   }
 
-  // FIX 2 : Convergence du centroid (max 5 passes)
   function convergeZone(
     initCenter: { lat: number; lon: number },
     pool: GeoPoint[],
     r2: number,
-    poidsCollectif: number
   ): { pts: GeoPoint[]; centroid: { lat: number; lon: number } } {
     let c = initCenter
     let pts: GeoPoint[] = []
 
     for (let iter = 0; iter < 5; iter++) {
-      // Filtrer les adresses dans le rayon depuis c
-      // Remplissage pondéré : les appartements consomment moins de capacité
       const sorted = pool
         .filter(p => distSq(c.lat, c.lon, p.lat, p.lon) <= r2)
         .map(p => ({ p, d: distSq(c.lat, c.lon, p.lat, p.lon) }))
         .sort((a, b) => a.d - b.d)
+
       const inR: GeoPoint[] = []
       let capaciteConsommee = 0
       for (const { p } of sorted) {
-        const w = (p.type_bien === 'appartement') ? poidsCollectif : 1
-        if (capaciteConsommee + w > capacite_cible + 0.5) break  // +0.5 pour éviter de couper net
+        const w = getPoidsHabitat(p, poidsCollectif)
+        if (w === 0) continue  // type exclu — ne consomme pas de capacité, ignoré
+        if (capaciteConsommee + w > capacite_cible + 0.5) break
         inR.push(p)
         capaciteConsommee += w
       }
@@ -130,19 +145,16 @@ export function generateDensityZones(
       if (inR.length === 0) break
 
       const newC = calcCentroid(inR)
-      // Verifier si le centroid a bouge significativement (< 5m = stable)
       const moved = Math.sqrt(distSq(c.lat, c.lon, newC.lat, newC.lon))
       pts = inR
       c   = newC
       if (moved < 5) break
     }
 
-    // Appliquer la limite dure depuis le centroid final
     const finalPts = pts.filter(p => distSq(c.lat, c.lon, p.lat, p.lon) <= r2)
     return { pts: finalPts, centroid: c }
   }
 
-  // Creer une zone avec rayon adaptatif depuis un centre initial
   function createZoneAdaptive(
     initCenter: { lat: number; lon: number },
     pool: GeoPoint[],
@@ -150,7 +162,7 @@ export function generateDensityZones(
     const paliers = [1.0, 1.5, 2.0, 3.0].map(f => Math.min(f * rayon_metres, rayonMax))
 
     for (const r of paliers) {
-      const { pts, centroid: c } = convergeZone(initCenter, pool, r * r, dpeParams.poids_collectif ?? 0.5)
+      const { pts, centroid: c } = convergeZone(initCenter, pool, r * r)
       if (pts.length === 0) continue
       if (pts.length >= seuilExt || r >= rayonMax) {
         const rayonReel = Math.round(Math.max(...pts.map(p => haversine(c.lat, c.lon, p.lat, p.lon))))
@@ -180,20 +192,17 @@ export function generateDensityZones(
     let bestScore  = -1
     let bestCenter: { lat: number; lon: number } | null = null
 
-    // FIX 1 : tester TOUTES les adresses comme centre candidat
     for (const cand of remaining) {
       const neighbors = getNeighbors(hash, cand.lat, cand.lon)
       const inR = neighbors.filter(p => distSq(cand.lat, cand.lon, p.lat, p.lon) <= R2init)
 
-      const dpe   = inR.reduce((s, p) => s + (p.dpe_chauds ?? 0), 0)
-      // Pondération habitat collectif : les appartements valent poids_collectif (0..1) au lieu de 1
-      const poidsCollectif = dpeParams.poids_collectif ?? 0.5
-      const densite = inR.reduce((s, p) => {
-        const w = (p.type_bien === 'appartement') ? poidsCollectif : 1
-        return s + w
-      }, 0)
-      // Si aucune adresse dans le rayon initial, compter quand meme le candidat lui-meme
-      const score = (inR.length > 0 ? densite : 0.5) + dpe * dpeParams.poids
+      // Densité pondérée : maison=1.0, appartement=poids_collectif, tertiaire=0
+      const densite = inR.reduce((s, p) => s + getPoidsHabitat(p, poidsCollectif), 0)
+
+      // Signal DPE : présence d'un DPE, toute note confondue (indicateur de transaction)
+      const nbDpe = inR.filter(p => p.has_dpe || (p.dpe_chauds ?? 0) > 0 || (p.dpe_tiedes ?? 0) > 0).length
+
+      const score = (inR.length > 0 ? densite : 0.5) + nbDpe * dpeParams.poids
 
       if (score > bestScore) {
         bestScore  = score

@@ -25,7 +25,7 @@ export const DEFAULT_CONFIG: ZoneConfig = {
   dpe_fenetre_mois:          6,
   dpe_poids:                 1.0,
   dpe_seuil_inclusion:       10,
-  poids_collectif:           0.5,
+  poids_collectif:           0,
 }
 
 interface Props {
@@ -168,18 +168,18 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
               Ponderation Habitat
             </p>
             <p style={{ fontSize:12, color: C.mid, marginBottom:16, lineHeight:1.55 }}>
-              En prospection porte-a-porte, une maison individuelle est plus accessible qu&apos;un immeuble collectif.
-              Ce curseur pondère le poids des appartements dans le calcul des zones.
+              Les appartements et immeubles collectifs sont <strong style={{ color: C.text }}>exclus par défaut</strong> — accès interphone, impossibilité de déposer un courrier, prospection interdite dans les parties communes.
+              Augmentez ce curseur uniquement si vous souhaitez les inclure.
             </p>
-            <Slider label="Poids de l'habitat collectif" sublabel="(appartements)"
+            <Slider label="Inclusion habitat collectif" sublabel="(appartements)"
               value={Math.round(config.poids_collectif * 100)} min={0} max={100} step={10} unit="%"
               onChange={v => set('poids_collectif', v / 100)}
               hint={
-                config.poids_collectif === 0 ? 'Zones orientees maisons uniquement' :
-                config.poids_collectif <= 0.3 ? 'Faible — maisons tres prioritaires' :
-                config.poids_collectif <= 0.6 ? 'Modere — equilibre maisons / collectif' :
-                config.poids_collectif <= 0.9 ? 'Fort — collectif presque egal aux maisons' :
-                'Egalite — maisons et collectif ont le meme poids'
+                config.poids_collectif === 0   ? 'Exclus — zones orientées maisons uniquement' :
+                config.poids_collectif <= 0.3  ? 'Faible — maisons très prioritaires' :
+                config.poids_collectif <= 0.6  ? 'Modéré — équilibre maisons / collectif' :
+                config.poids_collectif <= 0.9  ? 'Fort — collectif presque égal aux maisons' :
+                'Égalité — maisons et collectif au même niveau'
               } />
           </div>
 
@@ -192,8 +192,8 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
               {dpeActif && <span style={{ fontSize:11, background:'rgba(29,158,117,0.12)', color:'#4ADE80', borderRadius:20, padding:'2px 8px', fontWeight:600 }}>Actif</span>}
             </div>
             <p style={{ fontSize:12, color: C.mid, marginBottom:16, lineHeight:1.55 }}>
-              Score de selection = 1 pt par adresse + <strong style={{ color: C.text }}>{dpePct}%</strong> par DPE recent.
-              Un secteur avec beaucoup de DPE sera priorise dans la selection des zones.
+              Un DPE déposé = un propriétaire avec un <strong style={{ color: C.text }}>projet de vente ou location en cours</strong>, quel que soit le résultat énergétique (A→G).
+              Les zones avec le plus d&apos;activité de transaction seront priorisées.
             </p>
             <Slider label="Poids du signal DPE" value={dpePct} min={0} max={200} step={10} unit="%"
               onChange={v => set('dpe_poids', v / 100)} hint={dpePoidLabel(config.dpe_poids)} />
@@ -221,8 +221,8 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
                 </div>
                 <div style={{ background:'rgba(29,158,117,0.08)', border:'1px solid rgba(29,158,117,0.25)', borderRadius:10, padding:'12px 14px', marginBottom:20 }}>
                   <p style={{ margin:0, fontSize:12, color:'#4ADE80', lineHeight:1.6 }}>
-                    Chaque adresse = <strong>1 pt</strong> &bull; Chaque DPE des <strong>{config.dpe_fenetre_mois} derniers mois</strong> = <strong>{dpePct / 100} pt</strong>.
-                    Les hotspots avec le meilleur score seront selectionnes en priorite.
+                    Chaque maison = <strong>1 pt</strong> &bull; Chaque adresse avec un DPE des <strong>{config.dpe_fenetre_mois} derniers mois</strong> = <strong>+{dpePct}%</strong>.
+                    Les zones avec forte activité de transaction sont sélectionnées en priorité.
                   </p>
                 </div>
               </>
