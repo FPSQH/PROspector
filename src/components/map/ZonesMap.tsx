@@ -83,6 +83,7 @@ function adresseColor(addr: EnrichedAddr, mode: ColorMode): string {
         case 'maison':      return '#4CAF50'
         case 'appartement': return '#2196F3'
         case 'commerce':    return '#FF9800'
+        case 'tertiaire':   return '#FF9800'  // rétrocompatibilité anciens enregistrements
         default:            return '#9E9E9E'
       }
     case 'dpe_classe': return dpeColor(addr.classe_bilan_dpe)
@@ -563,65 +564,67 @@ export default function ZonesMap({
               🔍 Filtres{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
             </button>
 
-            {/* Panneau filtres */}
-            {showFilters && (
-              <div style={{
-                background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, fontSize: 12,
-              }}>
-                {/* Filtre type_bien */}
-                <div style={filterSection}>
-                  <div style={filterSectionTitle}>Type de bien</div>
-                  {TYPE_BIEN_OPTIONS.map(opt => (
-                    <label key={opt.key} style={filterRow}>
-                      <input type="checkbox" checked={filterTypes.includes(opt.key)}
-                        onChange={() => toggleFilter(filterTypes, opt.key, setFilterTypes)}
-                        style={{ accentColor: opt.color }} />
-                      <span style={{color: opt.color}}>●</span> {opt.label}
-                    </label>
-                  ))}
-                </div>
-
-                {/* Filtre DPE */}
-                <div style={filterSection}>
-                  <div style={filterSectionTitle}>Classe DPE</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {DPE_CLASSES.map(c => (
-                      <button key={c} onClick={() => toggleFilter(filterDpe, c, setFilterDpe)} style={{
-                        width: 28, height: 24, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        background: filterDpe.includes(c) ? dpeColor(c) : '#f1f5f9',
-                        color: filterDpe.includes(c) ? '#fff' : '#475569',
-                        border: '1.5px solid ' + (filterDpe.includes(c) ? dpeColor(c) : '#e2e8f0'),
-                      }}>{c}</button>
+            {/* Panneau filtres + légende côte-à-côte */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              {showFilters && (
+                <div style={{
+                  background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, fontSize: 12,
+                }}>
+                  {/* Filtre type_bien */}
+                  <div style={filterSection}>
+                    <div style={filterSectionTitle}>Type de bien</div>
+                    {TYPE_BIEN_OPTIONS.map(opt => (
+                      <label key={opt.key} style={filterRow}>
+                        <input type="checkbox" checked={filterTypes.includes(opt.key)}
+                          onChange={() => toggleFilter(filterTypes, opt.key, setFilterTypes)}
+                          style={{ accentColor: opt.color }} />
+                        <span style={{color: opt.color}}>●</span> {opt.label}
+                      </label>
                     ))}
                   </div>
+
+                  {/* Filtre DPE */}
+                  <div style={filterSection}>
+                    <div style={filterSectionTitle}>Classe DPE</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {DPE_CLASSES.map(c => (
+                        <button key={c} onClick={() => toggleFilter(filterDpe, c, setFilterDpe)} style={{
+                          width: 28, height: 24, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          background: filterDpe.includes(c) ? dpeColor(c) : '#f1f5f9',
+                          color: filterDpe.includes(c) ? '#fff' : '#475569',
+                          border: '1.5px solid ' + (filterDpe.includes(c) ? dpeColor(c) : '#e2e8f0'),
+                        }}>{c}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Filtre statut */}
+                  <div style={filterSection}>
+                    <div style={filterSectionTitle}>Statut prospection</div>
+                    {STATUT_OPTIONS.map(s => (
+                      <label key={s.key} style={filterRow}>
+                        <input type="checkbox" checked={filterStatut.includes(s.key)}
+                          onChange={() => toggleFilter(filterStatut, s.key, setFilterStatut)}
+                          style={{ accentColor: s.color }} />
+                        <span style={{color: s.color}}>●</span> {s.label}
+                      </label>
+                    ))}
+                  </div>
+
+                  {activeFilterCount > 0 && (
+                    <button onClick={() => { setFilterTypes([]); setFilterDpe([]); setFilterStatut([]) }}
+                      style={{ marginTop: 6, width: '100%', padding: '4px', borderRadius: 6,
+                        border: '1px solid #E8E6DF', background: '#fef2f2', cursor: 'pointer',
+                        fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
+                      ✕ Effacer les filtres
+                    </button>
+                  )}
                 </div>
+              )}
 
-                {/* Filtre statut */}
-                <div style={filterSection}>
-                  <div style={filterSectionTitle}>Statut prospection</div>
-                  {STATUT_OPTIONS.map(s => (
-                    <label key={s.key} style={filterRow}>
-                      <input type="checkbox" checked={filterStatut.includes(s.key)}
-                        onChange={() => toggleFilter(filterStatut, s.key, setFilterStatut)}
-                        style={{ accentColor: s.color }} />
-                      <span style={{color: s.color}}>●</span> {s.label}
-                    </label>
-                  ))}
-                </div>
-
-                {activeFilterCount > 0 && (
-                  <button onClick={() => { setFilterTypes([]); setFilterDpe([]); setFilterStatut([]) }}
-                    style={{ marginTop: 6, width: '100%', padding: '4px', borderRadius: 6,
-                      border: '1px solid #E8E6DF', background: '#fef2f2', cursor: 'pointer',
-                      fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
-                    ✕ Effacer les filtres
-                  </button>
-                )}
-              </div>
-            )}
-
-            {renderLegend()}
+              {renderLegend()}
+            </div>
           </>
         )}
 

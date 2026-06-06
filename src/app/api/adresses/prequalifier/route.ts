@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server'
 const BDNB_TYPE_MAP: Record<string, string> = {
   maison:      'maison',
   appartement: 'appartement',
-  tertiaire:   'tertiaire',
+  tertiaire:   'commerce',   // tertiaire BDNB (bureaux, commerces, services) → commerce
 }
 
 // DPE type_batiment → adresses.type_bien + has_commerce
@@ -73,7 +73,7 @@ export async function POST() {
           .update({ type_bien: typeBien })
           .in('batiment_groupe_id', batch)
           .in('code_insee', codesInsee)
-          .or('type_bien.is.null,type_bien.eq.inconnu')
+          .or('type_bien.is.null,type_bien.eq.inconnu,type_bien.eq.tertiaire')
           .select('id')
         nbBdnb += updated?.length ?? 0
       }

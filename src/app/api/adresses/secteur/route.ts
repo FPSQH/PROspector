@@ -45,19 +45,32 @@ export async function GET() {
   const adresseIds = adresses.map((a: any) => a.id)
 
   // ── Classe DPE depuis BDNB ───────────────────────────────────────────────
+  // Utilise classe_bilan_dpe en priorité, puis dérive la classe majoritaire
+  // à partir des compteurs nb_classe_bilan_dpe_a/b/.../g si le champ principal est null.
   const batimentIds = Array.from(new Set<string>(
     adresses.filter((a: any) => a.batiment_groupe_id).map((a: any) => a.batiment_groupe_id as string)
   ))
+
+  function deriveDpeClass(b: any): string | null {
+    if (b.classe_bilan_dpe) return b.classe_bilan_dpe
+    let best: string | null = null; let bestN = 0
+    for (const c of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
+      const n = (b[`nb_classe_bilan_dpe_${c}`] ?? 0) as number
+      if (n > bestN) { bestN = n; best = c.toUpperCase() }
+    }
+    return bestN > 0 ? best : null
+  }
+
   const bdnbMap = new Map<string, string>()
   if (batimentIds.length) {
     for (const batch of chunk(batimentIds, 500)) {
       const { data } = await supabase
         .from('bdnb_batiment_groupe')
-        .select('batiment_groupe_id, classe_bilan_dpe')
+        .select('batiment_groupe_id, classe_bilan_dpe, nb_classe_bilan_dpe_a, nb_classe_bilan_dpe_b, nb_classe_bilan_dpe_c, nb_classe_bilan_dpe_d, nb_classe_bilan_dpe_e, nb_classe_bilan_dpe_f, nb_classe_bilan_dpe_g')
         .in('batiment_groupe_id', batch)
-        .not('classe_bilan_dpe', 'is', null)
       for (const b of (data ?? []) as any[]) {
-        if (b.classe_bilan_dpe) bdnbMap.set(b.batiment_groupe_id, b.classe_bilan_dpe)
+        const classe = deriveDpeClass(b)
+        if (classe) bdnbMap.set(b.batiment_groupe_id, classe)
       }
     }
   }
