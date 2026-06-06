@@ -53,7 +53,7 @@ export async function fetchAdressesByCommune(codeInsee: string): Promise<Adresse
   for (const q of queries) {
     try {
       const res = await fetch(
-        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50&type=housenumber`,
+        `https://data.geopf.fr/geocodage/search/?q=${encodeURIComponent(q)}&citycode=${codeInsee}&limit=50&type=housenumber`,
         { signal: AbortSignal.timeout(15000) }
       )
       if (!res.ok) continue
@@ -87,7 +87,7 @@ export async function fetchAdressesByCommune(codeInsee: string): Promise<Adresse
 }
 
 export async function geocodeAdresse(adresse: string, postcode?: string): Promise<{ lat: number; lon: number } | null> {
-  const url = new URL('https://api-adresse.data.gouv.fr/search/')
+  const url = new URL('https://data.geopf.fr/geocodage/search/')
   url.searchParams.set('q', adresse)
   url.searchParams.set('limit', '1')
   if (postcode) url.searchParams.set('postcode', postcode)
