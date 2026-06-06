@@ -6,13 +6,15 @@ import type { Database } from '@/types/database'
 // ══════════════════════════════════════════════════════════════════
 // POST /api/bdnb/match
 //
-// Matching adresses ↔ BDNB pour une commune en trois passes :
+// Matching adresses ↔ BDNB pour une commune en cinq passes :
 //   1. Clé BAN (id = cle_interop_adr_principale_ban ou dans l_cle_interop_adr)
 //   2. Fallback spatial (bâtiment le plus proche ≤ 30 m)
 //   3. Fallback texte (numero + nom_voie normalisés vs libelle_adr_principale_ban)
+//   4. Fallback tableau (tous les libellés dans l_libelle_adr JSONB)
+//   5. Fallback lieu-dit (adresses sans numéro, correspondance unique dans la commune)
 //
 // Body : { code_insee }
-// Retourne : { ok, matched_ban, matched_spatial, matched_text, total_matched }
+// Retourne : { ok, matched_ban, matched_spatial, matched_text, matched_array, matched_lieu_dit, total_matched }
 // ══════════════════════════════════════════════════════════════════
 
 export async function POST(request: Request) {
@@ -69,7 +71,27 @@ export async function POST(request: Request) {
     const matched_text: number = textCount ?? 0
     console.log(`[BDNB] Passe 3 (texte) : ${matched_text} adresses liées`)
 
-    const total_matched = matched_ban + matched_spatial + matched_text
+    // ── Passe 4 : fallback tableau l_libelle_adr ──────────────────
+    const { data: arrayCount, error: arrayError } = await supabase
+      .rpc('match_bdnb_by_libelle_array', { p_code_insee: code_insee })
+
+    if (arrayError) {
+      console.error('[BDNB] Erreur passe tableau:', arrayError.message, arrayError.code)
+    }
+    const matched_array: number = arrayCount ?? 0
+    console.log(`[BDNB] Passe 4 (tableau) : ${matched_array} adresses liées`)
+
+    // ── Passe 5 : fallback lieu-dit (sans numéro) ─────────────────
+    const { data: lieuDitCount, error: lieuDitError } = await supabase
+      .rpc('match_bdnb_by_lieu_dit', { p_code_insee: code_insee })
+
+    if (lieuDitError) {
+      console.error('[BDNB] Erreur passe lieu-dit:', lieuDitError.message, lieuDitError.code)
+    }
+    const matched_lieu_dit: number = lieuDitCount ?? 0
+    console.log(`[BDNB] Passe 5 (lieu-dit) : ${matched_lieu_dit} adresses liées`)
+
+    const total_matched = matched_ban + matched_spatial + matched_text + matched_array + matched_lieu_dit
     console.log(`[BDNB] ✓ Total matching ${code_insee} : ${total_matched} adresses enrichies`)
 
     return NextResponse.json({
@@ -77,11 +99,15 @@ export async function POST(request: Request) {
       matched_ban,
       matched_spatial,
       matched_text,
+      matched_array,
+      matched_lieu_dit,
       total_matched,
       errors: {
-        ban:     banError     ? { code: banError.code,     message: banError.message     } : null,
-        spatial: spatialError ? { code: spatialError.code, message: spatialError.message } : null,
-        text:    textError    ? { code: textError.code,    message: textError.message    } : null,
+        ban:      banError      ? { code: banError.code,      message: banError.message      } : null,
+        spatial:  spatialError  ? { code: spatialError.code,  message: spatialError.message  } : null,
+        text:     textError     ? { code: textError.code,     message: textError.message     } : null,
+        array:    arrayError    ? { code: arrayError.code,    message: arrayError.message    } : null,
+        lieu_dit: lieuDitError  ? { code: lieuDitError.code,  message: lieuDitError.message  } : null,
       },
     })
 
