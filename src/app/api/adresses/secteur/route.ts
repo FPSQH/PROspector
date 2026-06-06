@@ -1,6 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
+  return out
+}
+
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -24,7 +30,7 @@ export async function GET() {
     while (true) {
       const { data, error } = await supabase
         .from('adresses')
-        .select('id, lat, lon, type_bien, prospectable, zone_id')
+        .select('id, lat, lon, type_bien, prospectable, zone_id, batiment_groupe_id')
         .in('code_insee', batch)
         .range(from, from + 999)
       if (error || !data || data.length === 0) break
@@ -34,5 +40,54 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ adresses })
+  if (!adresses.length) return NextResponse.json({ adresses: [] })
+
+  const adresseIds = adresses.map((a: any) => a.id)
+
+  // ── Classe DPE depuis BDNB ───────────────────────────────────────────────
+  const batimentIds = Array.from(new Set<string>(
+    adresses.filter((a: any) => a.batiment_groupe_id).map((a: any) => a.batiment_groupe_id as string)
+  ))
+  const bdnbMap = new Map<string, string>()
+  if (batimentIds.length) {
+    for (const batch of chunk(batimentIds, 500)) {
+      const { data } = await supabase
+        .from('bdnb_batiment_groupe')
+        .select('batiment_groupe_id, classe_bilan_dpe')
+        .in('batiment_groupe_id', batch)
+        .not('classe_bilan_dpe', 'is', null)
+      for (const b of (data ?? []) as any[]) {
+        if (b.classe_bilan_dpe) bdnbMap.set(b.batiment_groupe_id, b.classe_bilan_dpe)
+      }
+    }
+  }
+
+  // ── Statut de prospection (dernière interaction par adresse) ─────────────
+  const statutMap = new Map<string, string>()
+  for (const batch of chunk(adresseIds, 500)) {
+    const { data } = await supabase
+      .from('interactions')
+      .select('adresse_id, statut_adresse, created_at')
+      .in('adresse_id', batch)
+      .order('created_at', { ascending: false })
+    for (const row of (data ?? []) as any[]) {
+      if (!statutMap.has(row.adresse_id) && row.statut_adresse) {
+        statutMap.set(row.adresse_id, row.statut_adresse)
+      }
+    }
+  }
+
+  // ── Enrichissement ───────────────────────────────────────────────────────
+  const enriched = adresses.map((a: any) => ({
+    id: a.id,
+    lat: a.lat,
+    lon: a.lon,
+    type_bien: a.type_bien ?? 'inconnu',
+    prospectable: a.prospectable,
+    zone_id: a.zone_id,
+    classe_bilan_dpe: a.batiment_groupe_id ? (bdnbMap.get(a.batiment_groupe_id) ?? null) : null,
+    statut_prospection: statutMap.get(a.id) ?? 'jamais_vue',
+  }))
+
+  return NextResponse.json({ adresses: enriched })
 }

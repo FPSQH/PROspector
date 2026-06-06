@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 
 interface Adresse {
   id: string; lat: number; lon: number
   numero?: string; nom_voie?: string; type_bien?: string; prospectable?: boolean
   statut_carte: 'a_faire' | 'contact' | 'boite' | 'visite' | 'supprimee'
   ordre: number; score?: number; latest_dpe_date?: string | null
+  dpe_etiquette?: string | null
   type_habitat?: string; mode_prospection?: string; statut_prospectabilite?: string
   nom_syndic?: string; nb_bal?: number
 }
@@ -14,6 +15,17 @@ interface Adresse {
 export interface ContactPoint {
   id: string; lat: number; lon: number
   prenom?: string | null; nom?: string | null; statut_pipeline?: string | null
+}
+
+// Modes de couleur disponibles sur la carte terrain
+type ColorMode = 'statut' | 'type' | 'dpe_etiquette' | 'dpe_date'
+
+const COLOR_MODE_CYCLE: ColorMode[] = ['statut', 'type', 'dpe_etiquette', 'dpe_date']
+const COLOR_MODE_LABEL: Record<ColorMode, string> = {
+  statut:       '📍 Statut',
+  type:         '🏠 Type',
+  dpe_etiquette:'⚡ DPE A-G',
+  dpe_date:     '🕐 DPE date',
 }
 
 const STATUT_COLOR: Record<string, string> = {
@@ -24,12 +36,28 @@ const STATUT_COLOR: Record<string, string> = {
   supprimee: '#1a1a18',
 }
 
+const TYPE_COLOR: Record<string, string> = {
+  maison:      '#4CAF50',
+  appartement: '#2196F3',
+  commerce:    '#FF9800',
+  inconnu:     '#9E9E9E',
+}
+
 const PIPELINE_COLORS: Record<string, string> = {
   prospect:      '#9A9AA8',
   qualification: '#60A5FA',
   estimation:    '#FBBF24',
   mandat:        '#4ADE80',
   perdu:         '#F87171',
+}
+
+function dpeEtiquetteColor(etiquette?: string | null): string {
+  switch (etiquette?.toUpperCase()) {
+    case 'A': return '#16a34a'; case 'B': return '#4ade80'
+    case 'C': return '#84cc16'; case 'D': return '#facc15'
+    case 'E': return '#f97316'; case 'F': return '#ef4444'
+    case 'G': return '#b91c1c'; default:  return '#cbd5e1'
+  }
 }
 
 interface Props {
@@ -41,7 +69,6 @@ interface Props {
   defaultShowDpe?:    boolean
 }
 
-/** Élément HTML pour un marqueur contact CRM */
 function createContactMarkerEl(label: string, color: string): HTMLElement {
   const el = document.createElement('div')
   el.style.cssText = `
@@ -69,15 +96,24 @@ export default function TerrainMap({
   const prevCountRef       = useRef<number>(0)
   const contactMarkersRef  = useRef<any[]>([])
 
-  const [mapLoaded,  setMapLoaded]  = useState(false)
-  const [satellite,  setSatellite]  = useState(false)
-  const [gpsActive,  setGpsActive]  = useState(false)
-  const [gpsError,   setGpsError]   = useState(false)
-  const [showDpe,    setShowDpe]    = useState(defaultShowDpe)
+  const [mapLoaded,    setMapLoaded]    = useState(false)
+  const [satellite,    setSatellite]    = useState(false)
+  const [gpsActive,    setGpsActive]    = useState(false)
+  const [gpsError,     setGpsError]     = useState(false)
   const [showContacts, setShowContacts] = useState(true)
+  const [showFilters,  setShowFilters]  = useState(false)
+  const [filterTypes,  setFilterTypes]  = useState<string[]>([])
+  const [filterStatut, setFilterStatut] = useState<string[]>([])
+  // Mode couleur : démarre sur 'dpe_date' si defaultShowDpe, sinon 'statut'
+  const [colorMode,    setColorMode]    = useState<ColorMode>(defaultShowDpe ? 'dpe_date' : 'statut')
 
-  useEffect(() => { adressesRef.current = adresses },     [adresses])
+  useEffect(() => { adressesRef.current = adresses },      [adresses])
   useEffect(() => { onClickRef.current  = onAdresseClick }, [onAdresseClick])
+
+  const toggleFilter = (list: string[], val: string, setter: (v: string[]) => void) =>
+    setter(list.includes(val) ? list.filter(x => x !== val) : [...list, val])
+
+  const activeFilterCount = filterTypes.length + filterStatut.length
 
   // ── Init carte ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -120,24 +156,18 @@ export default function TerrainMap({
       map.on('load', () => {
         mapRef.current = map
 
-        // Sources
         map.addSource('adresses',   { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('gps',        { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addSource('itineraire', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
 
-        // Itinéraire (pointillé)
         map.addLayer({
           id: 'itineraire-line', type: 'line', source: 'itineraire',
           paint: { 'line-color': '#9b9b96', 'line-width': 1.5, 'line-dasharray': [3, 3], 'line-opacity': 0.6 },
         })
-
-        // Zone tactile (click invisible)
         map.addLayer({
           id: 'adresses-touch', type: 'circle', source: 'adresses',
           paint: { 'circle-radius': 18, 'circle-color': 'transparent', 'circle-opacity': 0 },
         })
-
-        // Points principaux
         map.addLayer({
           id: 'adresses-circle', type: 'circle', source: 'adresses',
           paint: {
@@ -158,26 +188,19 @@ export default function TerrainMap({
             ],
           },
         })
-
-        // Halo DPE hot (adresses avec DPE < 2 mois)
         map.addLayer({
           id: 'adresses-dpe-halo', type: 'circle', source: 'adresses',
           filter: ['==', ['get', 'dpe_hot'], true],
           paint: { 'circle-radius': 14, 'circle-color': '#F59E0B', 'circle-opacity': 0.25, 'circle-blur': 0.5 },
         })
-
-        // Pulsation prochaine adresse
         map.addLayer({
           id: 'adresses-prochaine-pulse', type: 'circle', source: 'adresses',
           filter: ['==', ['get', 'prochaine'], true],
           paint: { 'circle-radius': 20, 'circle-color': '#ef4444', 'circle-opacity': 0.2 },
         })
-
-        // GPS
         map.addLayer({ id: 'gps-pulse', type: 'circle', source: 'gps', paint: { 'circle-radius': 12, 'circle-color': '#3b82f6', 'circle-opacity': 0.2 } })
         map.addLayer({ id: 'gps-dot',   type: 'circle', source: 'gps', paint: { 'circle-radius': 6,  'circle-color': '#3b82f6', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
 
-        // Click sur adresse
         map.on('click', 'adresses-touch', (e: any) => {
           const f = e.features?.[0]
           if (!f) return
@@ -195,10 +218,7 @@ export default function TerrainMap({
     init()
 
     return () => {
-      if (map) {
-        map.remove()
-        mapRef.current = null
-      }
+      if (map) { map.remove(); mapRef.current = null }
       contactMarkersRef.current.forEach(m => { try { m.remove() } catch(e) {} })
       contactMarkersRef.current = []
       setMapLoaded(false)
@@ -207,28 +227,46 @@ export default function TerrainMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Mise à jour des adresses ────────────────────────────────────────────────
+  // ── Mise à jour adresses sur la carte ──────────────────────────────────────
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return
     const map = mapRef.current
     if (typeof map.getSource !== 'function') return
 
-    const pId        = prochaineAdresseId
+    const pId = prochaineAdresseId
     const twoMonthsAgo = Date.now() - 60 * 24 * 3600 * 1000
 
-    const features = adresses.filter(a => a.lat && a.lon).map(a => {
+    // Filtrage visuel (itinéraire et logique parent inchangés)
+    const visibleAdresses = adresses.filter(a => {
+      if (filterTypes.length  && !filterTypes.includes(a.type_bien ?? 'inconnu')) return false
+      if (filterStatut.length && !filterStatut.includes(a.statut_carte))           return false
+      return true
+    })
+
+    const features = visibleAdresses.filter(a => a.lat && a.lon).map(a => {
       const dpeTs   = a.latest_dpe_date ? new Date(a.latest_dpe_date).getTime() : null
-      const dpe_hot = dpeTs !== null && dpeTs >= twoMonthsAgo   // DPE < 2 mois
-      const dpe_cat = (() => {
-        if (a.statut_carte === 'supprimee' || !dpeTs) return null
-        const days = (Date.now() - dpeTs) / 86400000
-        if (days <= 60)  return 'hot'
-        if (days <= 365) return 'tiede'
-        return 'ancien'
+      const dpe_hot = dpeTs !== null && dpeTs >= twoMonthsAgo
+
+      const couleur = (() => {
+        // Les adresses supprimées restent toujours sombres
+        if (a.statut_carte === 'supprimee') return '#1a1a18'
+        switch (colorMode) {
+          case 'type':
+            return TYPE_COLOR[a.type_bien ?? 'inconnu'] ?? '#9E9E9E'
+          case 'dpe_etiquette':
+            return dpeEtiquetteColor(a.dpe_etiquette)
+          case 'dpe_date': {
+            if (!dpeTs) return '#9b9b96'
+            const days = (Date.now() - dpeTs) / 86400000
+            if (days <= 60)  return '#F59E0B'
+            if (days <= 365) return '#86efac'
+            return '#9b9b96'
+          }
+          default: // statut
+            return STATUT_COLOR[a.statut_carte] ?? '#9b9b96'
+        }
       })()
-      const couleur = showDpe && dpe_cat
-        ? (dpe_cat === 'hot' ? '#F59E0B' : dpe_cat === 'tiede' ? '#86efac' : '#9b9b96')
-        : (STATUT_COLOR[a.statut_carte] ?? '#9b9b96')
+
       return {
         type: 'Feature' as const,
         properties: {
@@ -240,7 +278,6 @@ export default function TerrainMap({
           label:        [a.numero, a.nom_voie].filter(Boolean).join(' '),
           prochaine:    a.id === pId,
           score:        a.score ?? 50,
-          dpe_cat,
         },
         geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
       }
@@ -249,6 +286,7 @@ export default function TerrainMap({
     try {
       ;(map.getSource('adresses') as any)?.setData({ type: 'FeatureCollection', features })
 
+      // Itinéraire toujours basé sur toutes les adresses (non filtré)
       const orderedCoords = adresses
         .filter(a => a.lat && a.lon)
         .sort((a, b) => a.ordre - b.ordre)
@@ -272,24 +310,18 @@ export default function TerrainMap({
         }
       }
       prevCountRef.current = adresses.length
-
     } catch (err) {
       console.warn('[TerrainMap] setData erreur:', err)
     }
-
-  }, [adresses, prochaineAdresseId, mapLoaded, showDpe])
+  }, [adresses, prochaineAdresseId, mapLoaded, colorMode, filterTypes, filterStatut])
 
   // ── Marqueurs contacts ──────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-
-    // Supprimer les marqueurs précédents
     contactMarkersRef.current.forEach(m => { try { m.remove() } catch(e) {} })
     contactMarkersRef.current = []
-
     if (!showContacts || !contacts?.length) return
-
     import('maplibre-gl').then(ml => {
       const currentMap = mapRef.current
       if (!currentMap) return
@@ -322,7 +354,7 @@ export default function TerrainMap({
             type: 'FeatureCollection',
             features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} }],
           })
-        } catch (e) { console.warn('[GPS] setData erreur:', e) }
+        } catch (e) {}
       },
       () => setGpsError(true),
       { enableHighAccuracy: true, maximumAge: 5000 }
@@ -339,7 +371,6 @@ export default function TerrainMap({
     }
   }
 
-  // ── Satellite ──────────────────────────────────────────────────────────────
   const toggleSatellite = () => {
     const map = mapRef.current
     if (!map) return
@@ -350,31 +381,74 @@ export default function TerrainMap({
     })
   }
 
+  // Cycle entre les modes de couleur
+  const cycleColorMode = () => {
+    setColorMode(current => {
+      const idx = COLOR_MODE_CYCLE.indexOf(current)
+      return COLOR_MODE_CYCLE[(idx + 1) % COLOR_MODE_CYCLE.length]
+    })
+  }
+
   const hasContacts = (contacts?.length ?? 0) > 0
-  const btnBase = {
-    position: 'absolute' as const, right: 10, zIndex: 10,
-    padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600 as const,
+
+  // Décalage vertical des boutons droite selon ce qui est visible
+  const contactsBottom  = 200
+  const filtersBottom   = hasContacts ? contactsBottom + 40 : contactsBottom
+  const modeBottom      = filtersBottom + 40
+  const dpeBottom       = modeBottom + 40
+  const gpsBottom       = dpeBottom + 40
+  const satelliteBottom = gpsBottom + 40
+
+  const btnBase: React.CSSProperties = {
+    position: 'absolute', right: 10, zIndex: 10,
+    padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
     cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
     border: '1px solid',
   }
+
+  // ── Légende selon mode ─────────────────────────────────────────────────────
+  const legend = (() => {
+    switch (colorMode) {
+      case 'statut':
+        return [
+          {color:'#ef4444',label:'À faire'},{color:'#3b82f6',label:'Boîté'},
+          {color:'#22c55e',label:'Contact'},{color:'#9b9b96',label:'Visité'},
+          {color:'#4A4A58',label:'Supprimée'},
+        ]
+      case 'type':
+        return [
+          {color:'#4CAF50',label:'Maison'},{color:'#2196F3',label:'Appartement'},
+          {color:'#FF9800',label:'Commerce'},{color:'#9E9E9E',label:'Inconnu'},
+        ]
+      case 'dpe_etiquette':
+        return ['A','B','C','D','E','F','G'].map(c => ({ color: dpeEtiquetteColor(c), label: `DPE ${c}` }))
+      case 'dpe_date':
+        return [
+          {color:'#F59E0B',label:'< 2 mois'},{color:'#86efac',label:'2–12 mois'},
+          {color:'#9b9b96',label:'> 12 mois / N/A'},
+        ]
+    }
+  })()
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Satellite toggle */}
+      {/* Boutons droite (ordre bas→haut) */}
+
+      {/* Satellite */}
       <button onClick={toggleSatellite} style={{
-        ...btnBase, bottom: 80,
+        ...btnBase, bottom: satelliteBottom,
         background: satellite ? '#1D9E75' : 'rgba(255,255,255,0.95)',
-        color:      satellite ? '#fff'     : '#374151',
+        color:      satellite ? '#fff'    : '#374151',
         borderColor: satellite ? '#1D9E75' : '#e8e7e0',
       }}>
         {satellite ? '🛰 Satellite' : '🗺 Carte'}
       </button>
 
-      {/* GPS toggle */}
+      {/* GPS */}
       <button onClick={gpsActive ? stopGps : startGps} style={{
-        ...btnBase, bottom: 120,
+        ...btnBase, bottom: gpsBottom,
         background:  gpsActive ? '#3b82f6' : 'rgba(255,255,255,0.95)',
         color:       gpsActive ? '#fff'    : (gpsError ? '#ef4444' : '#374151'),
         borderColor: gpsError  ? '#ef4444' : gpsActive ? '#3b82f6' : '#e8e7e0',
@@ -382,20 +456,31 @@ export default function TerrainMap({
         {gpsError ? '⚠️ GPS' : gpsActive ? '📍 Actif' : '📍 GPS'}
       </button>
 
-      {/* DPE toggle */}
-      <button onClick={() => setShowDpe(v => !v)} style={{
-        ...btnBase, bottom: 160,
-        background:  showDpe ? '#F59E0B' : 'rgba(255,255,255,0.95)',
-        color:       showDpe ? '#fff'    : '#374151',
-        borderColor: showDpe ? '#F59E0B' : '#e8e7e0',
-      }}>
-        🏠 DPE
+      {/* Sélecteur de mode couleur (cycle au tap) */}
+      <button onClick={cycleColorMode} style={{
+        ...btnBase, bottom: modeBottom,
+        background:  colorMode !== 'statut' ? '#1D9E75' : 'rgba(255,255,255,0.95)',
+        color:       colorMode !== 'statut' ? '#fff'    : '#374151',
+        borderColor: colorMode !== 'statut' ? '#1D9E75' : '#e8e7e0',
+        maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }} title="Changer le mode de couleur">
+        {COLOR_MODE_LABEL[colorMode]}
       </button>
 
-      {/* Contacts toggle — visible seulement si des contacts sont passés */}
+      {/* Filtres */}
+      <button onClick={() => setShowFilters(v => !v)} style={{
+        ...btnBase, bottom: filtersBottom,
+        background:  showFilters || activeFilterCount > 0 ? '#7c3aed' : 'rgba(255,255,255,0.95)',
+        color:       showFilters || activeFilterCount > 0 ? '#fff'    : '#374151',
+        borderColor: showFilters || activeFilterCount > 0 ? '#7c3aed' : '#e8e7e0',
+      }}>
+        🔍{activeFilterCount > 0 ? ` (${activeFilterCount})` : ' Filtres'}
+      </button>
+
+      {/* Contacts */}
       {hasContacts && (
         <button onClick={() => setShowContacts(v => !v)} style={{
-          ...btnBase, bottom: 200,
+          ...btnBase, bottom: contactsBottom,
           background:  showContacts ? '#4ADE80' : 'rgba(255,255,255,0.95)',
           color:       showContacts ? '#fff'    : '#374151',
           borderColor: showContacts ? '#4ADE80' : '#e8e7e0',
@@ -404,19 +489,82 @@ export default function TerrainMap({
         </button>
       )}
 
-      {/* Légende DPE */}
-      {showDpe && (
+      {/* Panneau filtres (droite, au-dessus du bouton filtres) */}
+      {showFilters && (
         <div style={{
-          position: 'absolute', bottom: hasContacts ? 244 : 202, right: 10, zIndex: 10,
-          background: 'rgba(255,255,255,0.95)', borderRadius: 8,
-          padding: '6px 10px', fontSize: 11, lineHeight: 1.9,
-          border: '1px solid #e8e7e0', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+          position: 'absolute', right: 10, bottom: filtersBottom + 44, zIndex: 20,
+          background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.2)', minWidth: 180, fontSize: 12,
         }}>
-          <div><span style={{ color: '#F59E0B', marginRight: 4 }}>●</span>&lt;2 mois</div>
-          <div><span style={{ color: '#86efac', marginRight: 4 }}>●</span>2–12 mois</div>
-          <div><span style={{ color: '#9b9b96', marginRight: 4 }}>●</span>&gt;12 mois</div>
+          {/* Filtre type_bien */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={sectionTitle}>Type de bien</div>
+            {[
+              { key: 'maison',      color: '#4CAF50', label: 'Maison' },
+              { key: 'appartement', color: '#2196F3', label: 'Appartement' },
+              { key: 'commerce',    color: '#FF9800', label: 'Commerce' },
+              { key: 'inconnu',     color: '#9E9E9E', label: 'Inconnu' },
+            ].map(t => (
+              <label key={t.key} style={filterRowStyle}>
+                <input type="checkbox" checked={filterTypes.includes(t.key)} onChange={() => toggleFilter(filterTypes, t.key, setFilterTypes)} style={{ accentColor: t.color }} />
+                <span style={{ color: t.color }}>●</span> {t.label}
+              </label>
+            ))}
+          </div>
+          {/* Filtre statut_carte */}
+          <div style={{ marginBottom: activeFilterCount > 0 ? 8 : 0 }}>
+            <div style={sectionTitle}>Statut visite</div>
+            {[
+              { key: 'a_faire', color: '#ef4444', label: 'À faire' },
+              { key: 'boite',   color: '#3b82f6', label: 'Boîté' },
+              { key: 'contact', color: '#22c55e', label: 'Contact' },
+              { key: 'visite',  color: '#9b9b96', label: 'Visité' },
+            ].map(s => (
+              <label key={s.key} style={filterRowStyle}>
+                <input type="checkbox" checked={filterStatut.includes(s.key)} onChange={() => toggleFilter(filterStatut, s.key, setFilterStatut)} style={{ accentColor: s.color }} />
+                <span style={{ color: s.color }}>●</span> {s.label}
+              </label>
+            ))}
+          </div>
+          {activeFilterCount > 0 && (
+            <button onClick={() => { setFilterTypes([]); setFilterStatut([]) }}
+              style={{ width: '100%', padding: '4px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer', fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
+              ✕ Effacer
+            </button>
+          )}
         </div>
       )}
+
+      {/* Légende bas-gauche */}
+      <div style={{
+        position: 'absolute', bottom: 16, left: 12, background: 'rgba(12,12,14,0.88)',
+        borderRadius: 8, padding: '6px 10px', fontSize: '0.68rem', color: '#ccc',
+        border: '1px solid rgba(255,255,255,0.08)', pointerEvents: 'none', zIndex: 10,
+      }}>
+        {legend.map(item => (
+          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+            <span>{item.label}</span>
+          </div>
+        ))}
+        {activeFilterCount > 0 && (
+          <div style={{ marginTop: 4, color: '#a78bfa', fontWeight: 700 }}>
+            {adresses.filter(a => {
+              if (filterTypes.length  && !filterTypes.includes(a.type_bien ?? 'inconnu')) return false
+              if (filterStatut.length && !filterStatut.includes(a.statut_carte))           return false
+              return true
+            }).length} / {adresses.length} adresses
+          </div>
+        )}
+      </div>
     </div>
   )
+}
+
+const sectionTitle: React.CSSProperties = {
+  fontWeight: 700, fontSize: 10, color: '#6b7280',
+  textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4,
+}
+const filterRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 2,
 }

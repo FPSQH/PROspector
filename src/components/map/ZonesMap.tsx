@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 
 interface Zone {
   id: string; nom: string; couleur: string; numero: number
   nb_adresses: number; nb_prospectables: number
   polygone_geojson?: any; centroide_geojson?: any
 }
-interface Adresse {
+interface EnrichedAddr {
   id: string; lat: number; lon: number
-  numero?: string; nom_voie?: string; type_bien?: string
+  type_bien?: string; has_commerce?: boolean
+  classe_bilan_dpe?: string | null
+  statut_prospection?: string
 }
 interface DpeAdresse {
   id: string; lat: number; lon: number
@@ -21,19 +23,71 @@ interface Chevauchement {
 interface ZonesMapProps {
   zones:           Zone[]
   selectedZoneId?: string | null
-  itineraire?:     Adresse[]
+  itineraire?:     EnrichedAddr[]
   chevauchements?: Chevauchement[]
   onZoneClick?:    (zone: Zone) => void
   showDpeRecents?: boolean
   dpeAdresses?:    DpeAdresse[]
 }
 
+type ColorMode = 'type_bien' | 'dpe_classe' | 'statut' | 'score'
+
 function dpeColor(etiquette?: string | null): string {
   switch (etiquette?.toUpperCase()) {
     case 'A': return '#16a34a'; case 'B': return '#4ade80'
     case 'C': return '#84cc16'; case 'D': return '#facc15'
     case 'E': return '#f97316'; case 'F': return '#ef4444'
-    case 'G': return '#b91c1c'; default:   return '#f59e0b'
+    case 'G': return '#b91c1c'; default:   return '#cbd5e1'
+  }
+}
+
+function statutColor(statut?: string): string {
+  switch (statut) {
+    case 'mandat_signe': return '#10b981'
+    case 'estimation':   return '#8b5cf6'
+    case 'rdv_pris':     return '#f59e0b'
+    case 'contact':      return '#34d399'
+    case 'visite':       return '#60a5fa'
+    default:             return '#94a3b8' // jamais_vue
+  }
+}
+
+function computeScore(addr: EnrichedAddr): number {
+  let s = 0
+  if (addr.type_bien && addr.type_bien !== 'inconnu') s += 2
+  switch (addr.classe_bilan_dpe?.toUpperCase()) {
+    case 'F': case 'G': s += 4; break
+    case 'D': case 'E': s += 2; break
+    case 'B': case 'C': s += 1; break
+  }
+  switch (addr.statut_prospection) {
+    case 'contact':   s += 3; break
+    case 'jamais_vue': s += 2; break
+    case 'visite':    s += 1; break
+    case 'rdv_pris':  s += 1; break
+  }
+  return Math.min(s, 9)
+}
+
+function scoreColor(score: number): string {
+  if (score >= 7) return '#ef4444'
+  if (score >= 5) return '#f97316'
+  if (score >= 3) return '#facc15'
+  return '#94a3b8'
+}
+
+function adresseColor(addr: EnrichedAddr, mode: ColorMode): string {
+  switch (mode) {
+    case 'type_bien':
+      switch (addr.type_bien) {
+        case 'maison':      return '#4CAF50'
+        case 'appartement': return '#2196F3'
+        case 'commerce':    return '#FF9800'
+        default:            return '#9E9E9E'
+      }
+    case 'dpe_classe': return dpeColor(addr.classe_bilan_dpe)
+    case 'statut':     return statutColor(addr.statut_prospection)
+    case 'score':      return scoreColor(computeScore(addr))
   }
 }
 
@@ -42,6 +96,23 @@ const TYPE_BIEN_OPTIONS = [
   { key: 'appartement',  label: 'Habitat collectif',  color: '#2196F3', icon: '🏢' },
   { key: 'commerce',     label: 'Commerce',           color: '#FF9800', icon: '🏪' },
   { key: 'inconnu',      label: 'Autre',              color: '#9E9E9E', icon: '❓' },
+]
+
+const DPE_CLASSES = ['A','B','C','D','E','F','G']
+const STATUT_OPTIONS = [
+  { key: 'jamais_vue',   label: 'Jamais visité', color: '#94a3b8' },
+  { key: 'visite',       label: 'Visité',         color: '#60a5fa' },
+  { key: 'contact',      label: 'Contact',        color: '#34d399' },
+  { key: 'rdv_pris',     label: 'RDV pris',       color: '#f59e0b' },
+  { key: 'estimation',   label: 'Estimation',     color: '#8b5cf6' },
+  { key: 'mandat_signe', label: 'Mandat signé',   color: '#10b981' },
+]
+
+const COLOR_MODES: { key: ColorMode; label: string; icon: string }[] = [
+  { key: 'type_bien',  label: 'Type',   icon: '🏠' },
+  { key: 'dpe_classe', label: 'DPE',    icon: '⚡' },
+  { key: 'statut',     label: 'Statut', icon: '📍' },
+  { key: 'score',      label: 'Score',  icon: '🎯' },
 ]
 
 export default function ZonesMap({
@@ -54,9 +125,14 @@ export default function ZonesMap({
   const [satellite,  setSatellite]  = useState(false)
   const [showAddr,   setShowAddr]   = useState(false)
   const [showDpe,    setShowDpe]    = useState(false)
-  const [allAddr,    setAllAddr]    = useState<any[]>([])
+  const [allAddr,    setAllAddr]    = useState<EnrichedAddr[]>([])
   const [dpePoints,  setDpePoints]  = useState<any[]>([])
   const [loadingOv,  setLoadingOv]  = useState(false)
+  const [colorMode,  setColorMode]  = useState<ColorMode>('type_bien')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterTypes,  setFilterTypes]  = useState<string[]>([])
+  const [filterDpe,    setFilterDpe]    = useState<string[]>([])
+  const [filterStatut, setFilterStatut] = useState<string[]>([])
 
   const [qualifyPopup, setQualifyPopup] = useState<{
     id: string; lat: number; lon: number; type_bien?: string; has_commerce?: boolean
@@ -66,6 +142,30 @@ export default function ZonesMap({
   const conflictIds = new Set(
     chevauchements.flatMap((c) => [c.zone_a_id, c.zone_b_id])
   )
+
+  // ── Filtrage + coloration ────────────────────────────────────────────────
+  const filteredFeatures = useMemo(() => {
+    return allAddr
+      .filter(a => {
+        if (filterTypes.length  && !filterTypes.includes(a.type_bien ?? 'inconnu'))           return false
+        if (filterDpe.length    && !filterDpe.includes(a.classe_bilan_dpe?.toUpperCase() ?? 'N/A')) return false
+        if (filterStatut.length && !filterStatut.includes(a.statut_prospection ?? 'jamais_vue')) return false
+        return true
+      })
+      .map(a => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
+        properties: {
+          id:           a.id,
+          type_bien:    a.type_bien ?? 'inconnu',
+          has_commerce: a.has_commerce ?? false,
+          couleur:      adresseColor(a, colorMode),
+          score:        computeScore(a),
+          classe_bilan_dpe: a.classe_bilan_dpe ?? null,
+          statut_prospection: a.statut_prospection ?? 'jamais_vue',
+        },
+      }))
+  }, [allAddr, colorMode, filterTypes, filterDpe, filterStatut])
 
   // ── Init MapLibre ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -168,14 +268,13 @@ export default function ZonesMap({
             'circle-opacity': 0.95
           }
         })
+        // all-addr: couleur calculée dans les properties
         map.addLayer({ id: 'all-addr-layer', type: 'circle', source: 'all-addr',
           layout: { visibility: 'none' },
           paint: {
             'circle-radius': 5,
-            'circle-color': ['match', ['get', 'type_bien'],
-              'maison', '#4CAF50', 'appartement', '#2196F3',
-              'commerce', '#FF9800', '#9E9E9E'],
-            'circle-opacity': 0.8,
+            'circle-color': ['get', 'couleur'],
+            'circle-opacity': 0.85,
             'circle-stroke-width': 1,
             'circle-stroke-color': '#fff',
           }
@@ -234,12 +333,11 @@ export default function ZonesMap({
     map.setLayoutProperty('satellite', 'visibility', satellite ? 'visible' : 'none')
   }, [satellite, mapLoaded])
 
-  // ── Données zones — FIX : gère le cas zones vides après reset ───────────
+  // ── Données zones ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
 
-    // FIX : vider les sources si aucune zone (évite getSource sur map non prête)
     if (!zones.length) {
       ;(map.getSource('zones-fill')    as any)?.setData({ type: 'FeatureCollection', features: [] })
       ;(map.getSource('zones-outline') as any)?.setData({ type: 'FeatureCollection', features: [] })
@@ -323,18 +421,19 @@ export default function ZonesMap({
     fetch('/api/adresses/secteur').then(r => r.json()).then(data => {
       if (!data.adresses) return
       setAllAddr(data.adresses)
-      const fc = {
-        type: 'FeatureCollection' as const,
-        features: data.adresses.map((a: any) => ({
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-          properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu', has_commerce: a.has_commerce ?? false }
-        }))
-      }
-      ;(map.getSource('all-addr') as any)?.setData(fc)
       map.setLayoutProperty('all-addr-layer', 'visibility', 'visible')
     }).finally(() => setLoadingOv(false))
   }, [showAddr, mapLoaded])
+
+  // ── Mise à jour source carte quand filtres / mode couleur / données changent
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !showAddr) return
+    ;(map.getSource('all-addr') as any)?.setData({
+      type: 'FeatureCollection',
+      features: filteredFeatures,
+    })
+  }, [filteredFeatures, mapLoaded, showAddr])
 
   // ── Toggle overlay DPE secteur ──────────────────────────────────────────
   useEffect(() => {
@@ -365,7 +464,7 @@ export default function ZonesMap({
     }).finally(() => setLoadingOv(false))
   }, [showDpe, mapLoaded])
 
-  // ── Qualification adresse — FIX : useCallback stable sans dépendance allAddr
+  // ── Qualification adresse ────────────────────────────────────────────────
   const qualifyAdresse = useCallback(async (id: string, type_bien: string, has_commerce: boolean = false) => {
     setQualifyPopup(null)
     await fetch('/api/adresses/' + id, {
@@ -373,25 +472,60 @@ export default function ZonesMap({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type_bien, has_commerce }),
     })
-    // FIX : mise à jour de la source MapLibre DANS le setter fonctionnel
-    // → accès à la valeur fraîche via `prev` sans dépendance allAddr
-    setAllAddr(prev => {
-      const updated = prev.map(a => a.id === id ? { ...a, type_bien, has_commerce } : a)
-      const map = mapRef.current
-      if (map) {
-        const fc = {
-          type: 'FeatureCollection' as const,
-          features: updated.map((a: any) => ({
-            type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-            properties: { id: a.id, type_bien: a.type_bien ?? 'inconnu' }
-          }))
-        }
-        ;(map.getSource('all-addr') as any)?.setData(fc)
-      }
-      return updated
-    })
-  }, []) // ← dépendances vides : fonction stable, pas de boucle
+    setAllAddr(prev => prev.map(a => a.id === id ? { ...a, type_bien, has_commerce } : a))
+  }, [])
+
+  // ── Légende selon le mode ────────────────────────────────────────────────
+  const renderLegend = () => {
+    if (!showAddr) return null
+    switch (colorMode) {
+      case 'type_bien':
+        return (
+          <div style={legendStyle}>
+            <div style={legendTitle}>Type</div>
+            <div><span style={{color:'#4CAF50'}}>●</span> Maison</div>
+            <div><span style={{color:'#2196F3'}}>●</span> Appartement</div>
+            <div><span style={{color:'#FF9800'}}>●</span> Commerce</div>
+            <div><span style={{color:'#9E9E9E'}}>●</span> Inconnu</div>
+          </div>
+        )
+      case 'dpe_classe':
+        return (
+          <div style={legendStyle}>
+            <div style={legendTitle}>Classe DPE</div>
+            {DPE_CLASSES.map(c => (
+              <div key={c}><span style={{color: dpeColor(c)}}>●</span> {c}</div>
+            ))}
+            <div><span style={{color:'#cbd5e1'}}>●</span> N/A</div>
+          </div>
+        )
+      case 'statut':
+        return (
+          <div style={legendStyle}>
+            <div style={legendTitle}>Statut</div>
+            {STATUT_OPTIONS.map(s => (
+              <div key={s.key}><span style={{color: s.color}}>●</span> {s.label}</div>
+            ))}
+          </div>
+        )
+      case 'score':
+        return (
+          <div style={legendStyle}>
+            <div style={legendTitle}>Score priorité</div>
+            <div><span style={{color:'#ef4444'}}>●</span> Très haute (7-9)</div>
+            <div><span style={{color:'#f97316'}}>●</span> Haute (5-6)</div>
+            <div><span style={{color:'#facc15'}}>●</span> Moyenne (3-4)</div>
+            <div><span style={{color:'#94a3b8'}}>●</span> Faible (0-2)</div>
+          </div>
+        )
+    }
+  }
+
+  const toggleFilter = (list: string[], val: string, setter: (v: string[]) => void) => {
+    setter(list.includes(val) ? list.filter(x => x !== val) : [...list, val])
+  }
+
+  const activeFilterCount = filterTypes.length + filterDpe.length + filterStatut.length
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
@@ -400,46 +534,120 @@ export default function ZonesMap({
 
       {/* Controles */}
       <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <button onClick={() => setSatellite(v => !v)} title="Vue satellite" style={{
-          padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          background: satellite ? '#1a1a18' : 'rgba(255,255,255,0.95)',
-          color: satellite ? '#fff' : '#2C2C2A',
-          border: '1.5px solid ' + (satellite ? '#1a1a18' : '#E8E6DF'),
-          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-        }}>🛰 Satellite</button>
+        <button onClick={() => setSatellite(v => !v)} style={ctrlBtn(satellite, '#1a1a18')}>🛰 Satellite</button>
 
-        <button onClick={() => setShowAddr(v => !v)} title="Afficher toutes les adresses" style={{
-          padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          background: showAddr ? '#1D9E75' : 'rgba(255,255,255,0.95)',
-          color: showAddr ? '#fff' : '#2C2C2A',
-          border: '1.5px solid ' + (showAddr ? '#1D9E75' : '#E8E6DF'),
-          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-        }}>{loadingOv && showAddr ? '...' : '🏠 Adresses'}</button>
-
-        <button onClick={() => setShowDpe(v => !v)} title="Afficher les DPE recents" style={{
-          padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          background: showDpe ? '#E63946' : 'rgba(255,255,255,0.95)',
-          color: showDpe ? '#fff' : '#2C2C2A',
-          border: '1.5px solid ' + (showDpe ? '#E63946' : '#E8E6DF'),
-          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-        }}>{loadingOv && showDpe ? '...' : '📋 DPE recents'}</button>
+        <button onClick={() => setShowAddr(v => !v)} style={ctrlBtn(showAddr, '#1D9E75')}>
+          {loadingOv && showAddr ? '...' : '🏠 Adresses'}
+        </button>
 
         {showAddr && (
-          <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
-            <div><span style={{color:'#4CAF50'}}>●</span> Maison</div>
-            <div><span style={{color:'#2196F3'}}>●</span> Appartement</div>
-            <div><span style={{color:'#FF9800'}}>●</span> Commerce</div>
-            <div><span style={{color:'#9E9E9E'}}>●</span> Autre</div>
-          </div>
+          <>
+            {/* Sélecteur mode couleur */}
+            <div style={{ display: 'flex', gap: 3 }}>
+              {COLOR_MODES.map(m => (
+                <button key={m.key} onClick={() => setColorMode(m.key)} title={m.label} style={{
+                  padding: '4px 7px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: colorMode === m.key ? '#1D9E75' : 'rgba(255,255,255,0.95)',
+                  color: colorMode === m.key ? '#fff' : '#2C2C2A',
+                  border: '1.5px solid ' + (colorMode === m.key ? '#1D9E75' : '#E8E6DF'),
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                }}>{m.icon} {m.label}</button>
+              ))}
+            </div>
+
+            {/* Bouton filtres */}
+            <button onClick={() => setShowFilters(v => !v)} style={{
+              ...ctrlBtn(showFilters || activeFilterCount > 0, '#7c3aed'),
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              🔍 Filtres{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            </button>
+
+            {/* Panneau filtres */}
+            {showFilters && (
+              <div style={{
+                background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, fontSize: 12,
+              }}>
+                {/* Filtre type_bien */}
+                <div style={filterSection}>
+                  <div style={filterSectionTitle}>Type de bien</div>
+                  {TYPE_BIEN_OPTIONS.map(opt => (
+                    <label key={opt.key} style={filterRow}>
+                      <input type="checkbox" checked={filterTypes.includes(opt.key)}
+                        onChange={() => toggleFilter(filterTypes, opt.key, setFilterTypes)}
+                        style={{ accentColor: opt.color }} />
+                      <span style={{color: opt.color}}>●</span> {opt.label}
+                    </label>
+                  ))}
+                </div>
+
+                {/* Filtre DPE */}
+                <div style={filterSection}>
+                  <div style={filterSectionTitle}>Classe DPE</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {DPE_CLASSES.map(c => (
+                      <button key={c} onClick={() => toggleFilter(filterDpe, c, setFilterDpe)} style={{
+                        width: 28, height: 24, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: filterDpe.includes(c) ? dpeColor(c) : '#f1f5f9',
+                        color: filterDpe.includes(c) ? '#fff' : '#475569',
+                        border: '1.5px solid ' + (filterDpe.includes(c) ? dpeColor(c) : '#e2e8f0'),
+                      }}>{c}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Filtre statut */}
+                <div style={filterSection}>
+                  <div style={filterSectionTitle}>Statut prospection</div>
+                  {STATUT_OPTIONS.map(s => (
+                    <label key={s.key} style={filterRow}>
+                      <input type="checkbox" checked={filterStatut.includes(s.key)}
+                        onChange={() => toggleFilter(filterStatut, s.key, setFilterStatut)}
+                        style={{ accentColor: s.color }} />
+                      <span style={{color: s.color}}>●</span> {s.label}
+                    </label>
+                  ))}
+                </div>
+
+                {activeFilterCount > 0 && (
+                  <button onClick={() => { setFilterTypes([]); setFilterDpe([]); setFilterStatut([]) }}
+                    style={{ marginTop: 6, width: '100%', padding: '4px', borderRadius: 6,
+                      border: '1px solid #E8E6DF', background: '#fef2f2', cursor: 'pointer',
+                      fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
+                    ✕ Effacer les filtres
+                  </button>
+                )}
+              </div>
+            )}
+
+            {renderLegend()}
+          </>
         )}
+
+        <button onClick={() => setShowDpe(v => !v)} style={ctrlBtn(showDpe, '#E63946')}>
+          {loadingOv && showDpe ? '...' : '📋 DPE récents'}
+        </button>
+
         {showDpe && (
-          <div style={{ background: 'rgba(255,255,255,0.9)', borderRadius: 6, padding: '4px 8px', fontSize: 11, lineHeight: 1.7 }}>
+          <div style={legendStyle}>
             <div><span style={{color:'#22c55e'}}>●</span> &lt;1 mois</div>
             <div><span style={{color:'#86efac'}}>●</span> 1–12 mois</div>
             <div><span style={{color:'#fb923c'}}>●</span> &gt;12 mois</div>
           </div>
         )}
       </div>
+
+      {/* Compteur adresses filtrées */}
+      {showAddr && activeFilterCount > 0 && (
+        <div style={{
+          position: 'absolute', bottom: 10, left: 10, zIndex: 10,
+          background: 'rgba(124,58,237,0.9)', color: '#fff',
+          padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+        }}>
+          {filteredFeatures.length} / {allAddr.length} adresses
+        </div>
+      )}
 
       {/* Popup qualification adresse */}
       {qualifyPopup && (
@@ -510,4 +718,32 @@ export default function ZonesMap({
       )}
     </div>
   )
+}
+
+// ── Styles utilitaires ───────────────────────────────────────────────────────
+
+function ctrlBtn(active: boolean, activeColor: string): React.CSSProperties {
+  return {
+    padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    background: active ? activeColor : 'rgba(255,255,255,0.95)',
+    color: active ? '#fff' : '#2C2C2A',
+    border: '1.5px solid ' + (active ? activeColor : '#E8E6DF'),
+    boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+  }
+}
+
+const legendStyle: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.92)', borderRadius: 6, padding: '6px 10px', fontSize: 11, lineHeight: 1.8,
+}
+const legendTitle: React.CSSProperties = {
+  fontWeight: 700, fontSize: 10, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2,
+}
+const filterSection: React.CSSProperties = {
+  marginBottom: 10,
+}
+const filterSectionTitle: React.CSSProperties = {
+  fontWeight: 700, fontSize: 10, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4,
+}
+const filterRow: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 2,
 }

@@ -143,24 +143,8 @@ export async function POST(request: Request) {
     await supabase.from('communes').update({ chargee_at: new Date().toISOString() }).eq('id', commune_id)
     console.log(`[BAN] ✓ ${totalInserted} adresses insérées pour ${nom}`)
 
-    // Fire-and-forget : enrichissement BDNB en parallèle
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    fetch(`${baseUrl}/api/bdnb/ingest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-key': process.env.SUPABASE_SERVICE_ROLE_KEY! },
-      body: JSON.stringify({ code_insee: codeInsee, nom, commune_id }),
-    }).then(async (r) => {
-      if (r.ok) {
-        const { count } = await r.json()
-        await fetch(`${baseUrl}/api/bdnb/match`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-internal-key': process.env.SUPABASE_SERVICE_ROLE_KEY! },
-          body: JSON.stringify({ code_insee: codeInsee }),
-        })
-        console.log(`[BDNB] Enrichissement terminé pour ${nom}: ${count} bâtiments`)
-      }
-    }).catch(err => console.error('[BDNB] Erreur enrichissement:', err.message))
-
+    // L'ingestion BDNB est gérée exclusivement par useBdnbSync côté client
+    // (pagination complète + gestion de reprise dans bdnb_sync_progress)
     return NextResponse.json({ ok: true, count: totalInserted })
 
   } catch (err: any) {

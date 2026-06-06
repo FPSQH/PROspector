@@ -33,31 +33,36 @@ export function useBdnbSync(communes: Commune[]) {
   const [isRunning, setIsRunning] = useState(false)
   const abortRef  = useRef(false)
   const userIdRef = useRef<string | null>(null)
-  const supabase  = createClient()
+  // Bug fix 4 : créer le client Supabase une seule fois
+  const supabaseRef = useRef(createClient())
 
   // Resolve and cache the current user id
   const getUserId = useCallback(async (): Promise<string | null> => {
     if (userIdRef.current) return userIdRef.current
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await supabaseRef.current.auth.getUser()
     userIdRef.current = user?.id ?? null
     return userIdRef.current
   }, [])
 
   // Persist a single commune progress row (scoped to current user)
-  const saveProgress = useCallback(async (p: CommuneProgress) => {
+  // Bug fix 3 : vérifier et logger les erreurs du upsert
+  const saveProgress = useCallback(async (p: CommuneProgress & { started_at?: string }) => {
     setProgress(prev => ({ ...prev, [p.code_insee]: p }))
     const userId = await getUserId()
     if (!userId) return
-    await supabase.from('bdnb_sync_progress').upsert({
+    const { error } = await (supabaseRef.current as any).from('bdnb_sync_progress').upsert({
       ...p,
       user_id:    userId,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,code_insee' })
+    if (error) {
+      console.error('[useBdnbSync] saveProgress upsert error:', error.message, '— code_insee:', p.code_insee, 'status:', p.status)
+    }
   }, [getUserId])
 
   // Full sync loop for one commune
   const syncCommune = useCallback(async (commune: Commune, initial: CommuneProgress | undefined): Promise<void> => {
-    const base: CommuneProgress = initial ?? {
+    const base: CommuneProgress & { started_at?: string } = initial ?? {
       code_insee:        commune.code_insee,
       nom:               commune.nom,
       status:            'pending',
@@ -70,48 +75,59 @@ export function useBdnbSync(communes: Commune[]) {
     // Already done — skip
     if (base.status === 'done') return
 
-    let cur = { ...base, status: 'ingesting' as SyncStatus, started_at: (base as any).started_at ?? new Date().toISOString() }
-    await saveProgress(cur)
+    // Bug fix 2 : si le statut est 'matching', l'ingestion est déjà complète.
+    // On saute la Phase 1 et on va directement au matching pour finaliser.
+    const skipIngestion = base.status === 'matching'
+
+    let cur: CommuneProgress & { started_at?: string } = { ...base, status: 'ingesting' as SyncStatus, started_at: base.started_at ?? new Date().toISOString() }
+    if (!skipIngestion) {
+      await saveProgress(cur)
+    }
 
     // ── Phase 1 : ingest batiments ──────────────────────────────
-    let offset = cur.next_offset
-    let pages  = 0
-    const MAX_PAGES = 200 // safety ceiling per commune session
+    if (!skipIngestion) {
+      let offset = cur.next_offset
+      let pages  = 0
+      const MAX_PAGES = 200 // safety ceiling per commune session
 
-    while (pages < MAX_PAGES) {
-      if (abortRef.current) return
+      while (pages < MAX_PAGES) {
+        if (abortRef.current) return
 
-      let ingest: any
-      try {
-        const res = await fetch('/api/bdnb/ingest', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ code_insee: commune.code_insee, nom: commune.nom, start_offset: offset }),
-        })
-        ingest = await res.json()
-      } catch (e: any) {
-        // Network error — save state and bail (will resume on next mount)
-        await saveProgress({ ...cur, status: 'ingesting', next_offset: offset, error_message: e.message })
-        return
+        let ingest: any
+        try {
+          const res = await fetch('/api/bdnb/ingest', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ code_insee: commune.code_insee, nom: commune.nom, start_offset: offset }),
+          })
+          ingest = await res.json()
+        } catch (e: any) {
+          // Network error — save state and bail (will resume on next mount)
+          await saveProgress({ ...cur, status: 'ingesting', next_offset: offset, error_message: e.message })
+          return
+        }
+
+        if (ingest.upsert_error) {
+          await saveProgress({ ...cur, status: 'error', next_offset: offset, error_message: ingest.upsert_error })
+          return
+        }
+
+        cur = {
+          ...cur,
+          batiments_ingeres: cur.batiments_ingeres + (ingest.count ?? 0),
+          next_offset: ingest.next_offset ?? offset,
+        }
+        await saveProgress(cur)
+
+        if (!ingest.next_offset) break // no more pages
+
+        offset = ingest.next_offset
+        pages++
+        await sleep(DELAY_BETWEEN_PAGES)
       }
-
-      if (ingest.upsert_error) {
-        await saveProgress({ ...cur, status: 'error', next_offset: offset, error_message: ingest.upsert_error })
-        return
-      }
-
-      cur = {
-        ...cur,
-        batiments_ingeres: cur.batiments_ingeres + (ingest.count ?? 0),
-        next_offset: ingest.next_offset ?? offset,
-      }
-      await saveProgress(cur)
-
-      if (!ingest.next_offset) break // no more pages
-
-      offset = ingest.next_offset
-      pages++
-      await sleep(DELAY_BETWEEN_PAGES)
+    } else {
+      // Récupérer les compteurs depuis le snapshot DB existant
+      cur = { ...base }
     }
 
     if (abortRef.current) return
@@ -141,7 +157,16 @@ export function useBdnbSync(communes: Commune[]) {
       cur = { ...cur, status: 'error', error_message: `Matching: ${e.message}` }
     }
 
-    await saveProgress(cur)
+    // Sauvegarder le statut final avec retry en cas d'échec réseau
+    let saved = false
+    for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+      try {
+        await saveProgress(cur)
+        saved = true
+      } catch {
+        if (attempt < 2) await sleep(1000)
+      }
+    }
   }, [saveProgress])
 
   // Run full sync for all communes that need it
@@ -172,19 +197,24 @@ export function useBdnbSync(communes: Commune[]) {
       if (!userId || cancelled) return
 
       const insees = chargees.map(c => c.code_insee)
-      const { data } = await supabase
+      const { data, error } = await (supabaseRef.current as any)
         .from('bdnb_sync_progress')
         .select('*')
         .eq('user_id', userId)
         .in('code_insee', insees)
 
+      if (error) {
+        console.error('[useBdnbSync] Erreur lecture progress:', error.message)
+      }
+
       if (cancelled) return
 
       const map: Record<string, CommuneProgress> = {}
-      for (const row of (data ?? [])) map[row.code_insee] = row as CommuneProgress
+      for (const row of (data ?? []) as any[]) map[row.code_insee] = row as CommuneProgress
       setProgress(map)
 
       // Filter communes that still need work
+      // 'matching' est considéré incomplet (le matching peut être retenté)
       const pending = chargees.filter(c => {
         const p = map[c.code_insee]
         return !p || p.status !== 'done'
