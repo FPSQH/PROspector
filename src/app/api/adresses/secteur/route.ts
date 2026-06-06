@@ -75,6 +75,21 @@ export async function GET() {
     }
   }
 
+  // ── DPE depuis dpe_logement (fallback pour adresses sans BDNB ou sans DPE BDNB) ──
+  const dpeLogMap = new Map<string, string>()
+  for (const batch of chunk(adresseIds, 500)) {
+    const { data } = await supabase
+      .from('dpe_logement')
+      .select('adresse_id, etiquette_dpe')
+      .in('adresse_id', batch)
+      .not('etiquette_dpe', 'is', null)
+    for (const d of (data ?? []) as any[]) {
+      if (d.etiquette_dpe && !dpeLogMap.has(d.adresse_id)) {
+        dpeLogMap.set(d.adresse_id, d.etiquette_dpe)
+      }
+    }
+  }
+
   // ── Statut de prospection (dernière interaction par adresse) ─────────────
   const statutMap = new Map<string, string>()
   for (const batch of chunk(adresseIds, 500)) {
@@ -91,16 +106,19 @@ export async function GET() {
   }
 
   // ── Enrichissement ───────────────────────────────────────────────────────
-  const enriched = adresses.map((a: any) => ({
-    id: a.id,
-    lat: a.lat,
-    lon: a.lon,
-    type_bien: a.type_bien ?? 'inconnu',
-    prospectable: a.prospectable,
-    zone_id: a.zone_id,
-    classe_bilan_dpe: a.batiment_groupe_id ? (bdnbMap.get(a.batiment_groupe_id) ?? null) : null,
-    statut_prospection: statutMap.get(a.id) ?? 'jamais_vue',
-  }))
+  const enriched = adresses.map((a: any) => {
+    const bdnbDpe = a.batiment_groupe_id ? (bdnbMap.get(a.batiment_groupe_id) ?? null) : null
+    return {
+      id: a.id,
+      lat: a.lat,
+      lon: a.lon,
+      type_bien: a.type_bien ?? 'inconnu',
+      prospectable: a.prospectable,
+      zone_id: a.zone_id,
+      classe_bilan_dpe: bdnbDpe ?? dpeLogMap.get(a.id) ?? null,
+      statut_prospection: statutMap.get(a.id) ?? 'jamais_vue',
+    }
+  })
 
   return NextResponse.json({ adresses: enriched })
 }
