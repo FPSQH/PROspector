@@ -51,9 +51,16 @@ export function useBdnbSync(communes: Commune[]) {
     const userId = await getUserId()
     if (!userId) return
     const { error } = await (supabaseRef.current as any).from('bdnb_sync_progress').upsert({
-      ...p,
-      user_id:    userId,
-      updated_at: new Date().toISOString(),
+      user_id:           userId,
+      code_insee:        p.code_insee,
+      nom:               p.nom,
+      status:            p.status,
+      batiments_ingeres: Number(p.batiments_ingeres) || 0,
+      next_offset:       Number(p.next_offset) || 0,
+      adresses_matchees: Number(p.adresses_matchees) || 0,
+      error_message:     p.error_message ?? null,
+      started_at:        (p as any).started_at ?? null,
+      updated_at:        new Date().toISOString(),
     }, { onConflict: 'user_id,code_insee' })
     if (error) {
       console.error('[useBdnbSync] saveProgress upsert error:', error.message, '— code_insee:', p.code_insee, 'status:', p.status)
