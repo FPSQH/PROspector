@@ -22,6 +22,7 @@ const TYPE_COLORS: Record<string, string> = {
   maison:          '#22c55e',
   appartement:     '#3b82f6',
   commerce:        '#f59e0b',
+  tertiaire:       '#f59e0b',   // rétrocompat anciens enregistrements → même couleur que commerce
   logement_social: '#6b7280',
   inconnu:         '#d1d5db',
 }
@@ -261,20 +262,29 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
 
       if (!allAdresses.length) { setLoading(false); return }
 
-      // Classe DPE depuis BDNB
+      // Classe DPE depuis BDNB — fallback sur les compteurs si classe_bilan_dpe est null
       const batimentIds = Array.from(new Set<string>(
         allAdresses.filter(a => a.batiment_groupe_id).map(a => a.batiment_groupe_id as string)
       ))
+      function deriveDpe(b: any): string | null {
+        if (b.classe_bilan_dpe) return b.classe_bilan_dpe
+        let best: string | null = null; let bestN = 0
+        for (const c of ['a','b','c','d','e','f','g']) {
+          const n = (b[`nb_classe_bilan_dpe_${c}`] ?? 0) as number
+          if (n > bestN) { bestN = n; best = c.toUpperCase() }
+        }
+        return bestN > 0 ? best : null
+      }
       const bdnbMap = new Map<string, string>()
       if (batimentIds.length) {
         for (const batch of chunk(batimentIds, 500)) {
           const { data } = await supabase
             .from('bdnb_batiment_groupe')
-            .select('batiment_groupe_id, classe_bilan_dpe')
+            .select('batiment_groupe_id, classe_bilan_dpe, nb_classe_bilan_dpe_a, nb_classe_bilan_dpe_b, nb_classe_bilan_dpe_c, nb_classe_bilan_dpe_d, nb_classe_bilan_dpe_e, nb_classe_bilan_dpe_f, nb_classe_bilan_dpe_g')
             .in('batiment_groupe_id', batch)
-            .not('classe_bilan_dpe', 'is', null)
           for (const b of (data ?? []) as any[]) {
-            if (b.classe_bilan_dpe) bdnbMap.set(b.batiment_groupe_id, b.classe_bilan_dpe)
+            const classe = deriveDpe(b)
+            if (classe) bdnbMap.set(b.batiment_groupe_id, classe)
           }
         }
       }
@@ -410,51 +420,63 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
           boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
         }}>🔍 Filtres{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</button>
 
-        {/* Panneau filtres */}
-        {showFilters && (
-          <div style={{ background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, fontSize: 12 }}>
-            {/* Type */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={sectionTitle}>Type de bien</div>
-              {TYPE_OPTIONS.map(t => (
-                <label key={t} style={filterRowStyle}>
-                  <input type="checkbox" checked={filterTypes.includes(t)} onChange={() => toggleFilter(filterTypes, t, setFilterTypes)} style={{ accentColor: TYPE_COLORS[t] }} />
-                  <span style={{ color: TYPE_COLORS[t] }}>●</span> {t}
-                </label>
-              ))}
-            </div>
-            {/* DPE */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={sectionTitle}>Classe DPE</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {DPE_CLASSES.map(c => (
-                  <button key={c} onClick={() => toggleFilter(filterDpe, c, setFilterDpe)} style={{
-                    width: 28, height: 24, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                    background: filterDpe.includes(c) ? dpeColor(c) : '#f1f5f9',
-                    color: filterDpe.includes(c) ? '#fff' : '#475569',
-                    border: '1.5px solid ' + (filterDpe.includes(c) ? dpeColor(c) : '#e2e8f0'),
-                  }}>{c}</button>
+        {/* Panneau filtres + légende côte-à-côte */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          {showFilters && (
+            <div style={{ background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, fontSize: 12 }}>
+              {/* Type */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={sectionTitle}>Type de bien</div>
+                {TYPE_OPTIONS.map(t => (
+                  <label key={t} style={filterRowStyle}>
+                    <input type="checkbox" checked={filterTypes.includes(t)} onChange={() => toggleFilter(filterTypes, t, setFilterTypes)} style={{ accentColor: TYPE_COLORS[t] }} />
+                    <span style={{ color: TYPE_COLORS[t] }}>●</span> {t}
+                  </label>
                 ))}
               </div>
+              {/* DPE */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={sectionTitle}>Classe DPE</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {DPE_CLASSES.map(c => (
+                    <button key={c} onClick={() => toggleFilter(filterDpe, c, setFilterDpe)} style={{
+                      width: 28, height: 24, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      background: filterDpe.includes(c) ? dpeColor(c) : '#f1f5f9',
+                      color: filterDpe.includes(c) ? '#fff' : '#475569',
+                      border: '1.5px solid ' + (filterDpe.includes(c) ? dpeColor(c) : '#e2e8f0'),
+                    }}>{c}</button>
+                  ))}
+                </div>
+              </div>
+              {/* Statut */}
+              <div style={{ marginBottom: activeFilterCount > 0 ? 8 : 0 }}>
+                <div style={sectionTitle}>Statut prospection</div>
+                {STATUT_OPTIONS.map(s => (
+                  <label key={s.key} style={filterRowStyle}>
+                    <input type="checkbox" checked={filterStatut.includes(s.key)} onChange={() => toggleFilter(filterStatut, s.key, setFilterStatut)} style={{ accentColor: s.color }} />
+                    <span style={{ color: s.color }}>●</span> {s.label}
+                  </label>
+                ))}
+              </div>
+              {activeFilterCount > 0 && (
+                <button onClick={() => { setFilterTypes([]); setFilterDpe([]); setFilterStatut([]) }}
+                  style={{ width: '100%', padding: '4px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer', fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
+                  ✕ Effacer les filtres
+                </button>
+              )}
             </div>
-            {/* Statut */}
-            <div style={{ marginBottom: activeFilterCount > 0 ? 8 : 0 }}>
-              <div style={sectionTitle}>Statut prospection</div>
-              {STATUT_OPTIONS.map(s => (
-                <label key={s.key} style={filterRowStyle}>
-                  <input type="checkbox" checked={filterStatut.includes(s.key)} onChange={() => toggleFilter(filterStatut, s.key, setFilterStatut)} style={{ accentColor: s.color }} />
-                  <span style={{ color: s.color }}>●</span> {s.label}
-                </label>
-              ))}
-            </div>
-            {activeFilterCount > 0 && (
-              <button onClick={() => { setFilterTypes([]); setFilterDpe([]); setFilterStatut([]) }}
-                style={{ width: '100%', padding: '4px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer', fontSize: 11, color: '#ef4444', fontWeight: 600 }}>
-                ✕ Effacer les filtres
-              </button>
-            )}
+          )}
+
+          {/* Légende — toujours visible, à droite du filtre */}
+          <div style={{
+            background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
+            borderRadius: 8, padding: '8px 12px',
+            fontSize: '0.72rem', color: '#5F5E5A',
+            border: '1px solid #e8e7e0', pointerEvents: 'none',
+          }}>
+            {renderLegend()}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Compteur bas-gauche */}
@@ -466,18 +488,6 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
         border: '1px solid #e8e7e0', pointerEvents: 'none',
       }}>
         {loading ? '⏳ Chargement…' : `📍 ${filteredFeatures.length.toLocaleString('fr-FR')}${activeFilterCount > 0 ? ` / ${rawAdresses.length.toLocaleString('fr-FR')}` : ''} adresses`}
-      </div>
-
-      {/* Légende bas-droite */}
-      <div style={{
-        position: 'absolute', bottom: 12, right: 12,
-        background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
-        borderRadius: 8, padding: '8px 12px',
-        fontSize: '0.72rem', color: '#5F5E5A',
-        border: '1px solid #e8e7e0', pointerEvents: 'none',
-        maxHeight: 200, overflowY: 'auto',
-      }}>
-        {renderLegend()}
       </div>
 
       {!mapLoaded && (
