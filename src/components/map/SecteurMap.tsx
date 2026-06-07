@@ -116,6 +116,14 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
   const [filterTypes,  setFilterTypes]  = useState<string[]>([])
   const [filterDpe,    setFilterDpe]    = useState<string[]>([])
   const [filterStatut, setFilterStatut] = useState<string[]>([])
+  const [isMobile,     setIsMobile]     = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const toggleFilter = (list: string[], val: string, setter: (v: string[]) => void) =>
     setter(list.includes(val) ? list.filter(x => x !== val) : [...list, val])
@@ -416,8 +424,8 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Sélecteur mode couleur (haut gauche) */}
-      <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
-        <div style={{ display: 'flex', gap: 3 }}>
+      <div style={{ position: 'absolute', top: 10, left: 10, right: isMobile ? 10 : undefined, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
           {COLOR_MODES.map(m => (
             <button key={m.key} onClick={() => setColorMode(m.key)} title={m.label} style={{
               padding: '4px 7px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer',
@@ -438,10 +446,10 @@ export function SecteurMap({ communesInsee, height = 500 }: Props) {
           boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
         }}>🔍 Filtres{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</button>
 
-        {/* Panneau filtres + légende côte-à-côte */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        {/* Panneau filtres + légende côte-à-côte (empilés verticalement sur mobile) */}
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, alignItems: isMobile ? 'stretch' : 'flex-start' }}>
           {showFilters && (
-            <div style={{ background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, fontSize: 12 }}>
+            <div style={{ background: 'rgba(255,255,255,0.97)', borderRadius: 10, padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: isMobile ? 0 : 200, maxWidth: isMobile ? '100%' : undefined, maxHeight: isMobile ? '50vh' : undefined, overflowY: isMobile ? 'auto' : undefined, fontSize: 12 }}>
               {/* Type */}
               <div style={{ marginBottom: 10 }}>
                 <div style={sectionTitle}>Type de bien</div>

@@ -23,6 +23,17 @@ const tabs: Tab[] = [
     ),
   },
   {
+    href: '/onboarding',
+    label: 'Secteur',
+    icon: (active, spotlight) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="3,7 9,4 15,7 21,4 21,17 15,20 9,17 3,20"/>
+        <line x1="9" y1="4" x2="9" y2="17"/>
+        <line x1="15" y1="7" x2="15" y2="20"/>
+      </svg>
+    ),
+  },
+  {
     href: '/zones',
     label: 'Zones',
     icon: (active, spotlight) => (
@@ -132,6 +143,9 @@ export default function BottomTabBar() {
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           display: 'flex',
           alignItems: 'stretch',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
           height: 'calc(68px + env(safe-area-inset-bottom, 0px))',
         }}
       >
@@ -145,7 +159,7 @@ export default function BottomTabBar() {
                 key={tab.href}
                 href={tab.href}
                 style={{
-                  flex: 1,
+                  flex: '0 0 64px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -181,7 +195,7 @@ export default function BottomTabBar() {
               key={tab.href}
               href={tab.href}
               style={{
-                flex: 1,
+                flex: '0 0 64px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',

@@ -44,9 +44,18 @@ export default function OnboardingPage() {
   const [communes, setCommunes]     = useState<Commune[]>([])
   const [loading, setLoading]       = useState(true)
   const [navigating, setNavigating] = useState(false)
+  const [isDesktop, setIsDesktop]   = useState(true)
+  const [mobileView, setMobileView] = useState<'liste'|'carte'>('liste')
   const pollingRef   = useRef<NodeJS.Timeout | null>(null)
   const attemptsRef  = useRef(0)
   const MAX_ATTEMPTS = 22
+
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const loadCommunes = useCallback(async () => {
     const res  = await fetch('/api/communes')
@@ -123,9 +132,9 @@ export default function OnboardingPage() {
   return (
     <div style={{ minHeight:'100dvh', background: C.bg }}>
       {/* Header */}
-      <header style={{ background: C.card, borderBottom:`1px solid ${C.border}`, padding:'0 24px', height:56, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <header style={{ background: C.card, borderBottom:`1px solid ${C.border}`, padding: isDesktop ? '0 24px' : '0 16px', height:56, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:30, height:30, borderRadius:8, background: C.primary, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ width:30, height:30, borderRadius:8, background: C.primary, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round">
               <path d="M12 2L2 7v10l10 5 10-5V7L12 2z"/>
               <path d="M12 22V12M2 7l10 5 10-5"/>
@@ -134,23 +143,52 @@ export default function OnboardingPage() {
           <span style={{ fontWeight:600, fontSize:'0.9375rem', color: C.text }}>PROspector</span>
         </div>
         {canGoToDashboard && (
-          <button onClick={handleDashboard} disabled={navigating} style={{ padding:'7px 18px', borderRadius:8, background: navigating ? C.dim : C.primary, color:'#fff', border:'none', fontSize:'0.875rem', fontWeight:600, cursor: navigating ? 'not-allowed' : 'pointer' }}>
-            {navigating ? 'Chargement…' : 'Accéder au Dashboard →'}
+          <button onClick={handleDashboard} disabled={navigating} style={{ padding: isDesktop ? '7px 18px' : '7px 12px', borderRadius:8, background: navigating ? C.dim : C.primary, color:'#fff', border:'none', fontSize: isDesktop ? '0.875rem' : '0.8rem', fontWeight:600, cursor: navigating ? 'not-allowed' : 'pointer', whiteSpace:'nowrap' }}>
+            {navigating ? 'Chargement…' : (isDesktop ? 'Accéder au Dashboard →' : 'Dashboard →')}
           </button>
         )}
       </header>
 
-      <main style={{ display:'grid', gridTemplateColumns:'380px 1fr', height:'calc(100dvh - 56px)' }}>
+      {!isDesktop && (
+        <div style={{ display:'flex', borderBottom:`1px solid ${C.border}`, background: C.card }}>
+          {(['liste','carte'] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setMobileView(v)}
+              style={{
+                flex:1, padding:'10px', textAlign:'center', fontSize:'0.85rem', fontWeight:600,
+                background:'transparent', border:'none', cursor:'pointer',
+                color: mobileView === v ? C.primary : C.muted,
+                borderBottom: mobileView === v ? `2px solid ${C.primary}` : '2px solid transparent',
+              }}
+            >
+              {v === 'liste' ? `📋 Liste${communes.length > 0 ? ` (${communes.length})` : ''}` : '🗺️ Carte'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <main style={ isDesktop
+        ? { display:'grid', gridTemplateColumns:'380px 1fr', height:'calc(100dvh - 56px)' }
+        : { display:'block', height:'calc(100dvh - 56px - 41px)' }
+      }>
         {/* Sidebar */}
-        <aside style={{ borderRight:`1px solid ${C.border}`, background: C.card, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-          <div style={{ padding:'24px 24px 16px', borderBottom:`1px solid ${C.border}` }}>
+        <aside style={{
+          display: isDesktop || mobileView === 'liste' ? 'flex' : 'none',
+          flexDirection:'column',
+          borderRight: isDesktop ? `1px solid ${C.border}` : 'none',
+          background: C.card,
+          overflow:'hidden',
+          height: isDesktop ? undefined : '100%',
+        }}>
+          <div style={{ padding: isDesktop ? '24px 24px 16px' : '16px 16px 12px', borderBottom:`1px solid ${C.border}` }}>
             <h1 style={{ fontSize:'1.125rem', fontWeight:700, color: C.text, margin:'0 0 4px' }}>Mon secteur</h1>
             <p style={{ fontSize:'0.8rem', color: C.muted, margin:0, lineHeight:1.4 }}>
               Ajoutez les communes de votre zone de prospection.
             </p>
           </div>
 
-          <div style={{ padding:'16px 24px', borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ padding: isDesktop ? '16px 24px' : '12px 16px', borderBottom:`1px solid ${C.border}` }}>
             <SearchCommune onAdd={handleAdd} communesExistantes={communes.map(c => c.code_insee)} />
           </div>
 
@@ -172,21 +210,21 @@ export default function OnboardingPage() {
             {loading ? (
               <div style={{ padding:24, color: C.muted, fontSize:'0.875rem' }}>Chargement…</div>
             ) : communes.length === 0 ? (
-              <div style={{ padding:'32px 24px', textAlign:'center' }}>
+              <div style={{ padding: isDesktop ? '32px 24px' : '24px 16px', textAlign:'center' }}>
                 <div style={{ fontSize:'2rem', marginBottom:12 }}>🏘️</div>
                 <p style={{ fontSize:'0.875rem', color: C.mid, lineHeight:1.5 }}>Aucune commune dans votre secteur.</p>
                 <p style={{ fontSize:'0.8rem', color: C.muted }}>Recherchez par nom ou code postal.</p>
               </div>
             ) : (
               <>
-                <div style={{ padding:'10px 24px 6px', fontSize:'0.75rem', color: C.muted }}>
+                <div style={{ padding: isDesktop ? '10px 24px 6px' : '10px 16px 6px', fontSize:'0.75rem', color: C.muted }}>
                   {communes.length} commune{communes.length > 1 ? 's' : ''} dans le secteur
                   {nbEnCours > 0 && <span style={{ color:'#FBBF24', marginLeft:6 }}>· {nbEnCours} en chargement BAN…</span>}
                 </div>
                 {communes.map(commune => {
                   const chargee = !!commune.chargee_at
                   return (
-                    <div key={commune.code_insee} style={{ padding:'12px 24px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:12 }}>
+                    <div key={commune.code_insee} style={{ padding: isDesktop ? '12px 24px' : '12px 16px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:12 }}>
                       <div style={{ width:10, height:10, borderRadius:'50%', flexShrink:0, background: chargee ? '#22c55e' : '#f59e0b', boxShadow: chargee ? '0 0 0 3px rgba(34,197,94,0.15)' : '0 0 0 3px rgba(245,158,11,0.15)' }}/>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:500, fontSize:'0.9rem', color: C.text }}>{commune.nom}</div>
@@ -226,7 +264,7 @@ export default function OnboardingPage() {
             )}
           </div>
 
-          <div style={{ padding:'16px 24px', borderTop:`1px solid ${C.border}` }}>
+          <div style={{ padding: isDesktop ? '16px 24px' : '12px 16px', borderTop:`1px solid ${C.border}` }}>
             {communes.length === 0 ? (
               <div style={{ padding:'10px 14px', borderRadius:8, background:'rgba(255,255,255,0.04)', border:`1px solid ${C.border}`, fontSize:'0.8rem', color: C.muted, textAlign:'center' }}>
                 Ajoutez au moins une commune pour continuer
@@ -242,7 +280,7 @@ export default function OnboardingPage() {
           </div>
         </aside>
 
-        <div style={{ overflow:'hidden' }}>
+        <div style={{ overflow:'hidden', display: isDesktop || mobileView === 'carte' ? 'block' : 'none', height: isDesktop ? undefined : '100%' }}>
           <SecteurMap communesInsee={communesInsee} height="100%" />
         </div>
       </main>
