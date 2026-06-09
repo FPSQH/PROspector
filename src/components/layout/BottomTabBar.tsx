@@ -36,13 +36,17 @@ const tabs: Tab[] = [
   {
     href: '/zones',
     label: 'Zones',
-    icon: (active, spotlight) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active || spotlight ? '#1D9E75' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21"/>
-        <line x1="9" y1="3" x2="9" y2="18"/>
-        <line x1="15" y1="6" x2="15" y2="21"/>
-      </svg>
-    ),
+    icon: (active, spotlight) => {
+      const c = active || spotlight ? '#1D9E75' : '#9ca3af'
+      return (
+        <svg width="22" height="22" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="6.5" stroke={c} strokeWidth="1.5"/>
+          <circle cx="9" cy="9" r="2.5" stroke={c} strokeWidth="1.5"/>
+          <line x1="9" y1="2" x2="9" y2="5" stroke={c} strokeWidth="1.5" strokeLinecap="round"/>
+          <line x1="9" y1="13" x2="9" y2="16" stroke={c} strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      )
+    },
   },
   {
     href: '/courriers',
