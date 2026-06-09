@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-const VERIF_INTERVAL_DAYS = 7
+const VERIF_INTERVAL_DAYS = 2
 
 export async function GET() {
   const supabase = await createClient()

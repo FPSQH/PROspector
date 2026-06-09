@@ -293,7 +293,7 @@ export async function POST(req: Request) {
   }
 
   // ── Post-ingestion : matching + mise à jour commune ───────────────
-  const hasMore = nextAfter !== null && rows.length >= SIZE
+  const hasMore = nextAfter !== null
   if (!hasMore) {
     // Matching GPS 50m
     let nbMatched = 0
