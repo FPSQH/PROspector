@@ -332,14 +332,15 @@ function ZoneStackedBar({ visited, remaining, excluded, total }: {
   )
 }
 
-function MiniKPI({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
-  return (
-    <div style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+function MiniKPI({ label, value, color, sub, href }: { label: string; value: string; color: string; sub?: string; href?: string }) {
+  const inner = (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center', ...(href ? { cursor: 'pointer', transition: 'border-color 0.15s' } : {}) }}>
       <span style={{ fontSize: 10, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block' }}>{label}</span>
       <span style={{ fontSize: 20, fontWeight: 700, color, marginTop: 5, display: 'block' }}>{value}</span>
       {sub && <span style={{ fontSize: 9, color: C.dim, display: 'block', marginTop: 2 }}>{sub}</span>}
     </div>
   )
+  return href ? <Link href={href} style={{ textDecoration: 'none' }}>{inner}</Link> : inner
 }
 
 function RatioTile({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
@@ -1110,7 +1111,7 @@ export default async function DashboardPage({
             {/* 3 KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
               <MiniKPI label="DPE total"        value={String(dpeTotal)}   color={C.gold}    sub={dpePeriodeLabel} />
-              <MiniKPI label="DPE < 2 semaines" value={String(dpeRecents)} color={C.info}    sub="Toujours actif" />
+              <MiniKPI label="DPE < 2 semaines" value={String(dpeRecents)} color={C.info}    sub="→ Préparer prospection" href={`/courriers?date_debut=${twoWeeksAgoStr}&date_fin=${todayStr}&autoload=1`} />
               <MiniKPI label="% adr. avec DPE"  value={dpePct + '%'}       color={C.success} sub="du secteur" />
             </div>
 
