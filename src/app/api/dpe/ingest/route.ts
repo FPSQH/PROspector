@@ -162,6 +162,8 @@ export async function POST(req: Request) {
 
   const { code_postal, code_insee, force_full = false } = body
   const afterCursor: string | null = body.after ?? null
+  // filter_date_override : forcer une date de début sans passer par derniere_verif_dpe
+  const filterDateOverride: string | null = body.filter_date ?? null
   const cpTarget = normCP(code_postal)
   const SIZE = 500 // max recommandé ADEME
 
@@ -171,7 +173,10 @@ export async function POST(req: Request) {
   let filterDate: string | null = null
   let mode = 'full'
 
-  if (!force_full && !afterCursor) {
+  if (filterDateOverride && !afterCursor) {
+    filterDate = filterDateOverride
+    mode = 'incremental'
+  } else if (!force_full && !afterCursor) {
     const { data: commune } = await adminDb
       .from('communes')
       .select('derniere_verif_dpe')
