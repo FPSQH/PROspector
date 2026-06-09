@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -54,8 +55,9 @@ export default function CourriersPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const [dateDebut, setDateDebut] = useState(daysAgo(90))
-  const [dateFin,   setDateFin]   = useState(today())
+  const searchParams = useSearchParams()
+  const [dateDebut, setDateDebut] = useState(() => searchParams.get('date_debut') ?? daysAgo(90))
+  const [dateFin,   setDateFin]   = useState(() => searchParams.get('date_fin')   ?? today())
   const [adresses,  setAdresses]  = useState<DpeAdresseData[]>([])
   const [stats,     setStats]     = useState<any>(null)
   const [loading,   setLoading]   = useState(false)
@@ -83,6 +85,12 @@ export default function CourriersPage() {
     window.addEventListener('click', handler, { capture: true })
     return () => window.removeEventListener('click', handler, { capture: true })
   }, [templateDropdown])
+
+  // ── Autoload depuis dashboard (param ?autoload=1) ────────────────────────────
+  useEffect(() => {
+    if (searchParams.get('autoload') === '1') load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Charger les templates v2 ──────────────────────────────────────────────────
   useEffect(() => {
