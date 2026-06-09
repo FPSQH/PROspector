@@ -59,6 +59,7 @@ export default function CourriersPage() {
   const [adresses,  setAdresses]  = useState<DpeAdresseData[]>([])
   const [stats,     setStats]     = useState<any>(null)
   const [loading,   setLoading]   = useState(false)
+  const [syncing,   setSyncing]   = useState(false)
   const [selected,  setSelected]  = useState<DpeAdresseData | null>(null)
   const [checked,   setChecked]   = useState<Set<string>>(new Set())
   const [sortField, setSortField] = useState<SortField>('date')
@@ -98,9 +99,22 @@ export default function CourriersPage() {
 
   // ── Charger les DPE ──────────────────────────────────────────────────────────
   const load = useCallback(async () => {
-    setLoading(true)
     setChecked(new Set())
     setSelected(null)
+
+    // ── 1. Sync ADEME pour la plage demandée ────────────────────────
+    setSyncing(true)
+    try {
+      await fetch('/api/dpe/sync-secteur', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date_debut: dateDebut }),
+      })
+    } catch (_) {}
+    setSyncing(false)
+
+    // ── 2. Charger les résultats ────────────────────────────────────
+    setLoading(true)
     try {
       const p = new URLSearchParams({ date_debut: dateDebut, date_fin: dateFin, limit: '500' })
       const r = await fetch('/api/courriers?' + p)
@@ -367,9 +381,9 @@ export default function CourriersPage() {
                 {label}
               </button>
             ))}
-            <button onClick={load} disabled={loading}
-              style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:'none', borderRadius:6, background: loading ? C.dim : C.primary, cursor: loading ? 'not-allowed' : 'pointer', color:'#fff' }}>
-              {loading ? '...' : 'Chercher'}
+            <button onClick={load} disabled={loading || syncing}
+              style={{ flex:1, padding:'5px 0', fontSize:'0.72rem', fontWeight:600, border:'none', borderRadius:6, background: (loading || syncing) ? C.dim : C.primary, cursor: (loading || syncing) ? 'not-allowed' : 'pointer', color:'#fff' }}>
+              {syncing ? '↻ Sync ADEME...' : loading ? '...' : 'Chercher'}
             </button>
           </div>
 

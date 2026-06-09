@@ -62,12 +62,16 @@ export async function GET(request: Request) {
     .from('dpe_logement')
     .select('id, numero_dpe, code_insee, adresse_brute, adresse_id, type_batiment, surface_habitable, etiquette_dpe, etiquette_ges, date_etablissement, date_modification, conso_ep_m2, cout_annuel, energie_principale, ges_m2, lat, lon, has_audit, audit_n, audit_date, audit_scenarios, adresses(zone_id)')
     .in('code_insee', codeInsees)
-    .not('etiquette_dpe', 'is', null)
     .order('date_etablissement', { ascending: false })
     .limit(limit)
 
   if (dateDebut) query = (query as any).gte('date_etablissement', dateDebut)
-  if (dateFin)   query = (query as any).lte('date_etablissement', dateFin)
+  // lte sur date_fin + 1 jour pour inclure tous les DPE de la journée dateFin
+  if (dateFin) {
+    const dateFinExclusive = new Date(dateFin)
+    dateFinExclusive.setDate(dateFinExclusive.getDate() + 1)
+    query = (query as any).lt('date_etablissement', dateFinExclusive.toISOString().split('T')[0])
+  }
 
   const { data: dpes, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

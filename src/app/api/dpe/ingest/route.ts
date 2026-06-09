@@ -144,10 +144,16 @@ async function fetchAudits(numeroDpes: string[]): Promise<Map<string, any>> {
 }
 
 // ── Route principale ──────────────────────────────────────────────
+const CRON_SECRET = process.env.CRON_SECRET ?? '05091974'
+
 export async function POST(req: Request) {
-  const supabase  = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  // Auth : session utilisateur OU appel interne cron
+  const cronHeader = req.headers.get('x-cron-secret')
+  if (cronHeader !== CRON_SECRET) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  }
 
   const body = await req.json().catch(() => null)
   if (!body?.code_postal || !body?.code_insee) {
@@ -156,6 +162,8 @@ export async function POST(req: Request) {
 
   const { code_postal, code_insee, force_full = false } = body
   const afterCursor: string | null = body.after ?? null
+  // filter_date_override : forcer une date de début sans passer par derniere_verif_dpe
+  const filterDateOverride: string | null = body.filter_date ?? null
   const cpTarget = normCP(code_postal)
   const SIZE = 500 // max recommandé ADEME
 
@@ -165,7 +173,10 @@ export async function POST(req: Request) {
   let filterDate: string | null = null
   let mode = 'full'
 
-  if (!force_full && !afterCursor) {
+  if (filterDateOverride && !afterCursor) {
+    filterDate = filterDateOverride
+    mode = 'incremental'
+  } else if (!force_full && !afterCursor) {
     const { data: commune } = await adminDb
       .from('communes')
       .select('derniere_verif_dpe')
@@ -293,7 +304,7 @@ export async function POST(req: Request) {
   }
 
   // ── Post-ingestion : matching + mise à jour commune ───────────────
-  const hasMore = nextAfter !== null && rows.length >= SIZE
+  const hasMore = nextAfter !== null
   if (!hasMore) {
     // Matching GPS 50m
     let nbMatched = 0

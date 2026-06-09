@@ -47,11 +47,20 @@ export default function DpeAlertsWidget() {
       const c = communes[i]
       setMajProgress({ done: i, total: communes.length, commune: c.nom })
       try {
-        await fetch('/api/dpe/ingest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code_postal: c.code_postal, code_insee: c.code_insee, force_full: c.force_full }),
-        })
+        let after: string | null = null
+        let page = 0
+        while (true) {
+          const r = await fetch('/api/dpe/ingest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code_postal: c.code_postal, code_insee: c.code_insee, force_full: c.force_full, after }),
+          })
+          if (!r.ok) break
+          const d = await r.json()
+          after = d.after ?? null
+          page++
+          if (!after || d.has_more === false || page > 100) break
+        }
       } catch (_) {}
     }
 
