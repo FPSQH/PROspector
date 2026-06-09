@@ -144,10 +144,16 @@ async function fetchAudits(numeroDpes: string[]): Promise<Map<string, any>> {
 }
 
 // ── Route principale ──────────────────────────────────────────────
+const CRON_SECRET = process.env.CRON_SECRET ?? '05091974'
+
 export async function POST(req: Request) {
-  const supabase  = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  // Auth : session utilisateur OU appel interne cron
+  const cronHeader = req.headers.get('x-cron-secret')
+  if (cronHeader !== CRON_SECRET) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  }
 
   const body = await req.json().catch(() => null)
   if (!body?.code_postal || !body?.code_insee) {
