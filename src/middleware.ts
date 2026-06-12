@@ -36,9 +36,31 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && request.nextUrl.pathname === '/login') {
+    // Récupère le rôle pour router vers le bon dashboard
+    const { data: profile } = await supabase
+      .from('commerciaux')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    url.pathname = profile?.role === 'manager' ? '/manager/dashboard' : '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Protège les routes /manager/* : rôle manager obligatoire
+  if (user && request.nextUrl.pathname.startsWith('/manager')) {
+    const { data: profile } = await supabase
+      .from('commerciaux')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'manager') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
