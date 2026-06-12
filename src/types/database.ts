@@ -19,6 +19,16 @@ export interface Commercial {
   prenom: string
   email: string
   role: Role
+  manager_id: string | null
+  must_change_password: boolean
+  telephone: string | null
+  agence_nom: string | null
+  agence_adresse: string | null
+  agence_telephone: string | null
+  agence_email: string | null
+  agence_logo_url: string | null
+  last_dpe_alert_at: string | null
+  derniere_connexion: string | null
   created_at: string
   updated_at: string
 }
