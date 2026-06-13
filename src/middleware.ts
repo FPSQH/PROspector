@@ -48,18 +48,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirige un manager qui tente d'accéder aux routes commerciales
+  // Redirige un manager qui tente d'accéder aux routes commerciales,
+  // sauf s'il est en mode délégation (cookie delegation_manager_id = user.id)
   if (user && request.nextUrl.pathname === '/dashboard') {
-    const { data: profile } = await supabase
-      .from('commerciaux')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+    const delegationMgr = request.cookies.get('delegation_manager_id')?.value
+    const isDelegation   = delegationMgr === user.id
 
-    if (profile?.role === 'manager') {
-      const url = request.nextUrl.clone()
-      url.pathname = '/manager/dashboard'
-      return NextResponse.redirect(url)
+    if (!isDelegation) {
+      const { data: profile } = await supabase
+        .from('commerciaux')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (profile?.role === 'manager') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/manager/dashboard'
+        return NextResponse.redirect(url)
+      }
     }
   }
 
