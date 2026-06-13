@@ -84,13 +84,39 @@ export default async function ManagerDashboardPage({
   const periode = periodeParam ?? 'semaine'
   const { debut, fin } = getPeriodeDates(periode)
 
-  const { data: stats, error } = await supabase.rpc('get_stats_equipe', {
+  // Essai via RPC (nécessite migration appliquée en prod)
+  const { data: stats, error: rpcError } = await supabase.rpc('get_stats_equipe', {
     p_manager_id: user.id,
     p_debut:      debut || null,
     p_fin:        fin   || null,
   }) as { data: StatsCommercial[] | null; error: unknown }
 
-  const equipe = stats ?? []
+  // Fallback : liste brute si RPC absente
+  let equipe: StatsCommercial[] = stats ?? []
+  if (rpcError || !stats) {
+    const { data: fallback } = await supabase
+      .from('commerciaux')
+      .select('id, nom, prenom, email, derniere_connexion')
+      .eq('manager_id', user.id)
+      .order('nom')
+
+    equipe = (fallback ?? []).map((c) => ({
+      commercial_id:          c.id,
+      nom:                    c.nom,
+      prenom:                 c.prenom,
+      email:                  c.email,
+      derniere_connexion:     c.derniere_connexion,
+      nb_sessions_realisees:  0,
+      nb_sessions_planifiees: 0,
+      nb_sessions_total:      0,
+      nb_portes:              0,
+      nb_contacts_terrain:    0,
+      nb_mandats:             0,
+      nb_contacts_chauds:     0,
+      dernier_passage:        null,
+      taux_couverture_moyen:  0,
+    }))
+  }
   const nb = equipe.length
 
   // Totaux équipe
