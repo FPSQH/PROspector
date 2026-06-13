@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -54,6 +55,8 @@ export async function GET(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { searchParams } = new URL(req.url)
   const now   = new Date()
   const mois  = parseInt(searchParams.get('mois')  ?? String(now.getMonth() + 1))
@@ -71,7 +74,7 @@ export async function GET(req: Request) {
   const { data: allSessProsp } = await supabase
     .from('sessions_prospection')
     .select('id, date_session, commune_nom, commune_code_insee, rapport_json, statut, heure_debut, heure_fin, zone_id, type_session')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .eq('statut',        'realisee')
     .gte('date_session', firstDay)
     .lte('date_session', lastDay)
@@ -97,7 +100,7 @@ export async function GET(req: Request) {
       type_contact, notes, date_relance, statut_pipeline, horizon_vente,
       adresses ( id, numero, nom_voie, code_postal, commune )
     `)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .not('date_relance', 'is', null)
     .gte('date_relance', firstDay)
     .lte('date_relance', lastDay)
@@ -127,6 +130,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body  = await req.json().catch(() => ({}))
   const now   = new Date()
   const mois  = parseInt(body.mois  ?? now.getMonth() + 1)
@@ -139,7 +144,7 @@ export async function POST(req: Request) {
   // Vérifier sessions planifiées existantes
   const { data: existing } = await supabase
     .from('planning_sessions').select('id')
-    .eq('commercial_id', user.id).eq('mois', mois).eq('annee', annee).eq('statut', 'planifiee')
+    .eq('commercial_id', effectiveId).eq('mois', mois).eq('annee', annee).eq('statut', 'planifiee')
   if (existing && existing.length > 0) {
     if (continuer) {
       // Auto-prolongation : des sessions existent déjà → rien à faire
@@ -154,7 +159,7 @@ export async function POST(req: Request) {
 
   const { data: zones } = await supabase
     .from('zones_prospection').select('id, nom, numero, nb_adresses')
-    .eq('commercial_id', user.id).eq('statut', 'active')
+    .eq('commercial_id', effectiveId).eq('statut', 'active')
     .order('numero', { ascending: true })
   if (!zones?.length)
     return NextResponse.json({ error: 'Aucune zone active' }, { status: 400 })
@@ -189,7 +194,7 @@ export async function POST(req: Request) {
   const { data: lastBefore } = await supabase
     .from('planning_sessions')
     .select('zone_id')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .lt('date_prevue', firstDayOfMonth)
     .order('date_prevue', { ascending: false })
     .order('heure_debut', { ascending: false })
@@ -211,7 +216,7 @@ export async function POST(req: Request) {
   for (let day = startDay; day <= daysInMonth; day++) {
     const jourSemaine = new Date(annee, mois - 1, day).getDay()
     const dateStr     = `${annee}-${String(mois).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    const base        = { commercial_id: user.id, date_prevue: dateStr, statut: 'planifiee', mois, annee, nb_adresses_visitees: 0, nb_contacts: 0 }
+    const base        = { commercial_id: effectiveId, date_prevue: dateStr, statut: 'planifiee', mois, annee, nb_adresses_visitees: 0, nb_contacts: 0 }
 
     if (cfg.jours.includes(jourSemaine)) {
       const zone = zones[zoneIndex % zones.length]
@@ -250,9 +255,11 @@ export async function DELETE(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const effectiveId = await getEffectiveCommercialId()
   const { searchParams } = new URL(req.url)
   await supabase.from('planning_sessions').delete()
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .eq('mois',   parseInt(searchParams.get('mois')  ?? '0'))
     .eq('annee',  parseInt(searchParams.get('annee') ?? '0'))
     .eq('statut', 'planifiee')

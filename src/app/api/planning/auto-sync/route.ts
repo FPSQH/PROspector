@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -64,13 +65,15 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const today = new Date().toISOString().split('T')[0]
 
   // ── 1. Sessions manquées ──────────────────────────────────────────────────
   const { data: missedRaw } = await supabase
     .from('planning_sessions')
     .select('id, zone_id, date_prevue, heure_debut, heure_fin, nb_adresses_total')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .eq('statut', 'planifiee')
     .lt('date_prevue', today)
     .order('date_prevue', { ascending: true })
@@ -87,7 +90,7 @@ export async function POST() {
   const { data: subRaw } = await supabase
     .from('planning_sessions')
     .select('id, date_prevue, mois, annee, heure_debut')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .eq('statut', 'planifiee')
     .gte('date_prevue', today)
     .order('date_prevue', { ascending: true })
@@ -100,7 +103,7 @@ export async function POST() {
   const { data: cfg } = await supabase
     .from('planning_config')
     .select('jours_semaine, jours_semaine_2')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .maybeSingle()
   const jours1 = (cfg?.jours_semaine   as number[] | null) ?? [2, 3, 5]
   const jours2 = (cfg?.jours_semaine_2 as number[] | null) ?? []

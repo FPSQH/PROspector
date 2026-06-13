@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -5,6 +6,8 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const effectiveId = await getEffectiveCommercialId()
 
   const body = await req.json().catch(() => ({}))
   const {
@@ -57,7 +60,7 @@ export async function POST(req: Request) {
     .from('sessions_prospection')
     .select('id, statut')
     .eq('id', session_id)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session non trouvee' }, { status: 404 })
@@ -107,7 +110,7 @@ export async function POST(req: Request) {
       .insert({
         session_id,
         adresse_id,
-        commercial_id:        user.id,
+        commercial_id:        effectiveId,
         resultat:     resultatNorm,   // valeur normalisée compatible contrainte DB
         action:               actionNorm,
         type_habitat:         type_habitat         ?? null,
@@ -144,6 +147,8 @@ export async function GET(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { searchParams } = new URL(req.url)
   const session_id = searchParams.get('session_id')
   const adresse_id = searchParams.get('adresse_id')
@@ -152,7 +157,7 @@ export async function GET(req: Request) {
   let query = adminDb
     .from('interactions')
     .select('*')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .order('created_at', { ascending: false })
 
   if (session_id) query = query.eq('session_id', session_id)

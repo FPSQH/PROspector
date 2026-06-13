@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 // GET  /api/courriers/template   → liste des templates v2 du commercial
 // POST /api/courriers/template   → crée un nouveau template v2
 
@@ -11,10 +12,12 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { data, error } = await supabase
     .from('lettre_templates_v2')
     .select('*')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -26,6 +29,8 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await request.json().catch(() => ({}))
   const name: string = (body.name ?? 'Nouveau template').toString().trim().slice(0, 100) || 'Nouveau template'
 
@@ -33,7 +38,7 @@ export async function POST(request: Request) {
   const { count } = await supabase
     .from('lettre_templates_v2')
     .select('id', { count: 'exact', head: true })
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
 
   const isDefault = (count ?? 0) === 0
 

@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -22,6 +23,8 @@ export async function GET(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { searchParams } = new URL(req.url)
   const filtre       = searchParams.get('filtre')       ?? 'tous'
   const recherche    = searchParams.get('recherche')    ?? ''
@@ -39,7 +42,7 @@ export async function GET(req: Request) {
       adresses ( id, numero, nom_voie, code_postal, commune, lat, lon, zone_id, zones_prospection ( id, nom, couleur ) ),
       zones_prospection ( id, nom, couleur )
     `)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .order('updated_at', { ascending: false })
 
   if (filtre === 'relance') {
@@ -59,10 +62,12 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => ({}))
 
   const insert: Record<string, any> = {
-    commercial_id:  user.id,
+    commercial_id: effectiveId,
     adresse_id:     body.adresse_id     || null,
     interaction_id: body.interaction_id || null,
     nom:            body.nom            || null,

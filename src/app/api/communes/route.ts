@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -10,7 +11,7 @@ export async function GET() {
   const { data: communes } = await supabase
     .from('communes')
     .select('id, code_insee, nom, code_postal, departement, chargee_at')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .order('nom')
 
   // Pour chaque commune chargée, compter les adresses
@@ -34,6 +35,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => null)
   if (!body?.code_insee) {
     return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
@@ -45,7 +48,7 @@ export async function POST(req: Request) {
   const { data: existing } = await supabase
     .from('communes')
     .select('id')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .eq('code_insee', code_insee)
     .single()
 
@@ -57,7 +60,7 @@ export async function POST(req: Request) {
   const { data: commune, error } = await supabase
     .from('communes')
     .insert({
-      commercial_id: user.id,
+      commercial_id: effectiveId,
       code_insee,
       nom:         nom ?? '',
       code_postal: code_postal ?? '',

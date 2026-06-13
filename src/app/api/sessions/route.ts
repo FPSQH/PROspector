@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -5,6 +6,8 @@ export async function GET(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const effectiveId = await getEffectiveCommercialId()
 
   const { searchParams } = new URL(req.url)
   const zone_id      = searchParams.get('zone_id')
@@ -26,7 +29,7 @@ export async function GET(req: Request) {
       rapport_json,
       zones_prospection (nom, couleur, numero)
     `, { count: 'exact' })
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .order('date_session', { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -46,6 +49,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => ({}))
   const {
     zone_id, date_session, heure_debut, type_session, commune_code_insee, commune_nom,
@@ -61,7 +66,7 @@ export async function POST(req: Request) {
       .from('zones_prospection')
       .select('id, nom')
       .eq('id', zone_id)
-      .eq('commercial_id', user.id)
+      .eq('commercial_id', effectiveId)
       .single()
     if (!zone) return NextResponse.json({ error: 'Zone non trouvee' }, { status: 404 })
   }
@@ -76,7 +81,7 @@ export async function POST(req: Request) {
     : 'en_cours'
 
   const insertData: any = {
-    commercial_id: user.id,
+    commercial_id: effectiveId,
     date_session:  dateSession,
     heure_debut:   heureDebut,
     statut:        statutFinal,
@@ -104,7 +109,7 @@ export async function POST(req: Request) {
     const { data: plannedToday } = await supabase
       .from('planning_sessions')
       .select('id')
-      .eq('commercial_id', user.id)
+      .eq('commercial_id', effectiveId)
       .eq('zone_id', zone_id)
       .eq('date_prevue', todayStr)
       .eq('statut', 'planifiee')

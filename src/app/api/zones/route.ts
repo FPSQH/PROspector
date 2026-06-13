@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -5,6 +6,8 @@ export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const effectiveId = await getEffectiveCommercialId()
 
   // commerciaux.id = auth.uid()
   const { data: commercial } = await supabase
@@ -53,6 +56,8 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const effectiveId = await getEffectiveCommercialId()
 
   const body = await req.json().catch(() => ({}))
   const { nom, polygone_geojson } = body

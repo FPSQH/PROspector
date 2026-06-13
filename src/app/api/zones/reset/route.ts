@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -6,6 +7,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => ({}))
   const sauvegarder = body.sauvegarder !== false
 
@@ -13,7 +16,7 @@ export async function POST(req: Request) {
   const { data: zones } = await supabase
     .from('zones_prospection')
     .select('id, nom, numero, couleur, nb_adresses, nb_prospectables, capacite_theorique')
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
 
   if (!zones || zones.length === 0) {
     return NextResponse.json({ ok: true, message: 'Aucune zone a supprimer', nb_supprimees: 0 })
@@ -22,7 +25,7 @@ export async function POST(req: Request) {
   // Sauvegarder le snapshot
   if (sauvegarder) {
     await supabase.from('zones_snapshots').insert({
-      commercial_id: user.id,
+      commercial_id: effectiveId,
       nom:           `Sauvegarde manuelle ${new Date().toLocaleDateString('fr-FR')} — ${zones.length} zones`,
       nb_zones:      zones.length,
       zones_data:    JSON.stringify(zones),
@@ -32,7 +35,7 @@ export async function POST(req: Request) {
     const { data: all } = await supabase
       .from('zones_snapshots')
       .select('id, created_at')
-      .eq('commercial_id', user.id)
+      .eq('commercial_id', effectiveId)
       .order('created_at', { ascending: false })
 
     if (all && all.length > 5) {
@@ -61,7 +64,7 @@ export async function POST(req: Request) {
   const { error } = await supabase
     .from('zones_prospection')
     .delete()
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
