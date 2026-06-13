@@ -27,6 +27,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => ({}))
 
   const updates: Record<string, any> = { updated_at: new Date().toISOString() }
@@ -67,7 +69,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     .from('contacts')
     .update(updates)
     .eq('id', params.id)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
 
   if (error) {
     console.error('[contacts PATCH] error:', error.message, JSON.stringify(updates))
@@ -78,7 +80,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
       const { error: e2 } = await supabase
         .from('contacts').update(safeOnly)
-        .eq('id', params.id).eq('commercial_id', user.id)
+        .eq('id', params.id).eq('commercial_id', effectiveId)
       if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
       console.warn('[contacts PATCH] sauvegardé sans contraintes CHECK — appliquer migration DB')
     } else {
@@ -98,7 +100,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       zones_prospection ( id, nom, couleur )
     `)
     .eq('id', params.id)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .single()
 
   return NextResponse.json({ contact: contact ?? {} })
@@ -109,9 +111,11 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { error } = await supabase
     .from('contacts').delete()
-    .eq('id', params.id).eq('commercial_id', user.id)
+    .eq('id', params.id).eq('commercial_id', effectiveId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

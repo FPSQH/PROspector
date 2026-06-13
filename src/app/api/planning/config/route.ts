@@ -1,3 +1,4 @@
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -6,8 +7,10 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { data } = await supabase
-    .from('planning_config').select('*').eq('commercial_id', user.id).maybeSingle()
+    .from('planning_config').select('*').eq('commercial_id', effectiveId).maybeSingle()
 
   return NextResponse.json({
     jours_semaine:   data?.jours_semaine   ?? [2, 3, 5],
@@ -24,13 +27,15 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => ({}))
   const { jours_semaine, heure_debut, duree_minutes, date_debut, heure_debut_2, jours_semaine_2 } = body
 
   const { data, error } = await supabase
     .from('planning_config')
     .upsert({
-      commercial_id:   user.id,
+      commercial_id: effectiveId,
       jours_semaine,
       heure_debut,
       duree_minutes,

@@ -10,6 +10,8 @@ export async function GET(_req: Request, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { data: session } = await supabase
     .from('sessions_prospection')
     .select(`
@@ -21,7 +23,7 @@ export async function GET(_req: Request, { params }: Params) {
       zones_prospection (id, nom, couleur, numero, nb_prospectables)
     `)
     .eq('id', params.id)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
     .single()
 
   if (!session) return NextResponse.json({ error: 'Session non trouvee' }, { status: 404 })
@@ -181,6 +183,8 @@ export async function PATCH(req: Request, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const body = await req.json().catch(() => ({}))
   const { statut, heure_fin, nb_portes, nb_boites, notes, date_session, zone_id } = body
 
@@ -205,7 +209,7 @@ export async function PATCH(req: Request, { params }: Params) {
     .from('sessions_prospection')
     .update(updates)
     .eq('id', params.id)
-    .eq('commercial_id', user.id)
+    .eq('commercial_id', effectiveId)
 
   if (updateError) {
     console.error('[PATCH sessions] update error:', updateError)
@@ -242,7 +246,7 @@ export async function PATCH(req: Request, { params }: Params) {
           .from('contacts')
           .select('id')
           .in('adresse_id', adresseIdsSession)
-          .eq('commercial_id', user.id)
+          .eq('commercial_id', effectiveId)
         nb_contacts_crm = crmContacts?.length ?? 0
       }
       const nb_contacts = Math.max(nb_contacts_interactions, nb_contacts_crm)
