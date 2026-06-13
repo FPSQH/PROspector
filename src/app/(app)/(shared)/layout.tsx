@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
 import ManagerShell from '@/components/layout/ManagerShell'
+import { OnboardingProvider } from '@/contexts/OnboardingContext'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 
 export default async function SharedLayout({
   children,
@@ -34,8 +36,11 @@ export default async function SharedLayout({
   }
 
   return (
-    <AppShell userName={userName} userInitials={initials}>
-      {children}
-    </AppShell>
+    <OnboardingProvider>
+      <AppShell userName={userName} userInitials={initials}>
+        {children}
+      </AppShell>
+      <OnboardingGuide />
+    </OnboardingProvider>
   )
 }
