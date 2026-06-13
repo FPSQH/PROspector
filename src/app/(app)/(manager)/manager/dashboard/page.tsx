@@ -50,7 +50,7 @@ const BORDER   = 'rgba(255,255,255,0.06)'
 const TEXT     = '#F0F0F2'
 const MUTED    = '#6B6B7B'
 const DIM      = '#4A4A58'
-const CARD_BG  = 'rgba(255,255,255,0.03)'
+const CARD_BG  = '#141416'
 
 // ── Types ─────────────────────────────────────────────────────
 interface StatsCommercial {
@@ -132,6 +132,38 @@ export default async function ManagerDashboardPage({
     { sessions: 0, planif: 0, portes: 0, contacts: 0, mandats: 0, chauds: 0 }
   )
 
+  // Couverture réelle équipe : total nb_portes_total / total nb_prospectables (toutes zones actives)
+  const teamIds = equipe.map(c => c.commercial_id)
+  const { data: zonesEquipe } = teamIds.length > 0
+    ? await supabase
+        .from('zones_prospection')
+        .select('nb_portes_total, nb_prospectables')
+        .in('commercial_id', teamIds)
+        .eq('statut', 'active')
+    : { data: [] }
+
+  const totalPortes       = (zonesEquipe ?? []).reduce((s, z) => s + (z.nb_portes_total ?? 0), 0)
+  const totalProspectables = (zonesEquipe ?? []).reduce((s, z) => s + (z.nb_prospectables ?? 0), 0)
+  const couvertureEquipe  = totalProspectables > 0
+    ? Math.round((totalPortes / totalProspectables) * 100)
+    : 0
+
+  // DPE équipe (30 derniers jours)
+  const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const { data: communesEquipe } = teamIds.length > 0
+    ? await supabase.from('communes').select('code_insee').in('commercial_id', teamIds)
+    : { data: [] }
+  const codeInsees = [...new Set((communesEquipe ?? []).map(c => c.code_insee))]
+  const { count: nbDpeTotal } = codeInsees.length > 0
+    ? await supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
+        .in('code_insee', codeInsees).gte('date_etablissement', since30)
+    : { count: 0 }
+  const { count: nbDpeNew } = codeInsees.length > 0
+    ? await supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
+        .in('code_insee', codeInsees)
+        .gte('updated_at', new Date(new Date().setHours(0,0,0,0)).toISOString())
+    : { count: 0 }
+
   const PERIODES = [
     { value: 'semaine', label: 'Cette semaine' },
     { value: 'mois',    label: 'Ce mois' },
@@ -139,7 +171,7 @@ export default async function ManagerDashboardPage({
   ]
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1300, color: TEXT }}>
+    <div style={{ padding: '32px 40px', maxWidth: 1300, color: TEXT, background: '#0C0C0E', minHeight: '100%' }}>
 
       {/* ── En-tête ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 28 }}>
@@ -180,14 +212,15 @@ export default async function ManagerDashboardPage({
       </div>
 
       {/* ── KPIs totaux équipe ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, marginBottom: 28 }}>
         {[
-          { label: 'Sessions réalisées', value: totaux.sessions, accent: TEAL, bg: TEAL_BG, border: TEAL_BDR },
-          { label: 'Sessions planifiées', value: totaux.planif,  accent: GOLD, bg: GOLD_BG, border: GOLD_BDR },
-          { label: 'Portes frappées',    value: totaux.portes,   accent: TEXT, bg: CARD_BG, border: BORDER },
-          { label: 'Contacts terrain',   value: totaux.contacts, accent: TEAL, bg: TEAL_BG, border: TEAL_BDR },
-          { label: 'Mandats signés',     value: totaux.mandats,  accent: GOLD, bg: GOLD_BG, border: GOLD_BDR },
-          { label: 'Contacts chauds',    value: totaux.chauds,   accent: RED,  bg: RED_BG,  border: RED_BDR },
+          { label: 'Sessions réalisées', value: totaux.sessions,     accent: TEAL, bg: TEAL_BG, border: TEAL_BDR },
+          { label: 'Sessions planifiées', value: totaux.planif,      accent: GOLD, bg: GOLD_BG, border: GOLD_BDR },
+          { label: 'Portes frappées',    value: totaux.portes,        accent: TEXT, bg: CARD_BG, border: BORDER },
+          { label: 'Contacts terrain',   value: totaux.contacts,      accent: TEAL, bg: TEAL_BG, border: TEAL_BDR },
+          { label: 'Mandats signés',     value: totaux.mandats,       accent: GOLD, bg: GOLD_BG, border: GOLD_BDR },
+          { label: 'Contacts chauds',    value: totaux.chauds,        accent: RED,  bg: RED_BG,  border: RED_BDR },
+          { label: 'Couverture équipe',  value: `${couvertureEquipe}%`, accent: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, bg: CARD_BG, border: BORDER },
         ].map((kpi) => (
           <div key={kpi.label} style={{
             background: kpi.bg,
@@ -202,6 +235,44 @@ export default async function ManagerDashboardPage({
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ── Section DPE équipe ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+        <div style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '20px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: TEXT }}>DPE équipe — 30 derniers jours</div>
+              <div style={{ fontSize: '0.75rem', color: MUTED, marginTop: 2 }}>Dans l&apos;ensemble des communes du secteur</div>
+            </div>
+            <a href="/manager/dpe" style={{ fontSize: '0.75rem', fontWeight: 600, color: TEAL, textDecoration: 'none', padding: '4px 10px', background: TEAL_BG, border: `1px solid ${TEAL_BDR}`, borderRadius: 6 }}>
+              Détail →
+            </a>
+          </div>
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, color: TEAL, lineHeight: 1 }}>{nbDpeTotal ?? 0}</div>
+              <div style={{ fontSize: '0.72rem', color: MUTED, marginTop: 4 }}>Total DPE</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, color: GOLD, lineHeight: 1 }}>{nbDpeNew ?? 0}</div>
+              <div style={{ fontSize: '0.72rem', color: MUTED, marginTop: 4 }}>Nouveaux aujourd&apos;hui</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '20px 24px' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: TEXT, marginBottom: 4 }}>Couverture sectorielle équipe</div>
+          <div style={{ fontSize: '0.75rem', color: MUTED, marginBottom: 16 }}>
+            {totalPortes.toLocaleString('fr')} portes / {totalProspectables.toLocaleString('fr')} adresses prospectables
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.08)', marginBottom: 10 }}>
+            <div style={{ height: '100%', borderRadius: 4, width: `${Math.min(couvertureEquipe, 100)}%`, background: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, transition: 'width 0.4s' }} />
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, lineHeight: 1 }}>
+            {couvertureEquipe}%
+          </div>
+        </div>
       </div>
 
       {/* ── Tableau par commercial ── */}

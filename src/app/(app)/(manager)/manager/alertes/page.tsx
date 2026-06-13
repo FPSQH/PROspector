@@ -20,7 +20,7 @@ export default async function ManagerAlertesPage() {
 
   if (teamIds.length === 0) {
     return (
-      <div style={{ padding: '32px 40px', color: '#F0F0F2' }}>
+      <div style={{ padding: '32px 40px', color: '#F0F0F2', background: '#0C0C0E', minHeight: '100%' }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>Alertes</h1>
         <p style={{ color: '#6B6B7B', marginTop: 8 }}>Aucun commercial dans votre équipe.</p>
       </div>
@@ -103,7 +103,7 @@ export default async function ManagerAlertesPage() {
   const TEXT   = '#F0F0F2', MUTED = '#6B6B7B', BORDER = 'rgba(255,255,255,0.06)'
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 860, color: TEXT }}>
+    <div style={{ padding: '32px 40px', maxWidth: 860, color: TEXT, background: '#0C0C0E', minHeight: '100%' }}>
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>Alertes</h1>
         <p style={{ color: MUTED, marginTop: 4, fontSize: '0.85rem' }}>
@@ -137,7 +137,7 @@ export default async function ManagerAlertesPage() {
           </div>
           {inactifs.map((c) => (
             <div key={c.id} style={{
-              background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+              background: '#141416', border: `1px solid ${BORDER}`,
               borderLeft: `3px solid ${RED}`, borderRadius: 8, padding: '12px 16px', marginBottom: 8,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
@@ -173,7 +173,7 @@ export default async function ManagerAlertesPage() {
           </div>
           {Object.entries(snrParCommercial).map(([cid, sessions]) => (
             <div key={cid} style={{
-              background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+              background: '#141416', border: `1px solid ${BORDER}`,
               borderLeft: `3px solid ${ORANGE}`, borderRadius: 8, padding: '12px 16px', marginBottom: 8,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -221,7 +221,7 @@ export default async function ManagerAlertesPage() {
           </div>
           {contactsChauds!.slice(0, 10).map((c) => (
             <div key={c.id} style={{
-              background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+              background: '#141416', border: `1px solid ${BORDER}`,
               borderLeft: `3px solid ${PURPLE}`, borderRadius: 8, padding: '12px 16px', marginBottom: 8,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
@@ -267,7 +267,7 @@ export default async function ManagerAlertesPage() {
             const taux  = denom ? Math.round(((z.nb_portes_total ?? 0) / denom) * 100) : 0
             return (
               <div key={z.id} style={{
-                background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+                background: '#141416', border: `1px solid ${BORDER}`,
                 borderLeft: `3px solid ${ORANGE}`, borderRadius: 8, padding: '12px 16px', marginBottom: 8,
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
@@ -304,7 +304,7 @@ export default async function ManagerAlertesPage() {
           </div>
           {zonesInactives.map((z) => (
             <div key={z.id} style={{
-              background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+              background: '#141416', border: `1px solid ${BORDER}`,
               borderLeft: `3px solid ${TEAL}`, borderRadius: 8, padding: '12px 16px', marginBottom: 8,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>

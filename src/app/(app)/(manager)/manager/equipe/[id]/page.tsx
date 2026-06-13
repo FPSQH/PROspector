@@ -35,7 +35,7 @@ const TEAL = '#1D9E75', TEAL_BG = 'rgba(29,158,117,0.1)', TEAL_BDR = 'rgba(29,15
 const GOLD = '#D97706', GOLD_BG = 'rgba(217,119,6,0.1)',  GOLD_BDR = 'rgba(217,119,6,0.2)'
 const RED  = '#EF4444', RED_BG  = 'rgba(239,68,68,0.1)',  RED_BDR  = 'rgba(239,68,68,0.2)'
 const BORDER = 'rgba(255,255,255,0.06)', TEXT = '#F0F0F2', MUTED = '#6B6B7B', DIM = '#4A4A58'
-const CARD_BG = 'rgba(255,255,255,0.03)'
+const CARD_BG = '#141416'
 
 const STATUT_LABEL: Record<string, string> = {
   planifiee: 'Planifiée', en_cours: 'En cours', realisee: 'Réalisée',
@@ -136,7 +136,7 @@ export default async function FicheCommercialePage({
   ]
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1100, color: TEXT }}>
+    <div style={{ padding: '32px 40px', maxWidth: 1100, color: TEXT, background: '#0C0C0E', minHeight: '100%' }}>
 
       {/* ── Navigation retour ── */}
       <a href="/manager/dashboard" style={{ fontSize: '0.8rem', color: MUTED, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 24 }}>

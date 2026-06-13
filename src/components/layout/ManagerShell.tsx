@@ -42,6 +42,20 @@ const Icon = {
       <path d="M12.5 9.5C13.5 9.18 14.5 9.5 15.5 10.5C16.1 11.1 16.3 12 16 13" stroke={c} strokeWidth="1.3" strokeLinecap="round"/>
     </svg>
   ),
+  contacts: (c: string) => (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="7" r="3" stroke={c} strokeWidth="1.5"/>
+      <path d="M3 16C3 13.24 5.69 11 9 11C12.31 11 15 13.24 15 16" stroke={c} strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M13 3L15 5M15 3L13 5" stroke={c} strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  ),
+  dpe: (c: string) => (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="3" width="14" height="12" rx="2" stroke={c} strokeWidth="1.5"/>
+      <path d="M5 8h4M5 11h6" stroke={c} strokeWidth="1.4" strokeLinecap="round"/>
+      <path d="M11 6l2 2-2 2" stroke={c} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
   carte: (c: string) => (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <polygon points="2,4 7,2 11,4 16,2 16,14 11,16 7,14 2,16" stroke={c} strokeWidth="1.4" strokeLinejoin="round"/>
@@ -72,10 +86,12 @@ const Icon = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/manager/dashboard', label: 'Vue équipe',  icon: Icon.dashboard, match: ['/manager/dashboard'] },
-  { href: '/manager/equipe',    label: 'Commerciaux', icon: Icon.equipe,    match: ['/manager/equipe'] },
-  { href: '/manager/carte',     label: 'Carte équipe',icon: Icon.carte,     match: ['/manager/carte'] },
-  { href: '/manager/alertes',   label: 'Alertes',     icon: Icon.alertes,   match: ['/manager/alertes'] },
+  { href: '/manager/dashboard', label: 'Vue équipe',   icon: Icon.dashboard, match: ['/manager/dashboard'] },
+  { href: '/manager/equipe',    label: 'Commerciaux',  icon: Icon.equipe,    match: ['/manager/equipe'] },
+  { href: '/manager/contacts',  label: 'Contacts',     icon: Icon.contacts,  match: ['/manager/contacts'] },
+  { href: '/manager/dpe',       label: 'DPE',          icon: Icon.dpe,       match: ['/manager/dpe'] },
+  { href: '/manager/carte',     label: 'Carte équipe', icon: Icon.carte,     match: ['/manager/carte'] },
+  { href: '/manager/alertes',   label: 'Alertes',      icon: Icon.alertes,   match: ['/manager/alertes'] },
 ]
 
 interface Props {
