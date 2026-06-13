@@ -26,13 +26,26 @@ export default async function CommercialLayout({
 
   const { data: commercial } = await supabase
     .from('commerciaux')
-    .select('nom, prenom, role, must_change_password')
+    .select('nom, prenom, role, must_change_password, derniere_connexion')
     .eq('id', effectiveId)
     .single()
 
   // Hors délégation : bloquer les managers et forcer le changement de mdp
   if (!isDelegation && commercial?.role === 'manager') redirect('/manager/dashboard')
   if (!isDelegation && commercial?.must_change_password) redirect('/change-password')
+
+  // Mise à jour derniere_connexion (throttle : max 1 fois/heure, et pas en mode délégation)
+  if (!isDelegation) {
+    const lastSeen = commercial?.derniere_connexion
+    const needsUpdate = !lastSeen ||
+      Date.now() - new Date(lastSeen).getTime() > 60 * 60 * 1000
+    if (needsUpdate) {
+      supabase.from('commerciaux')
+        .update({ derniere_connexion: new Date().toISOString() })
+        .eq('id', user.id)
+        .then(() => {})
+    }
+  }
 
   const nom      = commercial?.nom    ?? ''
   const prenom   = commercial?.prenom ?? ''
