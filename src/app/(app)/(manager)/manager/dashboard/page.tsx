@@ -50,7 +50,7 @@ const BORDER   = 'rgba(255,255,255,0.06)'
 const TEXT     = '#F0F0F2'
 const MUTED    = '#6B6B7B'
 const DIM      = '#4A4A58'
-const CARD_BG  = 'rgba(255,255,255,0.03)'
+const CARD_BG  = '#141416'
 
 // ── Types ─────────────────────────────────────────────────────
 interface StatsCommercial {
@@ -171,7 +171,7 @@ export default async function ManagerDashboardPage({
   ]
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1300, color: TEXT }}>
+    <div style={{ padding: '32px 40px', maxWidth: 1300, color: TEXT, background: '#0C0C0E', minHeight: '100%' }}>
 
       {/* ── En-tête ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 28 }}>

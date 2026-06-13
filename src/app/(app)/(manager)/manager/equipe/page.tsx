@@ -20,7 +20,7 @@ export default async function ManagerEquipePage() {
   const BORDER = 'rgba(255,255,255,0.06)', TEXT = '#F0F0F2', MUTED = '#6B6B7B', DIM = '#4A4A58'
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 900, color: TEXT }}>
+    <div style={{ padding: '32px 40px', maxWidth: 900, color: TEXT, background: '#0C0C0E', minHeight: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>Commerciaux</h1>
@@ -37,7 +37,7 @@ export default async function ManagerEquipePage() {
 
       {nb === 0 ? (
         <div style={{
-          background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+          background: '#141416', border: `1px solid ${BORDER}`,
           borderRadius: 12, padding: '48px 32px', textAlign: 'center', color: DIM,
         }}>
           <p>Aucun commercial rattaché à votre équipe.</p>
@@ -52,7 +52,7 @@ export default async function ManagerEquipePage() {
 
             return (
               <div key={c.id} style={{
-                background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+                background: '#141416', border: `1px solid ${BORDER}`,
                 borderRadius: 12, padding: '18px 24px',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>

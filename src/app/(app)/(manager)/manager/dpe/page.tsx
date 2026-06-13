@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 const TEAL = '#1D9E75', TEAL_BG = 'rgba(29,158,117,0.08)', TEAL_BDR = 'rgba(29,158,117,0.2)'
 const GOLD = '#D97706', GOLD_BG = 'rgba(217,119,6,0.08)', GOLD_BDR = 'rgba(217,119,6,0.2)'
 const RED  = '#EF4444', RED_BG  = 'rgba(239,68,68,0.08)',  RED_BDR  = 'rgba(239,68,68,0.2)'
-const TEXT = '#F0F0F2', MUTED = '#6B6B7B', DIM = '#4A4A58', BORDER = 'rgba(255,255,255,0.06)', CARD_BG = 'rgba(255,255,255,0.03)'
+const TEXT = '#F0F0F2', MUTED = '#6B6B7B', DIM = '#4A4A58', BORDER = 'rgba(255,255,255,0.06)', CARD_BG = '#141416'
 
 function fmt(d: Date) {
   return d.toISOString().split('T')[0]!
@@ -118,7 +118,7 @@ export default function ManagerDpePage() {
   })
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1100, color: TEXT }}>
+    <div style={{ padding: '32px 40px', maxWidth: 1100, color: TEXT, background: '#0C0C0E', minHeight: '100%' }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>DPE équipe</h1>
         <p style={{ color: MUTED, marginTop: 4, fontSize: '0.85rem' }}>
