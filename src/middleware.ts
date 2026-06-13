@@ -48,6 +48,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Redirige un manager qui tente d'accéder aux routes commerciales
+  if (user && request.nextUrl.pathname === '/dashboard') {
+    const { data: profile } = await supabase
+      .from('commerciaux')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'manager') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/manager/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
+
   // Protège les routes /manager/* : rôle manager obligatoire
   if (user && request.nextUrl.pathname.startsWith('/manager')) {
     const { data: profile } = await supabase

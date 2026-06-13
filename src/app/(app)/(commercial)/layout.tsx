@@ -16,9 +16,12 @@ export default async function CommercialLayout({
 
   const { data: commercial } = await supabase
     .from('commerciaux')
-    .select('nom, prenom, must_change_password')
+    .select('nom, prenom, role, must_change_password')
     .eq('id', user.id)
     .single()
+
+  // Un manager ne doit pas accéder au layout commercial
+  if (commercial?.role === 'manager') redirect('/manager/dashboard')
 
   if (commercial?.must_change_password) {
     redirect('/change-password')
