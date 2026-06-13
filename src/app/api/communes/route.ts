@@ -8,6 +8,8 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ communes: [] })
 
+  const effectiveId = await getEffectiveCommercialId()
+
   const { data: communes } = await supabase
     .from('communes')
     .select('id, code_insee, nom, code_postal, departement, chargee_at')
