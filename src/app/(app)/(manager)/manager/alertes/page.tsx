@@ -43,9 +43,9 @@ export default async function ManagerAlertesPage() {
 
     supabase
       .from('contacts')
-      .select('id, commercial_id, prenom, horizon_vente, created_at')
+      .select('id, commercial_id, prenom, nom, horizon_vente, statut_pipeline, created_at')
       .in('commercial_id', teamIds)
-      .in('horizon_vente', ['immediat', '3_mois'])
+      .or('horizon_vente.eq.moins_6_mois,statut_pipeline.in.(estimation,mandat)')
       .order('created_at', { ascending: false }),
 
     supabase
@@ -226,7 +226,7 @@ export default async function ManagerAlertesPage() {
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <div>
-                <span style={{ fontWeight: 600 }}>{c.prenom ?? 'Contact'}</span>
+                <span style={{ fontWeight: 600 }}>{[c.prenom, c.nom].filter(Boolean).join(' ') || 'Contact'}</span>
                 <span style={{ color: MUTED, fontSize: '0.82rem', marginLeft: 8 }}>
                   chez {nomCommercial(c.commercial_id)}
                 </span>
@@ -234,7 +234,9 @@ export default async function ManagerAlertesPage() {
                   fontSize: '0.72rem', fontWeight: 600, marginLeft: 10, padding: '2px 8px', borderRadius: 4,
                   background: PURPLE_BG, border: `1px solid ${PURPLE_BDR}`, color: PURPLE,
                 }}>
-                  {c.horizon_vente === 'immediat' ? 'Immédiat' : '3 mois'}
+                  {c.statut_pipeline === 'mandat' ? 'Mandat' :
+                   c.statut_pipeline === 'estimation' ? 'Estimation' :
+                   c.horizon_vente === 'moins_6_mois' ? '< 6 mois' : 'Chaud'}
                 </span>
               </div>
               <span style={{ color: MUTED, fontSize: '0.78rem' }}>
