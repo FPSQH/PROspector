@@ -106,17 +106,11 @@ export default function ManagerContactsPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Charger l'équipe pour le filtre
+  // Charger la liste de l'équipe depuis l'API (tous les membres, même sans contacts)
   useEffect(() => {
     fetch('/api/manager/contacts?filtre=tous')
       .then(r => r.json())
-      .then(d => {
-        const seen = new Map<string, string>()
-        ;(d.contacts ?? []).forEach((c: any) => {
-          if (!seen.has(c.commercial_id)) seen.set(c.commercial_id, c.commercial_nom ?? c.commercial_id)
-        })
-        setEquipe([...seen.entries()].map(([id, label]) => ({ id, label })))
-      })
+      .then(d => { setEquipe(d.equipe ?? []) })
   }, [])
 
   const load = useCallback(async () => {
@@ -364,7 +358,7 @@ export default function ManagerContactsPage() {
           </h2>
         </div>
         {/* Filtre par commercial */}
-        {equipe.length > 1 && (
+        {equipe.length > 0 && (
           <select value={filterCid} onChange={e => setFilterCid(e.target.value)}
             style={{ ...inp, marginBottom: 8, fontSize: 12 }}>
             <option value="">Toute l&apos;équipe</option>

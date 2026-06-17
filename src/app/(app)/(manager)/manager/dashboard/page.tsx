@@ -137,32 +137,74 @@ export default async function ManagerDashboardPage({
   const { data: zonesEquipe } = teamIds.length > 0
     ? await supabase
         .from('zones_prospection')
-        .select('nb_portes_total, nb_prospectables')
+        .select('commercial_id, nb_portes_total, nb_prospectables')
         .in('commercial_id', teamIds)
         .eq('statut', 'active')
     : { data: [] }
 
+  // Couverture totale équipe
   const totalPortes       = (zonesEquipe ?? []).reduce((s, z) => s + (z.nb_portes_total ?? 0), 0)
   const totalProspectables = (zonesEquipe ?? []).reduce((s, z) => s + (z.nb_prospectables ?? 0), 0)
   const couvertureEquipe  = totalProspectables > 0
     ? Math.round((totalPortes / totalProspectables) * 100)
     : 0
 
-  // DPE équipe (30 derniers jours)
+  // Couverture par commercial
+  const zonesParCom = new Map<string, { portes: number; prosp: number }>()
+  for (const z of zonesEquipe ?? []) {
+    const e = zonesParCom.get(z.commercial_id) ?? { portes: 0, prosp: 0 }
+    e.portes += z.nb_portes_total ?? 0
+    e.prosp  += z.nb_prospectables ?? 0
+    zonesParCom.set(z.commercial_id, e)
+  }
+
+  // DPE équipe (30 derniers jours) — communes avec commercial_id pour détail par commercial
   const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const todayISO = new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
+
   const { data: communesEquipe } = teamIds.length > 0
-    ? await supabase.from('communes').select('code_insee').in('commercial_id', teamIds)
+    ? await supabase.from('communes').select('code_insee, commercial_id').in('commercial_id', teamIds)
     : { data: [] }
+
+  // Map commercial → ses code_insee
+  const inseeParCom = new Map<string, string[]>()
+  for (const { code_insee, commercial_id } of communesEquipe ?? []) {
+    const arr = inseeParCom.get(commercial_id) ?? []
+    arr.push(code_insee)
+    inseeParCom.set(commercial_id, arr)
+  }
+
   const codeInsees = [...new Set((communesEquipe ?? []).map(c => c.code_insee))]
-  const { count: nbDpeTotal } = codeInsees.length > 0
-    ? await supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
-        .in('code_insee', codeInsees).gte('date_etablissement', since30)
-    : { count: 0 }
-  const { count: nbDpeNew } = codeInsees.length > 0
-    ? await supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
-        .in('code_insee', codeInsees)
-        .gte('updated_at', new Date(new Date().setHours(0,0,0,0)).toISOString())
-    : { count: 0 }
+
+  // Comptes DPE : total équipe + par commercial (en parallèle)
+  const [
+    { count: nbDpeTotal },
+    { count: nbDpeNew },
+    ...dpeParComRaw
+  ] = await Promise.all([
+    codeInsees.length > 0
+      ? supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
+          .in('code_insee', codeInsees).gte('date_etablissement', since30)
+      : Promise.resolve({ count: 0 }),
+    codeInsees.length > 0
+      ? supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
+          .in('code_insee', codeInsees).gte('updated_at', todayISO)
+      : Promise.resolve({ count: 0 }),
+    ...teamIds.map(async (cid) => {
+      const ins = inseeParCom.get(cid) ?? []
+      if (!ins.length) return { cid, nb30j: 0, nbToday: 0 }
+      const [{ count: nb30j }, { count: nbToday }] = await Promise.all([
+        supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
+          .in('code_insee', ins).gte('date_etablissement', since30),
+        supabase.from('dpe_logement').select('id', { count: 'exact', head: true })
+          .in('code_insee', ins).gte('updated_at', todayISO),
+      ])
+      return { cid, nb30j: nb30j ?? 0, nbToday: nbToday ?? 0 }
+    }),
+  ])
+  const dpeParCom = new Map(
+    (dpeParComRaw as { cid: string; nb30j: number; nbToday: number }[]).map(d => [d.cid, d])
+  )
 
   const PERIODES = [
     { value: 'semaine', label: 'Cette semaine' },
@@ -249,7 +291,7 @@ export default async function ManagerDashboardPage({
               Détail →
             </a>
           </div>
-          <div style={{ display: 'flex', gap: 24 }}>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: '2rem', fontWeight: 700, color: TEAL, lineHeight: 1 }}>{nbDpeTotal ?? 0}</div>
               <div style={{ fontSize: '0.72rem', color: MUTED, marginTop: 4 }}>Total DPE</div>
@@ -259,18 +301,55 @@ export default async function ManagerDashboardPage({
               <div style={{ fontSize: '0.72rem', color: MUTED, marginTop: 4 }}>Nouveaux aujourd&apos;hui</div>
             </div>
           </div>
+          {/* Détail par commercial */}
+          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {equipe.map(c => {
+              const d = dpeParCom.get(c.commercial_id)
+              return (
+                <div key={c.commercial_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                  <span style={{ color: MUTED }}>{c.prenom} {c.nom}</span>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <span style={{ color: TEAL, fontWeight: 600 }}>{d?.nb30j ?? 0} <span style={{ color: DIM, fontWeight: 400 }}>30j</span></span>
+                    <span style={{ color: GOLD, fontWeight: 600 }}>{d?.nbToday ?? 0} <span style={{ color: DIM, fontWeight: 400 }}>auj.</span></span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         <div style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontWeight: 700, fontSize: '0.9rem', color: TEXT, marginBottom: 4 }}>Couverture sectorielle équipe</div>
-          <div style={{ fontSize: '0.75rem', color: MUTED, marginBottom: 16 }}>
+          <div style={{ fontSize: '0.75rem', color: MUTED, marginBottom: 12 }}>
             {totalPortes.toLocaleString('fr')} portes / {totalProspectables.toLocaleString('fr')} adresses prospectables
           </div>
-          <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.08)', marginBottom: 10 }}>
-            <div style={{ height: '100%', borderRadius: 4, width: `${Math.min(couvertureEquipe, 100)}%`, background: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, transition: 'width 0.4s' }} />
+          {/* Barre totale */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.08)' }}>
+              <div style={{ height: '100%', borderRadius: 4, width: `${Math.min(couvertureEquipe, 100)}%`, background: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, transition: 'width 0.4s' }} />
+            </div>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, flexShrink: 0 }}>
+              {couvertureEquipe}%
+            </span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: couvertureEquipe > 70 ? GOLD : couvertureEquipe > 30 ? TEAL : DIM, lineHeight: 1 }}>
-            {couvertureEquipe}%
+          {/* Détail par commercial */}
+          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {equipe.map(c => {
+              const z   = zonesParCom.get(c.commercial_id) ?? { portes: 0, prosp: 0 }
+              const pct = z.prosp > 0 ? Math.round((z.portes / z.prosp) * 100) : 0
+              const col = pct > 70 ? GOLD : pct > 30 ? TEAL : DIM
+              return (
+                <div key={c.commercial_id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: '0.78rem', color: MUTED }}>{c.prenom} {c.nom}</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: col }}>{pct}%</span>
+                  </div>
+                  <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                    <div style={{ height: '100%', borderRadius: 2, width: `${Math.min(pct, 100)}%`, background: col }} />
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
