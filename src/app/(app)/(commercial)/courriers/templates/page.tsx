@@ -75,6 +75,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   const dpeGroup    = getDpeGroup(dpe)
   const isRed       = dpeGroup === 'FG' || dpeGroup === 'E'
   const agentNom    = [`${data.agent_prenom ?? ''}`, `${data.agent_nom ?? ''}`].join(' ').trim() || 'Jean Dupont'
+  const agentTitre  = data.agent_titre     ?? 'Conseiller Immobilier'
   const agenceNom   = data.agent_agence    ?? 'Square Habitat'
   const agenceTel   = data.agent_telephone ?? '05 56 00 00 00'
   const agenceEmail = data.agent_email     ?? 'contact@squarehabitat.fr'
@@ -86,7 +87,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
     cout:       data.cout_annuel  ? `${Math.round(data.cout_annuel).toLocaleString('fr-FR')} €` : '',
     ges:        data.ges_m2       ? `${data.ges_m2} kgeqCO₂/m²/an` : '',
     energie:    data.energie_principale ?? '',
-    agentNom, agenceNom, agenceTel, agenceEmail,
+    agentNom, agentTitre, agenceNom, agenceTel, agenceEmail,
   }
 
   const TEAL = '#009597'
@@ -114,7 +115,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
     + `</td>`
     + `<td style="width:190px;border-bottom:2px solid #009597;vertical-align:middle;text-align:right;padding-bottom:10px;">`
     +   `<div style="font-size:12px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
-    +   `<div style="font-size:11px;color:#5F5E5A;">Conseiller Immobilier</div>`
+    +   `<div style="font-size:11px;color:#5F5E5A;">${agentTitre}</div>`
     +   (agenceEmail ? `<div style="font-size:11px;color:#5F5E5A;">${agenceEmail}</div>` : '')
     + `</td>`
     + `</tr></table>`
@@ -122,7 +123,7 @@ function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2): stri
   // ── Signature identique au DOCX ─────────────────────────────────────────────
   const signatureHtml = `<div style="margin-top:28px;border-top:2px solid #009597;padding-top:10px;font-family:Arial,sans-serif;">`
     + `<div style="font-size:13px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
-    + `<div style="font-size:12px;color:#5F5E5A;">Conseiller Immobilier — ${agenceNom}</div>`
+    + `<div style="font-size:12px;color:#5F5E5A;">${agentTitre} — ${agenceNom}</div>`
     + (agenceTel   ? `<div style="font-size:12px;color:#5F5E5A;">📞 ${agenceTel}</div>`   : '')
     + (agenceEmail ? `<div style="font-size:12px;color:#5F5E5A;">✉ ${agenceEmail}</div>` : '')
     + `</div>`
@@ -1115,6 +1116,28 @@ export default function TemplatesPage() {
     } finally { setCreating(false) }
   }
 
+  // ── Créer depuis le modèle Nadège ─────────────────────────────────────────
+  const createFromNadege = async () => {
+    const name = prompt('Nom du template :', 'Template Nadège')
+    if (!name) return
+    setCreating(true)
+    try {
+      const r = await fetch('/api/courriers/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, preset: 'nadege' }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error ?? 'Erreur'); return }
+      const t: TemplateV2 = d.template
+      setTemplates(prev => [...prev, t])
+      setActiveId(t.id)
+      setSaved(t)
+      setDraft(hydrate(t))
+      setExpandedSec(null)
+    } finally { setCreating(false) }
+  }
+
   // ── Supprimer le template actif ───────────────────────────────────────────
   const deleteTemplate = async () => {
     if (!activeId || !draft) return
@@ -1283,6 +1306,7 @@ export default function TemplatesPage() {
     ...PREVIEW_BASE, ...PREVIEW_AUDIT, dpe_etiquette: previewDpe,
     type_bien: previewType,
     agent_nom: 'Dupont', agent_prenom: 'Jean',
+    agent_titre:     'Conseillère Immobilier',
     agent_agence:    'Square Habitat',
     agent_telephone: '05 56 00 00 00',
     agent_email:     'contact@squarehabitat.fr',
@@ -1363,10 +1387,15 @@ export default function TemplatesPage() {
           ))}
         </nav>
 
-        <div style={{ padding:'10px 10px', borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
+        <div style={{ padding:'10px 10px', borderTop:`1px solid ${C.border}`, flexShrink:0, display:'flex', flexDirection:'column', gap:6 }}>
           <button onClick={createTemplate} disabled={creating}
             style={{ width:'100%', padding:'8px', borderRadius:7, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, fontSize:12, cursor:'pointer' }}>
             + Nouveau template
+          </button>
+          <button onClick={createFromNadege} disabled={creating}
+            title="Crée un template pré-rempli avec le modèle Nadège (texte unique avec variables)"
+            style={{ width:'100%', padding:'8px', borderRadius:7, border:`1px solid rgba(217,119,6,0.3)`, background:'rgba(217,119,6,0.07)', color:C.gold, fontSize:11, cursor:'pointer' }}>
+            ✦ Modèle Nadège
           </button>
         </div>
       </div>
@@ -1376,10 +1405,16 @@ export default function TemplatesPage() {
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16, color:C.muted }}>
           <div style={{ fontSize:40 }}>📄</div>
           <div>Aucun template. Créez-en un pour commencer.</div>
-          <button onClick={createTemplate}
-            style={{ padding:'10px 24px', borderRadius:8, border:'none', background:C.primary, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
-            Créer mon premier template
-          </button>
+          <div style={{ display:'flex', gap:10 }}>
+            <button onClick={createTemplate}
+              style={{ padding:'10px 24px', borderRadius:8, border:'none', background:C.primary, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
+              Créer un template vide
+            </button>
+            <button onClick={createFromNadege}
+              style={{ padding:'10px 24px', borderRadius:8, border:`1px solid rgba(217,119,6,0.4)`, background:'rgba(217,119,6,0.1)', color:C.gold, fontSize:14, fontWeight:600, cursor:'pointer' }}>
+              ✦ Démarrer avec le modèle Nadège
+            </button>
+          </div>
         </div>
       ) : (
         <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>

@@ -3,10 +3,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface P {
-  nom: string; prenom: string; telephone: string; email: string
+  nom: string; prenom: string; telephone: string; email: string; agent_titre: string
   agence_nom: string; agence_adresse: string; agence_telephone: string; agence_email: string
 }
-const V: P = { nom:'', prenom:'', telephone:'', email:'', agence_nom:'', agence_adresse:'', agence_telephone:'', agence_email:'' }
+const V: P = { nom:'', prenom:'', telephone:'', email:'', agent_titre:'', agence_nom:'', agence_adresse:'', agence_telephone:'', agence_email:'' }
 
 function F({ label, value, type = 'text', onChange }: { label: string; value: string; type?: string; onChange: (v: string) => void }) {
   return (
@@ -85,6 +85,7 @@ export default function SettingsPage() {
         </div>
         <F label="Téléphone" value={p.telephone} type="tel"   onChange={s('telephone')} />
         <F label="Email"     value={p.email}     type="email" onChange={s('email')} />
+        <F label="Titre (ex : Conseillère Immobilier, Négociateur…)" value={p.agent_titre} onChange={s('agent_titre')} />
       </div>
 
       {/* Mon agence */}

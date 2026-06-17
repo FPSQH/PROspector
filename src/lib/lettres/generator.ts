@@ -81,6 +81,7 @@ export interface DpeAdresseData {
   needs_audit?:        boolean
   agent_nom?:          string
   agent_prenom?:       string
+  agent_titre?:        string
   agent_agence?:       string
   agent_telephone?:    string
   agent_email?:        string

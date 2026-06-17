@@ -2,8 +2,8 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 // Colonnes existantes dans commerciaux (telephone ajoutée via migration SQL)
-const FIELDS = 'id, nom, prenom, email, telephone, agence_nom, agence_adresse, agence_telephone, agence_email'
-const ALLOWED = ['nom', 'prenom', 'email', 'telephone', 'agence_nom', 'agence_adresse', 'agence_telephone', 'agence_email']
+const FIELDS = 'id, nom, prenom, email, telephone, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email'
+const ALLOWED = ['nom', 'prenom', 'email', 'telephone', 'agent_titre', 'agence_nom', 'agence_adresse', 'agence_telephone', 'agence_email']
 
 export async function GET() {
   const supabase = await createClient()

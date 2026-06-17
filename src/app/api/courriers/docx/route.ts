@@ -131,6 +131,7 @@ function buildVars(letter: DpeAdresseData, commercial: any): Record<string, stri
     ges:        letter.ges_m2         ? `${letter.ges_m2} kgeqCO₂/m²/an` : '',
     energie:    letter.energie_principale ?? '',
     agentNom:   [commercial?.prenom, commercial?.nom].filter(Boolean).join(' ') || 'Votre conseiller',
+    agentTitre: commercial?.agent_titre || 'Conseiller Immobilier',
     agenceNom:  commercial?.agence_nom || 'Square Habitat',
     agenceTel:  commercial?.agence_telephone || '',
     agenceEmail:commercial?.agence_email || '',
@@ -475,13 +476,14 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
 }
 
 function appendSignature(paras: (Paragraph | Table)[], agentNom: string, commercial: any) {
+  const agentTitre = commercial?.agent_titre || 'Conseiller Immobilier'
   paras.push(new Paragraph({ children: [], spacing: { before: 400 } }))
   paras.push(new Paragraph({
     children: [T(agentNom, { bold: true, size: 22 })],
     border: { top: { style: BorderStyle.SINGLE, size: 6, color: TEAL, space: 6 } },
     spacing: { before: 80, after: 60 }
   }))
-  paras.push(new Paragraph({ children: [T('Conseiller Immobilier — ' + (commercial?.agence_nom || 'Square Habitat'), { size: 18, color: GREY })] }))
+  paras.push(new Paragraph({ children: [T(agentTitre + ' — ' + (commercial?.agence_nom || 'Square Habitat'), { size: 18, color: GREY })] }))
   if (commercial?.agence_telephone) paras.push(new Paragraph({ children: [T('📞 ' + commercial.agence_telephone, { size: 18, color: GREY })] }))
   if (commercial?.agence_email)     paras.push(new Paragraph({ children: [T('✉ ' + commercial.agence_email, { size: 18, color: GREY })] }))
 }
@@ -536,7 +538,7 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
           width: { size: 3370, type: WidthType.DXA }, borders: bottomLine, verticalAlign: VerticalAlign.CENTER,
           children: [
             new Paragraph({ children: [T(agentNom, { bold: true, size: 20, color: DARK })], alignment: AlignmentType.RIGHT, spacing: { after: 40 } }),
-            new Paragraph({ children: [T('Conseiller Immobilier', { size: 15, color: GREY })], alignment: AlignmentType.RIGHT }),
+            new Paragraph({ children: [T(commercial?.agent_titre || 'Conseiller Immobilier', { size: 15, color: GREY })], alignment: AlignmentType.RIGHT }),
             ...(agentMail ? [new Paragraph({ children: [T(agentMail, { size: 14, color: GREY })], alignment: AlignmentType.RIGHT })] : []),
           ]
         }),
@@ -588,7 +590,7 @@ export async function POST(request: Request) {
 
   // Charger le commercial + le template v2 en parallèle
   const [{ data: commercial }, { data: templateRow }] = await Promise.all([
-    adminDb.from('commerciaux').select('id, nom, prenom, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
+    adminDb.from('commerciaux').select('id, nom, prenom, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
     template_id
       ? supabase.from('lettre_templates_v2').select('*').eq('id', template_id).eq('commercial_id', user.id).maybeSingle()
       : supabase.from('lettre_templates_v2').select('*').eq('commercial_id', user.id).eq('is_default', true).maybeSingle(),
