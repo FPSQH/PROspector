@@ -19,11 +19,11 @@ export async function GET(req: Request) {
   const recherche = url.searchParams.get('recherche')    ?? ''
   const typeFiltre = url.searchParams.get('type_contact') ?? ''
 
-  // IDs de l'équipe
+  // IDs de l'équipe (avec nom/prénom pour le filtre)
   const { data: equipe } = await supabase
-    .from('commerciaux').select('id').eq('manager_id', user.id)
+    .from('commerciaux').select('id, nom, prenom').eq('manager_id', user.id).order('nom')
   const teamIds = (equipe ?? []).map(c => c.id)
-  if (!teamIds.length) return NextResponse.json({ contacts: [] })
+  if (!teamIds.length) return NextResponse.json({ contacts: [], equipe: [] })
 
   const targetIds = cid && teamIds.includes(cid) ? [cid] : teamIds
 
@@ -64,5 +64,6 @@ export async function GET(req: Request) {
     commercial_nom: nomMap.get(c.commercial_id) ?? '',
   }))
 
-  return NextResponse.json({ contacts: enriched })
+  const equipeList = (equipe ?? []).map(c => ({ id: c.id, label: `${c.prenom} ${c.nom}` }))
+  return NextResponse.json({ contacts: enriched, equipe: equipeList })
 }
