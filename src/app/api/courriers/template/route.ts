@@ -43,6 +43,17 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // ── Migration silencieuse : corriger le doublon {adresse} — {ctx} ─────────────
+  const OLD_PATTERN = "situé {adresse} — {ctx}."
+  const NEW_PATTERN = "situé {adresse}."
+  for (const t of (data ?? [])) {
+    if (t.unique_text?.includes(OLD_PATTERN)) {
+      const fixed = t.unique_text.replace(OLD_PATTERN, NEW_PATTERN)
+      await supabase.from('lettre_templates_v2').update({ unique_text: fixed }).eq('id', t.id)
+      t.unique_text = fixed
+    }
+  }
+
   // ── Option A : seeder automatique pour les nouveaux utilisateurs ─────────────
   if ((data ?? []).length === 0) {
     const { data: seeded, error: seedErr } = await supabase
