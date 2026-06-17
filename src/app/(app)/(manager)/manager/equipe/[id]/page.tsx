@@ -38,12 +38,18 @@ const BORDER = 'rgba(255,255,255,0.06)', TEXT = '#F0F0F2', MUTED = '#6B6B7B', DI
 const CARD_BG = '#141416'
 
 const STATUT_LABEL: Record<string, string> = {
-  planifiee: 'Planifiée', en_cours: 'En cours', realisee: 'Réalisée',
-  annulee: 'Annulée', non_realisee: 'Non réalisée',
+  planifiee:    'Planifiée',
+  en_cours:     'En cours',
+  realisee:     'Réalisée',
+  annulee:      'Annulée',
+  non_realisee: 'Non réalisée',
 }
 const STATUT_COLOR: Record<string, string> = {
-  planifiee: GOLD, en_cours: TEAL, realisee: TEAL,
-  annulee: DIM, non_realisee: RED,
+  planifiee:    '#60A5FA',
+  en_cours:     TEAL,
+  realisee:     '#4ADE80',
+  annulee:      DIM,
+  non_realisee: '#FBBF24',
 }
 const HORIZON_LABEL: Record<string, string> = {
   immediat: 'Immédiat', '3_mois': '3 mois', '6_mois': '6 mois',
@@ -95,13 +101,13 @@ export default async function FicheCommercialePage({
       .eq('statut', 'active')
       .order('numero'),
 
-    // 8 dernières sessions
+    // 10 sessions récentes depuis planning_sessions (statuts corrects : planifiee/realisee/non_realisee)
     supabase
-      .from('sessions_prospection')
-      .select('id, date_session, statut, heure_debut, heure_fin, zone_id, zones_prospection(nom)')
+      .from('planning_sessions')
+      .select('id, date_prevue, statut, heure_debut, zone_id, zones_prospection(nom)')
       .eq('commercial_id', commercialId)
-      .order('date_session', { ascending: false })
-      .limit(8),
+      .order('date_prevue', { ascending: false })
+      .limit(10),
 
     // Contacts chauds sans RDV
     supabase
@@ -266,17 +272,18 @@ export default async function FicheCommercialePage({
           )}
         </div>
 
-        {/* ── Sessions récentes ── */}
+        {/* ── Sessions récentes (depuis planning_sessions) ── */}
         <div style={{ background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}` }}>
             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Sessions récentes</span>
           </div>
           {!sessionsRecentes?.length ? (
-            <div style={{ padding: '24px 20px', color: DIM, fontSize: '0.85rem' }}>Aucune session.</div>
+            <div style={{ padding: '24px 20px', color: DIM, fontSize: '0.85rem' }}>Aucune session planifiée.</div>
           ) : (
             <div>
               {sessionsRecentes.map((s, i) => {
                 const zone = s.zones_prospection as { nom: string } | null
+                const col  = STATUT_COLOR[s.statut] ?? DIM
                 return (
                   <div key={s.id} style={{
                     padding: '12px 20px',
@@ -285,20 +292,19 @@ export default async function FicheCommercialePage({
                   }}>
                     <div>
                       <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>
-                        {formatDate(s.date_session)}
+                        {formatDate(s.date_prevue)}
                         {zone && <span style={{ color: MUTED }}> · {zone.nom}</span>}
                       </div>
                       {s.heure_debut && (
                         <div style={{ fontSize: '0.7rem', color: DIM, marginTop: 1 }}>
-                          {s.heure_debut}{s.heure_fin ? ` → ${s.heure_fin}` : ''}
+                          {s.heure_debut}
                         </div>
                       )}
                     </div>
                     <span style={{
                       fontSize: '0.72rem', fontWeight: 600, padding: '3px 8px',
-                      borderRadius: 5, background: `${STATUT_COLOR[s.statut] ?? DIM}18`,
-                      color: STATUT_COLOR[s.statut] ?? DIM,
-                      border: `1px solid ${STATUT_COLOR[s.statut] ?? DIM}30`,
+                      borderRadius: 5,
+                      background: col + '20', color: col, border: `1px solid ${col}35`,
                     }}>
                       {STATUT_LABEL[s.statut] ?? s.statut}
                     </span>
