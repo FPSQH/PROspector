@@ -10,7 +10,7 @@ import { DEFAULT_SECTIONS } from '@/lib/lettres/templateEngine'
 // ── Template Nadège — texte unique, genre-agnostique via {agentTitre} ──────────
 const NADEGE_UNIQUE_TEXT = `Madame, Monsieur,
 
-Je me permets de vous adresser ce courrier après avoir consulté les données récentes publiées par l'ADEME, indiquant la réalisation d'un Diagnostic de Performance Énergétique (DPE {dpe}) concernant {typeBien} situé {adresse} — {ctx}.
+Je me permets de vous adresser ce courrier après avoir consulté les données récentes publiées par l'ADEME, indiquant la réalisation d'un Diagnostic de Performance Énergétique (DPE {dpe}) concernant {typeBien} situé {adresse}.
 
 Cette démarche est souvent liée à une réflexion ou à un projet de mise en vente. Dans ce contexte, je serais ravi(e) de pouvoir échanger avec vous et de vous proposer mon accompagnement dans les différentes étapes de votre projet immobilier.
 
