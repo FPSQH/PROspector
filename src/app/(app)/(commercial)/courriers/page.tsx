@@ -8,6 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { generateLetterHTML } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 import type { TemplateV2 } from '@/lib/lettres/templateEngine'
+import { generatePreviewHTMLV2 } from '@/lib/lettres/previewV2'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -178,7 +179,7 @@ export default function CourriersPage() {
         <text x="14" y="17" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="bold" fill="white" font-family="Arial">${dpe}</text>
       </svg>`
       el.style.cssText = 'cursor:pointer;width:28px;height:36px'
-      el.addEventListener('click', () => { setSelected(a); setLetterHTML(generateLetterHTML(a, null)) })
+      el.addEventListener('click', () => { setSelected(a) })
       const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([a.lon, a.lat])
         .addTo(map)
@@ -189,9 +190,14 @@ export default function CourriersPage() {
   }, [adresses, filterVille, filterType, mapReady])
 
   // ── Lettre ────────────────────────────────────────────────────────────────────
+  const renderLetter = useCallback((data: DpeAdresseData) => {
+    const tpl = templates.find(t => t.id === activeTemplateId) ?? null
+    return tpl ? generatePreviewHTMLV2(data, tpl) : generateLetterHTML(data, null)
+  }, [templates, activeTemplateId])
+
   useEffect(() => {
-    if (selected) setLetterHTML(generateLetterHTML(selected, null))
-  }, [selected])
+    if (selected) setLetterHTML(renderLetter(selected))
+  }, [selected, renderLetter])
 
   // ── Filtrage + tri ────────────────────────────────────────────────────────────
   const getFiltered = () => {
