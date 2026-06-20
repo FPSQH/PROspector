@@ -911,7 +911,7 @@ export default function TemplatesPage() {
   const deleteTemplate = async (templateId: string) => {
     const target = templates.find(t => t.id === templateId)
     if (!target) return
-    if (target.is_default) return
+    if (target.is_locked) return
     if (!confirm(`Supprimer le template "${target.name}" ? Cette action est irréversible.`)) return
     await fetch(`/api/courriers/template/${templateId}`, { method: 'DELETE' })
     const remaining = templates.filter(t => t.id !== templateId)
@@ -1025,6 +1025,11 @@ export default function TemplatesPage() {
   // ── Sauvegarde ────────────────────────────────────────────────────────────
   const save = async () => {
     if (!draft || !activeId) return
+    // Templates verrouillés : obliger à changer le nom avant de sauvegarder
+    if (draft.is_locked && saved && draft.name.trim() === saved.name.trim()) {
+      setSaveErr('Donnez un nouveau nom à ce template avant de l\'enregistrer.')
+      return
+    }
     setSaving(true); setSaveOk(false); setSaveErr('')
     try {
       const r = await fetch(`/api/courriers/template/${activeId}`, {
@@ -1149,16 +1154,16 @@ export default function TemplatesPage() {
                 {/* Ligne nom — clic = sélectionner + aperçu */}
                 <button onClick={() => { switchTemplate(t.id); setViewMode('list') }}
                   title={t.updated_at ? `Modifié le ${new Date(t.updated_at).toLocaleDateString('fr-FR')}` : undefined}
-                  style={{ width:'100%', textAlign:'left', padding:'7px 8px', border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
-                  <span style={{ fontSize:9, fontWeight:700, padding:'1px 4px', borderRadius:3, flexShrink:0,
-                    background: t.mode==='unique' ? 'rgba(217,119,6,0.15)' : 'rgba(96,165,250,0.12)',
-                    color: t.mode==='unique' ? C.gold : '#93C5FD' }}>
-                    {t.mode==='unique' ? 'T' : 'S'}
+                  style={{ width:'100%', textAlign:'left', padding:'7px 8px 4px', border:'none', background:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2 }}>
+                  <span style={{ fontSize:10, color: t.mode==='unique' ? C.gold : '#93C5FD', fontWeight:600 }}>
+                    {t.mode === 'unique' ? 'Texte unique' : 'Sections'}
                   </span>
-                  <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: isActive ? C.primary : C.mid, fontWeight: isActive ? 600 : 400 }}>
-                    {t.name}
-                  </span>
-                  {t.is_default && <span style={{ fontSize:9, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'1px 5px', borderRadius:3, flexShrink:0 }}>défaut</span>}
+                  <div style={{ display:'flex', alignItems:'center', gap:5, width:'100%' }}>
+                    <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: isActive ? C.primary : C.mid, fontWeight: isActive ? 600 : 400 }}>
+                      {t.name}
+                    </span>
+                    {t.is_default && <span style={{ fontSize:9, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'1px 5px', borderRadius:3, flexShrink:0 }}>défaut</span>}
+                  </div>
                 </button>
                 {/* Ligne boutons actions */}
                 <div style={{ display:'flex', gap:4, padding:'0 6px 6px', borderTop:`1px solid ${C.border}` }}>
@@ -1169,9 +1174,9 @@ export default function TemplatesPage() {
                   </button>
                   <button
                     onClick={() => deleteTemplate(t.id)}
-                    disabled={t.is_default}
-                    title={t.is_default ? 'Le template par défaut ne peut pas être supprimé' : 'Supprimer ce template'}
-                    style={{ padding:'4px 7px', borderRadius:5, border:`1px solid ${t.is_default ? C.border : 'rgba(239,68,68,0.3)'}`, background: t.is_default ? 'transparent' : 'rgba(239,68,68,0.05)', color: t.is_default ? C.dim : C.danger, fontSize:11, cursor: t.is_default ? 'not-allowed' : 'pointer', opacity: t.is_default ? 0.4 : 1 }}>
+                    disabled={!!t.is_locked}
+                    title={t.is_locked ? 'Ce template est verrouillé et ne peut pas être supprimé' : 'Supprimer ce template'}
+                    style={{ padding:'4px 7px', borderRadius:5, border:`1px solid ${t.is_locked ? C.border : 'rgba(239,68,68,0.3)'}`, background: t.is_locked ? 'transparent' : 'rgba(239,68,68,0.05)', color: t.is_locked ? C.dim : C.danger, fontSize:11, cursor: t.is_locked ? 'not-allowed' : 'pointer', opacity: t.is_locked ? 0.4 : 1 }}>
                     ✕
                   </button>
                 </div>
@@ -1268,11 +1273,14 @@ export default function TemplatesPage() {
             {draft.is_default && (
               <span style={{ fontSize:11, color:C.primary, flexShrink:0 }}>★ Défaut</span>
             )}
-            {!draft.is_default && (
+            {!draft.is_locked && (
               <button onClick={() => activeId && deleteTemplate(activeId)}
                 style={{ padding:'5px 10px', borderRadius:7, border:`1px solid rgba(239,68,68,0.25)`, background:'rgba(239,68,68,0.05)', color:C.danger, fontSize:11, cursor:'pointer', flexShrink:0 }}>
                 Supprimer
               </button>
+            )}
+            {draft.is_locked && saved && draft.name.trim() === saved.name.trim() && hasChanges && (
+              <span style={{ fontSize:11, color:C.gold, flexShrink:0 }}>⚠ Renommez le template pour enregistrer</span>
             )}
             {saveErr && <span style={{ fontSize:12, color:C.danger }}>{saveErr}</span>}
             {saveOk  && <span style={{ fontSize:12, color:C.success }}>✓ Sauvegardé</span>}

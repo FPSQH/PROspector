@@ -70,8 +70,9 @@ export async function GET() {
 
     const { data: t1 } = await supabase.from('lettre_templates_v2').insert({
       ...baseFields,
-      name:        'Sections par défaut',
+      name:        'Personnalisé',
       is_default:  true,
+      is_locked:   true,
       mode:        'sections',
       unique_text: null,
     }).select().single()
@@ -80,6 +81,7 @@ export async function GET() {
       ...baseFields,
       name:        'Template Nadège',
       is_default:  false,
+      is_locked:   true,
       mode:        'unique',
       unique_text: NADEGE_UNIQUE_TEXT,
     }).select().single()

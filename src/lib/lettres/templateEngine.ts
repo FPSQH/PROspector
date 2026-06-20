@@ -71,6 +71,7 @@ export interface TemplateV2 {
   footer_enabled?:   boolean          // true par défaut — false = pas de pied de page
   footer_html?:      string | null    // null = auto-généré
   footer_height_mm?: number           // hauteur min en mm (10–80), défaut 20
+  is_locked?:        boolean          // true = template système, non supprimable
   created_at?:       string
   updated_at?:       string
 }
