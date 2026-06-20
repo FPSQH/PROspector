@@ -71,13 +71,14 @@ function uid() { return crypto.randomUUID() }
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface RichEditorProps {
-  value:     string
-  onChange:  (html: string) => void
+  value:       string
+  onChange:    (html: string) => void
   placeholder?: string
-  vars?:     string[]
+  vars?:       string[]
+  allowImages?: boolean
 }
 
-function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps) {
+function RichEditor({ value, onChange, placeholder, vars = [], allowImages = false }: RichEditorProps) {
   const ref          = useRef<HTMLDivElement>(null)
   const savedRange   = useRef<Range | null>(null)
   const savedEncadre = useRef<HTMLElement | null>(null)
@@ -234,6 +235,34 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
   })
   const sep = <div style={{ width: 1, background: C.border, margin: '2px 2px' }} />
 
+  // ── Insert image at cursor ───────────────────────────────────────────────
+  const imgInputRef = useRef<HTMLInputElement>(null)
+  const handleImageInsert = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 2_000_000) { alert('Image trop lourde (max 2 Mo)'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const src = reader.result as string
+      restoreSelection()
+      const img = document.createElement('img')
+      img.src = src
+      img.style.cssText = 'max-width:100%;height:auto;display:block;margin:6px 0;border-radius:4px;'
+      const sel = window.getSelection()
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0)
+        range.collapse(false)
+        range.insertNode(img)
+        range.collapse(false)
+      } else {
+        ref.current!.appendChild(img)
+      }
+      emit()
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
   // Bouton color picker (label overlay sur un div visuellement stylé)
   const ColorBtn = ({ color, onPick, label, title }: { color: string; onPick: (c: string) => void; label: React.ReactNode; title: string }) => (
     <label style={{ ...btn(), cursor: 'pointer', position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '2px 5px', minWidth: 28 }} title={title}>
@@ -278,6 +307,20 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
         {sep}
         <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('removeFormat')}} title="Effacer la mise en forme">✕ Style</button>
         {sep}
+        {/* Alignement */}
+        <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('justifyLeft')}}   title="Aligner à gauche">⬛︎◻︎◻︎</button>
+        <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('justifyCenter')}} title="Centrer">◻︎⬛︎◻︎</button>
+        <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('justifyRight')}}  title="Aligner à droite">◻︎◻︎⬛︎</button>
+        <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('justifyFull')}}   title="Justifié">≡</button>
+        {sep}
+        {/* Image */}
+        {allowImages && (
+          <label style={{ ...btn(), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }} title="Insérer une image">
+            🖼 Image
+            <input ref={imgInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageInsert} />
+          </label>
+        )}
+        {allowImages && sep}
         {/* Encadré */}
         <button style={btn(showEncadre)} onMouseDown={openEncadrePanel} title="Insérer / modifier un encadré">
           ▣ Encadré
@@ -1921,6 +1964,7 @@ export default function TemplatesPage() {
                           onChange={html => patchDraft({ header_html: html || null })}
                           placeholder="Rédigez votre en-tête ici… ex : {logo} {agenceNom} {agentNom}"
                           vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
+                          allowImages
                         />
                       )}
                     </>
@@ -1977,6 +2021,7 @@ export default function TemplatesPage() {
                           onChange={html => patchDraft({ footer_html: html || null })}
                           placeholder="Rédigez votre signature ici… ex : {agentNom} {agentTitre} {agenceNom}"
                           vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
+                          allowImages
                         />
                       )}
                     </>
