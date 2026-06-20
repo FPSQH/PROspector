@@ -78,7 +78,7 @@ const MISTRAL_SECTIONS: TemplateSection[] = [
     id: 'a1b2c3d4-0004-4000-8000-000000000004', type: 'custom', enabled: true,
     title: '', showTitle: false,
     titleColor: '#009597', titleSize: 14, titleBold: true, titleUnderline: false,
-    bodyHtml: `<div style="text-align:center;margin:18px 0;padding:16px 20px;background:#F0F7FF;border-radius:8px;border:1px solid #BFDBFE;"><p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#2563EB;">Prenez rendez-vous dès aujourd'hui — sous 15 jours, sous réserve de disponibilité</p><p style="margin:0 0 6px;font-size:22px;font-weight:700;color:#CC1016;">{agenceTel}</p><p style="margin:0;font-size:12px;color:#5F5E5A;">✉ {agenceEmail}</p></div>`,
+    bodyHtml: `<div style="text-align:center;margin:18px 0;padding:16px 20px;background:#F0F7FF;border-radius:8px;border:1px solid #BFDBFE;"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#2563EB;">Prenez rendez-vous dès maintenant pour obtenir une estimation professionnelle, gratuite et sans engagement&nbsp;!</p><p style="margin:0 0 10px;font-size:13px;color:#1A1A1A;">Préparez au mieux votre projet avec nos conseils&nbsp;:</p><p style="margin:0 0 6px;font-size:22px;font-weight:700;color:#CC1016;">{agenceTel}</p><p style="margin:0;font-size:12px;color:#5F5E5A;">✉ {agenceEmail}</p></div>`,
   },
   // 8. Politesse (toutes notes)
   {
@@ -212,7 +212,10 @@ export async function GET() {
         (s.condition as any).dpe.includes('D') &&
         (s.condition as any).dpe.includes('E'),
     )
-    if (hasOldDE) {
+    const hasOldCTA = secs.some(
+      (s: TemplateSection) => s.bodyHtml?.includes('sous 15 jours'),
+    )
+    if (hasOldDE || hasOldCTA) {
       await supabase.from('lettre_templates_v2').update({
         sections_config: MISTRAL_SECTIONS as unknown as TemplateSection[],
       }).eq('id', mistralInList.id)
