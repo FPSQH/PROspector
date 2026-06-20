@@ -38,14 +38,23 @@ const MISTRAL_SECTIONS: TemplateSection[] = [
     bodyHtml: `<div style="border-left:4px solid #CC1016;padding:10px 12px 10px 14px;background:#FFF5F5;border-radius:0 6px 6px 0;margin-bottom:4px;"><p style="margin:0 0 10px;text-align:justify;">Depuis le <strong>1er janvier 2025</strong>, les logements classés <strong>DPE&nbsp;G ne peuvent plus être mis en location</strong>. À partir de <strong>2028</strong>, ce sera également le cas pour les <strong>DPE&nbsp;F</strong>.</p><p style="margin:0 0 10px;text-align:justify;">Par ailleurs, cette catégorie de biens peut subir une <strong>décote allant jusqu'à 20&nbsp;%</strong> à la revente. Avec une consommation de <strong>{conso}</strong> et un coût énergétique annuel de <strong>{cout}</strong>, agir maintenant vous permet de préserver la valeur de votre patrimoine.</p><p style="margin:0;font-weight:700;color:#CC1016;">Je vous propose une estimation gratuite pour évaluer votre bien et définir la meilleure stratégie.</p></div>`,
     condition: { dpe: ['F', 'G'] },
   },
-  // 4. Alerte modérée D/E
+  // 4. Opportunité DPE D
   {
     id: 'a1b2c3d4-0002-4000-8000-000000000002', type: 'custom', enabled: true,
-    title: 'Gel des loyers et contraintes à venir pour votre bien',
+    title: 'Un bien bien positionné dans un marché en pleine mutation',
+    showTitle: true,
+    titleColor: '#2563EB', titleSize: 14, titleBold: true, titleUnderline: false,
+    bodyHtml: `<div style="border-left:4px solid #2563EB;padding:10px 12px 10px 14px;background:#EFF6FF;border-radius:0 6px 6px 0;margin-bottom:4px;"><p style="margin:0 0 10px;text-align:justify;">Bonne nouvelle&nbsp;: {typeBien} classé <strong>DPE&nbsp;D</strong> n'est aujourd'hui soumis à <strong>aucun gel des loyers</strong> ni à aucune interdiction de location. C'est une position enviable à l'heure où les biens classés F et G sont progressivement exclus du marché locatif.</p><p style="margin:0 0 10px;text-align:justify;">Ce contexte réglementaire joue en votre faveur&nbsp;: la demande se concentre sur les biens les mieux classés, et les acquéreurs comme les locataires sont prêts à valoriser un logement épargné par les contraintes énergétiques. Avec une consommation de <strong>{conso}</strong> et un coût énergétique annuel de <strong>{cout}</strong>, votre bien présente déjà des atouts concrets.</p><p style="margin:0;font-weight:700;color:#2563EB;">C'est le moment idéal pour estimer votre bien et tirer pleinement parti de cette dynamique de marché.</p></div>`,
+    condition: { dpe: ['D'] },
+  },
+  // 4b. Alerte anticipation DPE E
+  {
+    id: 'a1b2c3d4-0008-4000-8000-000000000008', type: 'custom', enabled: true,
+    title: 'Une échéance à anticiper pour préserver la valeur de votre bien',
     showTitle: true,
     titleColor: '#EA580C', titleSize: 14, titleBold: true, titleUnderline: false,
-    bodyHtml: `<div style="border-left:4px solid #EA580C;padding:10px 12px 10px 14px;background:#FFF8F0;border-radius:0 6px 6px 0;margin-bottom:4px;"><p style="margin:0 0 10px;text-align:justify;">{typeBien} classé <strong>DPE&nbsp;{dpe}</strong> est soumis au <strong>gel des loyers</strong> depuis 2025. À partir de <strong>2028</strong>, des travaux de rénovation seront obligatoires pour continuer à le louer.</p><p style="margin:0 0 10px;text-align:justify;">Avec une consommation de <strong>{conso}</strong> (coût annuel estimé : <strong>{cout}</strong>), des économies importantes sont atteignables. Nous pouvons vous orienter vers des <strong>solutions de financement adaptées</strong>, incluant les aides de l'État (MaPrimeRénov', éco-PTZ).</p><p style="margin:0;font-weight:700;color:#EA580C;">Une estimation gratuite vous permettra d'identifier les options les plus avantageuses pour votre situation.</p></div>`,
-    condition: { dpe: ['D', 'E'] },
+    bodyHtml: `<div style="border-left:4px solid #EA580C;padding:10px 12px 10px 14px;background:#FFF8F0;border-radius:0 6px 6px 0;margin-bottom:4px;"><p style="margin:0 0 10px;text-align:justify;">À ce jour, {typeBien} classé <strong>DPE&nbsp;E</strong> n'est soumis à <strong>aucun gel des loyers</strong>. Cependant, la loi Climat et Résilience prévoit l'<strong>interdiction de mise en location des logements classés E à partir du 1er janvier 2034</strong>.</p><p style="margin:0 0 10px;text-align:justify;">Cette échéance peut sembler lointaine, mais les projets de rénovation — entre les études, les demandes d'aides et les travaux — nécessitent souvent plusieurs années de préparation. Avec une consommation de <strong>{conso}</strong> (coût annuel estimé&nbsp;: <strong>{cout}</strong>), des économies significatives sont accessibles grâce aux dispositifs en vigueur&nbsp;: <strong>MaPrimeRénov'</strong>, éco-PTZ, aides de l'ANAH.</p><p style="margin:0;font-weight:700;color:#EA580C;">Anticiper dès aujourd'hui, c'est préserver la valeur de votre patrimoine et conserver toutes vos options — vente ou location — dans les meilleures conditions.</p></div>`,
+    condition: { dpe: ['E'] },
   },
   // 5. Valorisation A/B/C
   {
@@ -86,13 +95,21 @@ const MISTRAL_SECTIONS: TemplateSection[] = [
     bodyHtml: `<p style="font-size:12px;color:#5F5E5A;font-style:italic;border-top:1px solid #e5e5e5;padding-top:10px;margin-top:16px;"><strong>PS</strong>&nbsp;: Sans action, la valeur d'un bien classé F ou G peut continuer à se déprécier. Appelez-moi dès aujourd'hui pour éviter cette décote&nbsp;: <strong>{agenceTel}</strong>.</p>`,
     condition: { dpe: ['F', 'G'] },
   },
-  // 10. PS D/E
+  // 10. PS D
   {
     id: 'a1b2c3d4-0006-4000-8000-000000000006', type: 'custom', enabled: true,
     title: '', showTitle: false,
     titleColor: '#009597', titleSize: 14, titleBold: true, titleUnderline: false,
-    bodyHtml: `<p style="font-size:12px;color:#5F5E5A;font-style:italic;border-top:1px solid #e5e5e5;padding-top:10px;margin-top:16px;"><strong>PS</strong>&nbsp;: Vous pourriez diviser votre facture énergétique par deux grâce à des travaux éligibles aux aides de l'État. Je vous détaillerai toutes les options lors de notre rendez-vous.</p>`,
-    condition: { dpe: ['D', 'E'] },
+    bodyHtml: `<p style="font-size:12px;color:#5F5E5A;font-style:italic;border-top:1px solid #e5e5e5;padding-top:10px;margin-top:16px;"><strong>PS</strong>&nbsp;: Un passage en classe C est aujourd'hui accessible avec des travaux ciblés et peut valoriser votre bien de 10 à 15&nbsp;% sur le marché. Je serai ravi(e) de vous présenter les pistes les plus rentables lors de notre rendez-vous.</p>`,
+    condition: { dpe: ['D'] },
+  },
+  // 10b. PS E
+  {
+    id: 'a1b2c3d4-0009-4000-8000-000000000009', type: 'custom', enabled: true,
+    title: '', showTitle: false,
+    titleColor: '#009597', titleSize: 14, titleBold: true, titleUnderline: false,
+    bodyHtml: `<p style="font-size:12px;color:#5F5E5A;font-style:italic;border-top:1px solid #e5e5e5;padding-top:10px;margin-top:16px;"><strong>PS</strong>&nbsp;: Des travaux de rénovation énergétique peuvent vous permettre de sortir du classement E, d'éviter l'interdiction de 2034 et, dans le même temps, de valoriser significativement votre patrimoine. Je vous détaillerai toutes les options d'aides disponibles lors de notre échange.</p>`,
+    condition: { dpe: ['E'] },
   },
   // 11. PS A/B/C
   {
@@ -180,6 +197,27 @@ export async function GET() {
       unique_text: NADEGE_UNIQUE_TEXT,
     }).select().single()
     if (t2) seeded.push(t2)
+  }
+
+  // ── Migration silencieuse : reconstruire les sections Mistral si version obsolète ──
+  // Détection : l'ancienne version avait une section D/E groupée (id se terminant par 0002)
+  // avec condition ['D','E']. La nouvelle sépare D et E.
+  const mistralInList = list.find(t => t.is_locked && t.name === 'Mistral')
+  if (mistralInList) {
+    const secs = (mistralInList.sections_config ?? []) as TemplateSection[]
+    const hasOldDE = secs.some(
+      (s: TemplateSection) =>
+        s.id === 'a1b2c3d4-0002-4000-8000-000000000002' &&
+        Array.isArray((s.condition as any)?.dpe) &&
+        (s.condition as any).dpe.includes('D') &&
+        (s.condition as any).dpe.includes('E'),
+    )
+    if (hasOldDE) {
+      await supabase.from('lettre_templates_v2').update({
+        sections_config: MISTRAL_SECTIONS as unknown as TemplateSection[],
+      }).eq('id', mistralInList.id)
+      mistralInList.sections_config = MISTRAL_SECTIONS as unknown as TemplateSection[]
+    }
   }
 
   if (!hasMistral) {
