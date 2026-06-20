@@ -131,10 +131,11 @@ function buildVars(letter: DpeAdresseData, commercial: any): Record<string, stri
     ges:        letter.ges_m2         ? `${letter.ges_m2} kgeqCO₂/m²/an` : '',
     energie:    letter.energie_principale ?? '',
     agentNom:   [commercial?.prenom, commercial?.nom].filter(Boolean).join(' ') || 'Votre conseiller',
-    agentTitre: commercial?.agent_titre || 'Conseiller Immobilier',
-    agenceNom:  commercial?.agence_nom || 'Square Habitat',
-    agenceTel:  commercial?.agence_telephone || '',
-    agenceEmail:commercial?.agence_email || '',
+    agentTitre:     commercial?.agent_titre       || 'Conseiller Immobilier',
+    agenceNom:      commercial?.agence_nom        || 'Square Habitat',
+    agenceAdresse:  commercial?.agence_adresse    || '',
+    agenceTel:      commercial?.agence_telephone  || '',
+    agenceEmail:    commercial?.agence_email      || '',
   }
 }
 

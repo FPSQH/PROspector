@@ -1591,7 +1591,7 @@ export default function TemplatesPage() {
                 <div style={{ marginBottom:20, padding:'10px 14px', background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, borderRadius:8 }}>
                   <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Variables disponibles dans l'en-tête et le pied de page :</div>
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                    {['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceTel}','{agenceEmail}'].map(v => (
+                    {['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}'].map(v => (
                       <span key={v} style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(96,165,250,0.1)', color:'#93C5FD', border:'1px solid rgba(96,165,250,0.2)', fontFamily:'monospace' }}>{v}</span>
                     ))}
                   </div>
@@ -1647,7 +1647,7 @@ export default function TemplatesPage() {
                           value={draft.header_html}
                           onChange={html => patchDraft({ header_html: html || null })}
                           placeholder="Rédigez votre en-tête ici… ex : {logo} {agenceNom} {agentNom}"
-                          vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceTel}','{agenceEmail}']}
+                          vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
                         />
                       )}
                     </>
@@ -1703,7 +1703,7 @@ export default function TemplatesPage() {
                           value={draft.footer_html}
                           onChange={html => patchDraft({ footer_html: html || null })}
                           placeholder="Rédigez votre signature ici… ex : {agentNom} {agentTitre} {agenceNom}"
-                          vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceTel}','{agenceEmail}']}
+                          vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
                         />
                       )}
                     </>

@@ -82,9 +82,10 @@ export interface DpeAdresseData {
   agent_nom?:          string
   agent_prenom?:       string
   agent_titre?:        string
-  agent_agence?:       string
-  agent_telephone?:    string
-  agent_email?:        string
+  agent_agence?:          string
+  agent_agence_adresse?:  string
+  agent_telephone?:       string
+  agent_email?:           string
 }
 
 // ── Textes fixes (référence DOCX + HTML) ─────────────────────────────────────

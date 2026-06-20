@@ -25,9 +25,10 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
   const isRed       = dpeGroup === 'FG' || dpeGroup === 'E'
   const agentNom    = [`${data.agent_prenom ?? ''}`, `${data.agent_nom ?? ''}`].join(' ').trim() || 'Jean Dupont'
   const agentTitre  = data.agent_titre     ?? 'Conseiller Immobilier'
-  const agenceNom   = data.agent_agence    ?? 'Square Habitat'
-  const agenceTel   = data.agent_telephone ?? '05 56 00 00 00'
-  const agenceEmail = data.agent_email     ?? 'contact@squarehabitat.fr'
+  const agenceNom     = data.agent_agence          ?? 'Square Habitat'
+  const agenceAdresse = data.agent_agence_adresse  ?? ''
+  const agenceTel     = data.agent_telephone       ?? '05 56 00 00 00'
+  const agenceEmail   = data.agent_email           ?? 'contact@squarehabitat.fr'
 
   const vars: Record<string, string> = {
     typeBien, ctx, dpe, ville,
@@ -36,12 +37,12 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
     cout:       data.cout_annuel  ? `${Math.round(data.cout_annuel).toLocaleString('fr-FR')} €` : '',
     ges:        data.ges_m2       ? `${data.ges_m2} kgeqCO₂/m²/an` : '',
     energie:    data.energie_principale ?? '',
-    agentNom, agentTitre, agenceNom, agenceTel, agenceEmail,
+    agentNom, agentTitre, agenceNom, agenceAdresse, agenceTel, agenceEmail,
   }
 
   // ── Résolution des variables pour en-tête/pied de page ─────────────────────
   const headerFooterVars: Record<string, string> = {
-    agentNom, agentTitre, agenceNom, agenceTel, agenceEmail,
+    agentNom, agentTitre, agenceNom, agenceAdresse, agenceTel, agenceEmail,
     logo: '', // sera remplacé inline plus bas
   }
 
@@ -61,11 +62,12 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
   function fillHeaderFooter(html: string): string {
     return html
       .replace(/\{logo\}/g, logoImgHtml)
-      .replace(/\{agentNom\}/g,    agentNom)
-      .replace(/\{agentTitre\}/g,  agentTitre)
-      .replace(/\{agenceNom\}/g,   agenceNom)
-      .replace(/\{agenceTel\}/g,   agenceTel)
-      .replace(/\{agenceEmail\}/g, agenceEmail)
+      .replace(/\{agentNom\}/g,      agentNom)
+      .replace(/\{agentTitre\}/g,    agentTitre)
+      .replace(/\{agenceNom\}/g,     agenceNom)
+      .replace(/\{agenceAdresse\}/g, agenceAdresse)
+      .replace(/\{agenceTel\}/g,     agenceTel)
+      .replace(/\{agenceEmail\}/g,   agenceEmail)
   }
 
   // ── En-tête ────────────────────────────────────────────────────────────────

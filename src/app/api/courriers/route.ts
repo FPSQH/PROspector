@@ -126,9 +126,10 @@ export async function GET(request: Request) {
       agent_nom:       commercial?.nom ?? '',
       agent_prenom:    commercial?.prenom ?? '',
       agent_titre:     commercial?.agent_titre ?? 'Conseiller Immobilier',
-      agent_agence:    commercial?.agence_nom ?? '',
-      agent_telephone: commercial?.agence_telephone ?? '',
-      agent_email:     commercial?.agence_email ?? '',
+      agent_agence:          commercial?.agence_nom      ?? '',
+      agent_agence_adresse:  commercial?.agence_adresse ?? '',
+      agent_telephone:       commercial?.agence_telephone ?? '',
+      agent_email:           commercial?.agence_email    ?? '',
     }
   })
 

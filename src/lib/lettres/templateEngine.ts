@@ -203,9 +203,10 @@ export const ALL_VARIABLES: VarDef[] = [
   { key: '{energie}',   label: 'Énergie principale',   example: 'Électricité' },
   { key: '{agentNom}',    label: 'Nom du conseiller',    example: 'Jean Dupont' },
   { key: '{agentTitre}', label: 'Titre du conseiller',  example: 'Conseillère Immobilier' },
-  { key: '{agenceNom}',  label: 'Nom de l\'agence',     example: 'Square Habitat Bordeaux' },
-  { key: '{agenceTel}',  label: 'Téléphone agence',     example: '05 56 00 00 00' },
-  { key: '{agenceEmail}', label: 'Email agence',        example: 'contact@squarehabitat.fr' },
+  { key: '{agenceNom}',     label: 'Nom de l\'agence',     example: 'Square Habitat Bordeaux' },
+  { key: '{agenceAdresse}', label: 'Adresse de l\'agence', example: '12 Rue du Commerce, 33000 Bordeaux' },
+  { key: '{agenceTel}',     label: 'Téléphone agence',     example: '05 56 00 00 00' },
+  { key: '{agenceEmail}',   label: 'Email agence',         example: 'contact@squarehabitat.fr' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
