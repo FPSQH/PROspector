@@ -54,29 +54,38 @@ export async function GET() {
     }
   }
 
-  // ── Seeder automatique pour les nouveaux utilisateurs : 2 templates par défaut ──
-  if ((data ?? []).length === 0) {
-    const baseFields = {
-      commercial_id:    user.id,
-      logo_data:        null,
-      logo_mime:        null,
-      logo_scale_pct:   100,
-      logo_position:    'header',
-      sections_config:  DEFAULT_SECTIONS as unknown as TemplateSection[],
-      envelope_enabled: false,
-      envelope_line1:   'Monsieur Madame le Propriétaire',
-      envelope_line2:   '',
-    }
+  // ── Garantir la présence des 2 templates verrouillés pour tous les utilisateurs ──
+  const list = data ?? []
+  const baseFields = {
+    commercial_id:    user.id,
+    logo_data:        null,
+    logo_mime:        null,
+    logo_scale_pct:   100,
+    logo_position:    'header',
+    sections_config:  DEFAULT_SECTIONS as unknown as TemplateSection[],
+    envelope_enabled: false,
+    envelope_line1:   'Monsieur Madame le Propriétaire',
+    envelope_line2:   '',
+  }
 
+  const hasPersonnalise  = list.some(t => t.is_locked && t.mode === 'sections')
+  const hasNadege        = list.some(t => t.is_locked && t.mode === 'unique')
+  const noDefault        = !list.some(t => t.is_default)
+  const seeded: typeof list = []
+
+  if (!hasPersonnalise) {
     const { data: t1 } = await supabase.from('lettre_templates_v2').insert({
       ...baseFields,
       name:        'Personnalisé',
-      is_default:  true,
+      is_default:  noDefault,          // défaut seulement si aucun autre ne l'est
       is_locked:   true,
       mode:        'sections',
       unique_text: null,
     }).select().single()
+    if (t1) seeded.push(t1)
+  }
 
+  if (!hasNadege) {
     const { data: t2 } = await supabase.from('lettre_templates_v2').insert({
       ...baseFields,
       name:        'Template Nadège',
@@ -85,11 +94,10 @@ export async function GET() {
       mode:        'unique',
       unique_text: NADEGE_UNIQUE_TEXT,
     }).select().single()
-
-    return NextResponse.json({ templates: [t1, t2].filter(Boolean) })
+    if (t2) seeded.push(t2)
   }
 
-  return NextResponse.json({ templates: data ?? [] })
+  return NextResponse.json({ templates: [...list, ...seeded] })
 }
 
 export async function POST(request: Request) {
