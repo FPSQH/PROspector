@@ -194,8 +194,6 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
   }
 
   parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
-  parts.push(p('Madame, Monsieur,'))
-  parts.push(p(`Je me permets de vous contacter au sujet de ${typeBien} situé : <strong>${data.adresse_brute}</strong>`))
 
   const previewConflicts = getSectionConflicts(sections)
   for (const sec of sections) {
@@ -209,7 +207,13 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
 
     switch (sectionContentKey(sec)) {
       case 'intro':
-        parts.push(p(sec.bodyHtml ? fillVarsHtml(sec.bodyHtml, vars) : getIntroCtx(dpeGroup, ctx, typeBien, null)))
+        if (sec.bodyHtml) {
+          parts.push(fillVarsHtml(sec.bodyHtml, vars))
+        } else {
+          parts.push(p('Madame, Monsieur,'))
+          parts.push(p(`Je me permets de vous contacter au sujet de ${typeBien} situé : <strong>${data.adresse_brute}</strong>`))
+          parts.push(p(getIntroCtx(dpeGroup, ctx, typeBien, null)))
+        }
         break
       case 'dpe': {
         if (sec.bodyHtml) {
@@ -259,7 +263,9 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
         break
       default:
         if (sec.type === 'custom' && sec.bodyHtml) {
-          parts.push(p(fillVarsHtml(sec.bodyHtml, vars)))
+          const filled = fillVarsHtml(sec.bodyHtml, vars)
+          const hasBlocks = /<p[\s>]|<div[\s>]|<br\s*\/?>/i.test(filled)
+          parts.push(hasBlocks ? filled : p(filled))
         }
     }
 
