@@ -64,8 +64,15 @@ export interface TemplateV2 {
   envelope_line2?:  string   // ligne 2 — complément optionnel (ex: "Apt 3B - Bât A")
   // ── Image en mode Texte unique ─────────────────────────────────────────────
   unique_image?:    UniqueImageConfig | null
-  created_at?:      string
-  updated_at?:      string
+  // ── En-tête et pied de page personnalisables ────────────────────────────────
+  header_enabled?:   boolean          // true par défaut — false = pas d'en-tête
+  header_html?:      string | null    // null = auto-généré
+  header_height_mm?: number           // hauteur min en mm (10–80), défaut 30
+  footer_enabled?:   boolean          // true par défaut — false = pas de pied de page
+  footer_html?:      string | null    // null = auto-généré
+  footer_height_mm?: number           // hauteur min en mm (10–80), défaut 20
+  created_at?:       string
+  updated_at?:       string
 }
 
 export interface UniqueImageConfig {

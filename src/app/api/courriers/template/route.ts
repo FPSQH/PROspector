@@ -127,6 +127,12 @@ export async function POST(request: Request) {
       envelope_enabled: body.envelope_enabled ?? false,
       envelope_line1:   body.envelope_line1   ?? 'Monsieur Madame le Propriétaire',
       envelope_line2:   body.envelope_line2   ?? '',
+      header_enabled:   body.header_enabled   ?? true,
+      header_html:      body.header_html      ?? null,
+      header_height_mm: body.header_height_mm ?? 30,
+      footer_enabled:   body.footer_enabled   ?? true,
+      footer_html:      body.footer_html      ?? null,
+      footer_height_mm: body.footer_height_mm ?? 20,
     })
     .select()
     .single()

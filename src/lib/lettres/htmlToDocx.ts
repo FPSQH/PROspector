@@ -3,7 +3,7 @@
 // Supporte : <strong> <b> <em> <i> <u> <s> <a href> <span style> <br>
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { TextRun, ExternalHyperlink } from 'docx'
+import { TextRun, ExternalHyperlink, Paragraph, ImageRun, AlignmentType } from 'docx'
 
 interface StyleState {
   bold:      boolean
@@ -207,6 +207,68 @@ export function htmlToRuns(
   }
 
   return result
+}
+
+// ── Spliteur HTML → lignes ────────────────────────────────────────────────────
+
+function splitByBlocks(html: string): string[] {
+  const s = html
+    .replace(/<\/p>/gi,   '\x00')
+    .replace(/<\/div>/gi, '\x00')
+    .replace(/<\/li>/gi,  '\x00')
+    .replace(/<br\s*\/?>/gi, '\x00')
+    .replace(/<(?:p|div|ul|ol|li|h[1-6])(?:\s[^>]*)?>|<\/(?:ul|ol|h[1-6])>/gi, '')
+  return s.split('\x00').map(l => l.trim()).filter(l => l.length > 0)
+}
+
+/**
+ * Convertit un HTML multi-paragraphes en tableau de Paragraph DOCX.
+ * Supporte la variable spéciale {logo} qui insère une ImageRun.
+ */
+export function htmlToParagraphs(
+  html: string,
+  opts?: {
+    logoData?:   string | null
+    logoMime?:   string | null
+    logoW?:      number
+    logoH?:      number
+    alignment?:  AlignmentType
+    baseColor?:  string
+    baseSize?:   number
+    spacing?:    { before?: number; after?: number }
+    border?: {
+      top?:    { style: string; size: number; color: string }
+      bottom?: { style: string; size: number; color: string }
+    }
+  },
+): Paragraph[] {
+  const lines = splitByBlocks(html)
+  if (lines.length === 0) return []
+
+  return lines.map((line, idx) => {
+    const children: (TextRun | ExternalHyperlink | ImageRun)[] = []
+    const segments = line.split('{logo}')
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      if (seg) children.push(...htmlToRuns(seg, opts?.baseColor ?? '1A1A1A', opts?.baseSize ?? 20))
+      if (i < segments.length - 1 && opts?.logoData && opts?.logoMime) {
+        children.push(new ImageRun({
+          data:           Buffer.from(opts.logoData, 'base64'),
+          transformation: { width: opts.logoW ?? 60, height: opts.logoH ?? 40 },
+          type:           (opts.logoMime.split('/')[1] as 'png' | 'jpg' | 'gif' | 'bmp') || 'png',
+        }))
+      }
+    }
+    return new Paragraph({
+      children,
+      alignment: opts?.alignment,
+      spacing: {
+        before: idx === 0 ? (opts?.spacing?.before ?? 0) : 0,
+        after:  idx === lines.length - 1 ? (opts?.spacing?.after ?? 60) : 60,
+      },
+      border: opts?.border as any,
+    })
+  })
 }
 
 /**

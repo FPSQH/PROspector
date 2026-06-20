@@ -39,6 +39,12 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
     agentNom, agentTitre, agenceNom, agenceTel, agenceEmail,
   }
 
+  // ── Résolution des variables pour en-tête/pied de page ─────────────────────
+  const headerFooterVars: Record<string, string> = {
+    agentNom, agentTitre, agenceNom, agenceTel, agenceEmail,
+    logo: '', // sera remplacé inline plus bas
+  }
+
   const TEAL        = '#009597'
   const infoBox_bg  = isRed ? '#FDEDEB' : '#E8F6F6'
   const infoBox_brd = isRed ? '#C0392B' : '#009597'
@@ -47,33 +53,68 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
   const logoScale    = (template.logo_scale_pct ?? 100) / 100
   const logoW        = Math.round((template.logo_width  ?? 60) * logoScale)
   const logoH        = Math.round((template.logo_height ?? 40) * logoScale)
-  const logoHtml     = (template.logo_data && template.logo_mime && !logoInFooter)
-    ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="width:${logoW}px;height:${logoH}px;object-fit:contain;display:block;margin:0 auto;" />`
-    : `<span style="font-size:18px;font-weight:700;color:#009597;font-family:Arial,sans-serif;">SQH</span>`
-
-  const footerHtml = (template.logo_data && template.logo_mime && logoInFooter)
-    ? `<div style="margin-top:32px;border-top:2px solid #009597;padding-top:10px;text-align:center;"><img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="width:${logoW}px;height:${logoH}px;object-fit:contain;" /></div>`
+  const logoImgHtml  = (template.logo_data && template.logo_mime)
+    ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="max-width:${logoW}px;max-height:${logoH}px;object-fit:contain;display:inline-block;vertical-align:middle;" />`
     : ''
 
-  const headerHtml = `<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-family:Arial,sans-serif;"><tr>`
-    + `<td style="width:75px;border-bottom:2px solid #009597;vertical-align:middle;text-align:center;padding-bottom:10px;">${logoHtml}</td>`
-    + `<td style="border-bottom:2px solid #009597;vertical-align:middle;padding:0 12px 10px;">`
-    +   `<div style="font-size:15px;font-weight:700;color:#009597;">${agenceNom}</div>`
-    +   (agenceTel ? `<div style="font-size:11px;color:#5F5E5A;">📞 ${agenceTel}</div>` : '')
-    + `</td>`
-    + `<td style="width:190px;border-bottom:2px solid #009597;vertical-align:middle;text-align:right;padding-bottom:10px;">`
-    +   `<div style="font-size:12px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
-    +   `<div style="font-size:11px;color:#5F5E5A;">${agentTitre}</div>`
-    +   (agenceEmail ? `<div style="font-size:11px;color:#5F5E5A;">${agenceEmail}</div>` : '')
-    + `</td>`
-    + `</tr></table>`
+  // Remplace {logo} et autres variables dans un HTML d'en-tête/pied de page
+  function fillHeaderFooter(html: string): string {
+    return html
+      .replace(/\{logo\}/g, logoImgHtml)
+      .replace(/\{agentNom\}/g,    agentNom)
+      .replace(/\{agentTitre\}/g,  agentTitre)
+      .replace(/\{agenceNom\}/g,   agenceNom)
+      .replace(/\{agenceTel\}/g,   agenceTel)
+      .replace(/\{agenceEmail\}/g, agenceEmail)
+  }
 
-  const signatureHtml = `<div style="margin-top:28px;border-top:2px solid #009597;padding-top:10px;font-family:Arial,sans-serif;">`
-    + `<div style="font-size:13px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
-    + `<div style="font-size:12px;color:#5F5E5A;">${agentTitre} — ${agenceNom}</div>`
-    + (agenceTel   ? `<div style="font-size:12px;color:#5F5E5A;">📞 ${agenceTel}</div>`   : '')
-    + (agenceEmail ? `<div style="font-size:12px;color:#5F5E5A;">✉ ${agenceEmail}</div>` : '')
-    + `</div>`
+  // ── En-tête ────────────────────────────────────────────────────────────────
+  let headerHtml = ''
+  const headerEnabled = template.header_enabled !== false
+  if (headerEnabled) {
+    const minH = `${template.header_height_mm ?? 30}mm`
+    if (template.header_html) {
+      headerHtml = `<div style="min-height:${minH};font-family:Arial,sans-serif;border-bottom:2px solid #009597;padding-bottom:10px;margin-bottom:20px;">${fillHeaderFooter(template.header_html)}</div>`
+    } else {
+      // En-tête auto-généré (tableau 3 colonnes)
+      const logoHtml = (template.logo_data && template.logo_mime && !logoInFooter)
+        ? `<img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="max-width:${logoW}px;max-height:${logoH}px;object-fit:contain;display:block;margin:0 auto;" />`
+        : `<span style="font-size:18px;font-weight:700;color:#009597;font-family:Arial,sans-serif;">SQH</span>`
+      headerHtml = `<table style="width:100%;border-collapse:collapse;min-height:${minH};margin-bottom:20px;font-family:Arial,sans-serif;"><tr>`
+        + `<td style="width:75px;border-bottom:2px solid #009597;vertical-align:middle;text-align:center;padding-bottom:10px;">${logoHtml}</td>`
+        + `<td style="border-bottom:2px solid #009597;vertical-align:middle;padding:0 12px 10px;">`
+        +   `<div style="font-size:15px;font-weight:700;color:#009597;">${agenceNom}</div>`
+        +   (agenceTel ? `<div style="font-size:11px;color:#5F5E5A;">📞 ${agenceTel}</div>` : '')
+        + `</td>`
+        + `<td style="width:190px;border-bottom:2px solid #009597;vertical-align:middle;text-align:right;padding-bottom:10px;">`
+        +   `<div style="font-size:12px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
+        +   `<div style="font-size:11px;color:#5F5E5A;">${agentTitre}</div>`
+        +   (agenceEmail ? `<div style="font-size:11px;color:#5F5E5A;">${agenceEmail}</div>` : '')
+        + `</td>`
+        + `</tr></table>`
+    }
+  }
+
+  // ── Pied de page / Signature ───────────────────────────────────────────────
+  const footerEnabled = template.footer_enabled !== false
+  let footerHtml = ''
+  let signatureHtml = ''
+  const minFH = `${template.footer_height_mm ?? 20}mm`
+  if (footerEnabled) {
+    if (template.footer_html) {
+      footerHtml = `<div style="min-height:${minFH};font-family:Arial,sans-serif;border-top:2px solid #009597;padding-top:10px;margin-top:28px;">${fillHeaderFooter(template.footer_html)}</div>`
+    } else if (template.logo_data && template.logo_mime && logoInFooter) {
+      footerHtml = `<div style="margin-top:32px;border-top:2px solid #009597;padding-top:10px;text-align:center;min-height:${minFH};"><img src="data:${template.logo_mime};base64,${template.logo_data}" alt="Logo" style="max-width:${logoW}px;max-height:${logoH}px;object-fit:contain;" /></div>`
+    } else {
+      // Signature auto-générée (mode legacy sans footer_html)
+      signatureHtml = `<div style="margin-top:28px;border-top:2px solid #009597;padding-top:10px;font-family:Arial,sans-serif;min-height:${minFH};">`
+        + `<div style="font-size:13px;font-weight:700;color:#1A1A1A;">${agentNom}</div>`
+        + `<div style="font-size:12px;color:#5F5E5A;">${agentTitre} — ${agenceNom}</div>`
+        + (agenceTel   ? `<div style="font-size:12px;color:#5F5E5A;">📞 ${agenceTel}</div>`   : '')
+        + (agenceEmail ? `<div style="font-size:12px;color:#5F5E5A;">✉ ${agenceEmail}</div>` : '')
+        + `</div>`
+    }
+  }
 
   const h4 = (sec: TemplateSection) => {
     if (!sec.showTitle) return ''
@@ -123,6 +164,7 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
     } else {
       parts.push(uBody)
     }
+    if (signatureHtml) parts.push(signatureHtml)
     if (footerHtml) parts.push(footerHtml)
     return parts.join('\n')
   }
@@ -222,7 +264,7 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
     }
   }
 
-  parts.push(signatureHtml)
+  if (signatureHtml) parts.push(signatureHtml)
   if (footerHtml) parts.push(footerHtml)
   return parts.filter(Boolean).join('\n')
 }

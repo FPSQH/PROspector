@@ -776,7 +776,7 @@ function SectionItem({
 // PAGE PRINCIPALE
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = 'sections' | 'logo' | 'preview'
+type Tab = 'sections' | 'logo' | 'entete' | 'preview'
 
 export default function TemplatesPage() {
   // ── États globaux ─────────────────────────────────────────────────────────
@@ -1236,7 +1236,7 @@ export default function TemplatesPage() {
 
           {/* ── Onglets ── */}
           <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${C.border}`, flexShrink:0, padding:'0 20px' }}>
-            {([['sections','Sections'],['logo','Logo & Enveloppe'],['preview','Aperçu']] as [Tab,string][]).map(([t,l]) => (
+            {([['sections','Sections'],['logo','Logo & Enveloppe'],['entete','En-tête / Pied de page'],['preview','Aperçu']] as [Tab,string][]).map(([t,l]) => (
               <button key={t} onClick={() => setTab(t)}
                 style={{ padding:'9px 16px', border:'none', borderBottom:`2px solid ${tab===t?C.primary:'transparent'}`, background:'transparent',
                   color:tab===t?C.primary:C.muted, fontSize:13, fontWeight:tab===t?600:400, cursor:'pointer', marginRight:2 }}>
@@ -1578,6 +1578,135 @@ export default function TemplatesPage() {
                         <div style={{ color:'#555' }}>← CODE POSTAL VILLE</div>
                       </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ────────── ONGLET EN-TÊTE / PIED DE PAGE ────────── */}
+            {tab === 'entete' && draft && (
+              <div style={{ maxWidth:640 }}>
+
+                {/* Variables disponibles */}
+                <div style={{ marginBottom:20, padding:'10px 14px', background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, borderRadius:8 }}>
+                  <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Variables disponibles dans l'en-tête et le pied de page :</div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    {['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceTel}','{agenceEmail}'].map(v => (
+                      <span key={v} style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(96,165,250,0.1)', color:'#93C5FD', border:'1px solid rgba(96,165,250,0.2)', fontFamily:'monospace' }}>{v}</span>
+                    ))}
+                  </div>
+                  <div style={{ fontSize:11, color:C.dim, marginTop:6 }}>
+                    <code style={{ color:'#93C5FD' }}>{'{logo}'}</code> insère votre logo à cet endroit dans le texte.
+                  </div>
+                </div>
+
+                {/* ── EN-TÊTE ── */}
+                <div style={{ marginBottom:32 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+                    <div style={{ fontWeight:600, fontSize:14, color:C.text }}>En-tête</div>
+                    <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', marginLeft:'auto' }}>
+                      <input type="checkbox"
+                        checked={draft.header_enabled !== false}
+                        onChange={e => patchDraft({ header_enabled: e.target.checked })}
+                        style={{ accentColor:C.primary, cursor:'pointer' }} />
+                      <span style={{ fontSize:12, color:C.mid }}>Afficher l'en-tête</span>
+                    </label>
+                  </div>
+
+                  {draft.header_enabled !== false && (
+                    <>
+                      {/* Hauteur */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>
+                          Hauteur minimale : <strong style={{ color:C.text }}>{draft.header_height_mm ?? 30} mm</strong>
+                        </div>
+                        <input type="range" min={10} max={80} step={5}
+                          value={draft.header_height_mm ?? 30}
+                          onChange={e => patchDraft({ header_height_mm: Number(e.target.value) })}
+                          style={{ width:'100%', accentColor:C.primary }} />
+                      </div>
+
+                      {/* Bouton Défaut / Réinitialiser */}
+                      <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                        <button onClick={() => patchDraft({ header_html: null })}
+                          style={{ fontSize:11, padding:'4px 10px', borderRadius:5, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, cursor:'pointer' }}>
+                          ↩ Revenir à l'en-tête automatique
+                        </button>
+                        <button onClick={() => patchDraft({ header_html: `{logo}<br><strong style="color:#009597;">{agenceNom}</strong><br><span style="color:#5F5E5A;">📞 {agenceTel}</span><br><strong>{agentNom}</strong> — <span style="color:#5F5E5A;">{agentTitre}</span><br><span style="color:#5F5E5A;">✉ {agenceEmail}</span>` })}
+                          style={{ fontSize:11, padding:'4px 10px', borderRadius:5, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, cursor:'pointer' }}>
+                          ✦ Charger le modèle de départ
+                        </button>
+                      </div>
+
+                      {draft.header_html == null ? (
+                        <div style={{ padding:'14px 16px', background:'rgba(29,158,117,0.06)', border:`1px solid rgba(29,158,117,0.2)`, borderRadius:8, fontSize:12, color:C.muted }}>
+                          En-tête <strong style={{ color:C.text }}>automatique</strong> — tableau 3 colonnes (logo · agence · conseiller). Cliquez sur "Charger le modèle de départ" pour le personnaliser.
+                        </div>
+                      ) : (
+                        <RichEditor
+                          value={draft.header_html}
+                          onChange={html => patchDraft({ header_html: html || null })}
+                          placeholder="Rédigez votre en-tête ici… ex : {logo} {agenceNom} {agentNom}"
+                          vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceTel}','{agenceEmail}']}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div style={{ borderTop:`1px solid ${C.border}`, marginBottom:32 }} />
+
+                {/* ── PIED DE PAGE ── */}
+                <div style={{ marginBottom:32 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+                    <div style={{ fontWeight:600, fontSize:14, color:C.text }}>Pied de page / Signature</div>
+                    <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', marginLeft:'auto' }}>
+                      <input type="checkbox"
+                        checked={draft.footer_enabled !== false}
+                        onChange={e => patchDraft({ footer_enabled: e.target.checked })}
+                        style={{ accentColor:C.primary, cursor:'pointer' }} />
+                      <span style={{ fontSize:12, color:C.mid }}>Afficher le pied de page</span>
+                    </label>
+                  </div>
+
+                  {draft.footer_enabled !== false && (
+                    <>
+                      {/* Hauteur */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>
+                          Hauteur minimale : <strong style={{ color:C.text }}>{draft.footer_height_mm ?? 20} mm</strong>
+                        </div>
+                        <input type="range" min={10} max={80} step={5}
+                          value={draft.footer_height_mm ?? 20}
+                          onChange={e => patchDraft({ footer_height_mm: Number(e.target.value) })}
+                          style={{ width:'100%', accentColor:C.primary }} />
+                      </div>
+
+                      {/* Bouton Défaut / Réinitialiser */}
+                      <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                        <button onClick={() => patchDraft({ footer_html: null })}
+                          style={{ fontSize:11, padding:'4px 10px', borderRadius:5, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, cursor:'pointer' }}>
+                          ↩ Revenir à la signature automatique
+                        </button>
+                        <button onClick={() => patchDraft({ footer_html: `<strong>{agentNom}</strong><br><span style="color:#5F5E5A;">{agentTitre} — {agenceNom}</span><br><span style="color:#5F5E5A;">📞 {agenceTel}</span><br><span style="color:#5F5E5A;">✉ {agenceEmail}</span>` })}
+                          style={{ fontSize:11, padding:'4px 10px', borderRadius:5, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, cursor:'pointer' }}>
+                          ✦ Charger le modèle de départ
+                        </button>
+                      </div>
+
+                      {draft.footer_html == null ? (
+                        <div style={{ padding:'14px 16px', background:'rgba(29,158,117,0.06)', border:`1px solid rgba(29,158,117,0.2)`, borderRadius:8, fontSize:12, color:C.muted }}>
+                          Signature <strong style={{ color:C.text }}>automatique</strong> — nom, titre, agence, téléphone, email. Cliquez sur "Charger le modèle de départ" pour la personnaliser.
+                        </div>
+                      ) : (
+                        <RichEditor
+                          value={draft.footer_html}
+                          onChange={html => patchDraft({ footer_html: html || null })}
+                          placeholder="Rédigez votre signature ici… ex : {agentNom} {agentTitre} {agenceNom}"
+                          vars={['{logo}','{agentNom}','{agentTitre}','{agenceNom}','{agenceTel}','{agenceEmail}']}
+                        />
+                      )}
+                    </>
                   )}
                 </div>
               </div>

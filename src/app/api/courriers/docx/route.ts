@@ -13,7 +13,7 @@ import {
 import type { DpeAdresseData } from '@/lib/lettres/generator'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
 import { DEFAULT_SECTIONS, getEffectiveSections, fillVarsHtml, afnorLine, parseAddress, sectionMatchesCondition, migrateSectionCondition, getSectionConflicts, sectionContentKey } from '@/lib/lettres/templateEngine'
-import { htmlToRuns } from '@/lib/lettres/htmlToDocx'
+import { htmlToRuns, htmlToParagraphs } from '@/lib/lettres/htmlToDocx'
 
 const TEAL    = '009597'
 const DARK    = '1A1A1A'
@@ -470,41 +470,113 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
     }
   }
 
-  // Signature
-  appendSignature(paras, vars.agentNom, commercial)
+  // Signature / pied de page
+  appendSignature(paras, vars.agentNom, commercial, template)
   return paras
 }
 
-function appendSignature(paras: (Paragraph | Table)[], agentNom: string, commercial: any) {
-  const agentTitre = commercial?.agent_titre || 'Conseiller Immobilier'
+function appendSignature(paras: (Paragraph | Table)[], agentNom: string, commercial: any, template?: TemplateV2 | null) {
+  const footerEnabled = template?.footer_enabled !== false
+  if (!footerEnabled) return
+
+  const agentTitre  = commercial?.agent_titre    || 'Conseiller Immobilier'
+  const agenceNom   = commercial?.agence_nom     || 'Square Habitat'
+  const agenceTel   = commercial?.agence_telephone || ''
+  const agenceEmail = commercial?.agence_email   || ''
+  const scale       = (template?.logo_scale_pct ?? 100) / 100
+  const logoW       = Math.round((template?.logo_width  ?? 60) * scale)
+  const logoH       = Math.round((template?.logo_height ?? 40) * scale)
+
+  // Espacement avant signature ≈ footer_height_mm (1mm ≈ 56.7 DXA)
+  const spacingBefore = Math.round((template?.footer_height_mm ?? 20) * 56.7)
   paras.push(new Paragraph({ children: [], spacing: { before: 400 } }))
+
+  if (template?.footer_html) {
+    // Footer personnalisé
+    const footerParas = htmlToParagraphs(template.footer_html, {
+      logoData:  template.logo_data,
+      logoMime:  template.logo_mime,
+      logoW, logoH,
+      baseColor: DARK, baseSize: 20,
+      spacing:   { before: spacingBefore, after: 60 },
+      border:    { top: { style: BorderStyle.SINGLE, size: 6, color: TEAL } },
+    })
+    // Appliquer la bordure top uniquement sur le premier paragraphe
+    for (const para of footerParas) paras.push(para)
+    return
+  }
+
+  // Pied de page legacy logo-only (logo_position = 'footer')
+  if (template?.logo_data && template?.logo_mime && template?.logo_position === 'footer') {
+    paras.push(new Paragraph({
+      children: [new ImageRun({
+        data: Buffer.from(template.logo_data, 'base64'),
+        transformation: { width: logoW, height: logoH },
+        type: (template.logo_mime.split('/')[1] as any) || 'png',
+      })],
+      alignment: AlignmentType.CENTER,
+      border: { top: { style: BorderStyle.SINGLE, size: 8, color: TEAL, space: 6 } },
+      spacing: { before: spacingBefore, after: 60 },
+    }))
+    return
+  }
+
+  // Signature auto-générée
   paras.push(new Paragraph({
     children: [T(agentNom, { bold: true, size: 22 })],
     border: { top: { style: BorderStyle.SINGLE, size: 6, color: TEAL, space: 6 } },
     spacing: { before: 80, after: 60 }
   }))
-  paras.push(new Paragraph({ children: [T(agentTitre + ' — ' + (commercial?.agence_nom || 'Square Habitat'), { size: 18, color: GREY })] }))
-  if (commercial?.agence_telephone) paras.push(new Paragraph({ children: [T('📞 ' + commercial.agence_telephone, { size: 18, color: GREY })] }))
-  if (commercial?.agence_email)     paras.push(new Paragraph({ children: [T('✉ ' + commercial.agence_email, { size: 18, color: GREY })] }))
+  paras.push(new Paragraph({ children: [T(agentTitre + ' — ' + agenceNom, { size: 18, color: GREY })] }))
+  if (agenceTel)   paras.push(new Paragraph({ children: [T('📞 ' + agenceTel,   { size: 18, color: GREY })] }))
+  if (agenceEmail) paras.push(new Paragraph({ children: [T('✉ ' + agenceEmail,  { size: 18, color: GREY })] }))
 }
 
-// ── En-tête (header commun) ────────────────────────────────────────────
-function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
+// ── En-tête : retourne un tableau de Paragraph|Table ─────────────────────────
+function buildHeader(commercial: any, template?: TemplateV2 | null): (Paragraph | Table)[] {
+  const headerEnabled = template?.header_enabled !== false
+  if (!headerEnabled) return []
+
   const agentNom  = [commercial?.prenom, commercial?.nom].filter(Boolean).join(' ') || ''
   const agenceNom = commercial?.agence_nom || 'Square Habitat'
-  const agenceAdr = commercial?.agence_adresse || ''
   const agenceTel = commercial?.agence_telephone || ''
   const agentMail = commercial?.agence_email || ''
-  const cellNil   = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
-  const bottomLine = { top: cellNil, left: cellNil, right: cellNil, bottom: { style: BorderStyle.SINGLE, size: 8, color: TEAL } }
+  const scale     = ((template?.logo_scale_pct ?? 100) / 100)
+  const logoW     = Math.round((template?.logo_width  ?? 60) * scale)
+  const logoH     = Math.round((template?.logo_height ?? 40) * scale)
+  const agentTitre = commercial?.agent_titre || 'Conseiller Immobilier'
+  const spacingAfter = Math.round((template?.header_height_mm ?? 30) * 56.7)
 
+  if (template?.header_html) {
+    // En-tête personnalisé : HTML → Paragraphs avec bordure basse
+    const paras = htmlToParagraphs(template.header_html, {
+      logoData:  template.logo_data,
+      logoMime:  template.logo_mime,
+      logoW, logoH,
+      baseColor: DARK, baseSize: 20,
+      spacing:   { before: 0, after: spacingAfter },
+    })
+    // Ajouter bordure bottom sur le dernier paragraphe
+    if (paras.length > 0) {
+      const last = paras[paras.length - 1]
+      ;(last as any).properties = (last as any).properties ?? {}
+      ;(last as any).addChildElement?.({ rootKey: 'w:pPr' })
+      // Re-créer le dernier paragraphe avec bordure
+      paras[paras.length - 1] = new Paragraph({
+        ...(last as any),
+        border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: TEAL, space: 4 } },
+        spacing: { before: 0, after: spacingAfter },
+      })
+    }
+    return paras
+  }
+
+  // En-tête auto-généré (tableau 3 colonnes)
   const hasLogo       = !!(template?.logo_data && template?.logo_mime)
   const logoInFooter  = template?.logo_position === 'footer'
-  const scale         = ((template?.logo_scale_pct ?? 100) / 100)
-  const logoW         = Math.round((template?.logo_width  ?? 60) * scale)
-  const logoH         = Math.round((template?.logo_height ?? 40) * scale)
+  const cellNil       = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
+  const bottomLine    = { top: cellNil, left: cellNil, right: cellNil, bottom: { style: BorderStyle.SINGLE, size: 8, color: TEAL } }
 
-  // Colonne logo : vide si logo est en pied de page
   const logoCell = new TableCell({
     width: { size: 1123, type: WidthType.DXA }, borders: bottomLine, verticalAlign: VerticalAlign.CENTER,
     children: (hasLogo && !logoInFooter)
@@ -519,7 +591,7 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
       : [new Paragraph({ children: [T(logoInFooter ? '' : 'SQH', { bold: true, size: 28, color: TEAL })], alignment: AlignmentType.CENTER })]
   })
 
-  return new Table({
+  return [new Table({
     width: { size: 9360, type: WidthType.DXA },
     columnWidths: [1123, 4867, 3370],
     borders: { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil, insideH: cellNil, insideV: cellNil },
@@ -530,7 +602,6 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
           width: { size: 4867, type: WidthType.DXA }, borders: bottomLine, verticalAlign: VerticalAlign.CENTER,
           children: [
             new Paragraph({ children: [T(agenceNom, { bold: true, size: 26, color: TEAL })], spacing: { after: 40 } }),
-            ...(agenceAdr ? [new Paragraph({ children: [T(agenceAdr, { size: 15, color: GREY })], spacing: { after: 20 } })] : []),
             ...(agenceTel ? [new Paragraph({ children: [T('☎️ ' + agenceTel, { size: 15, color: GREY })] })] : []),
           ]
         }),
@@ -538,41 +609,13 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): Table {
           width: { size: 3370, type: WidthType.DXA }, borders: bottomLine, verticalAlign: VerticalAlign.CENTER,
           children: [
             new Paragraph({ children: [T(agentNom, { bold: true, size: 20, color: DARK })], alignment: AlignmentType.RIGHT, spacing: { after: 40 } }),
-            new Paragraph({ children: [T(commercial?.agent_titre || 'Conseiller Immobilier', { size: 15, color: GREY })], alignment: AlignmentType.RIGHT }),
+            new Paragraph({ children: [T(agentTitre, { size: 15, color: GREY })], alignment: AlignmentType.RIGHT }),
             ...(agentMail ? [new Paragraph({ children: [T(agentMail, { size: 14, color: GREY })], alignment: AlignmentType.RIGHT })] : []),
           ]
         }),
       ]
     })]
-  })
-}
-
-// ── Pied de page avec logo (si logo_position = 'footer') ───────────────────────────────
-function buildFooter(template: TemplateV2): Table {
-  const cellNil   = { style: BorderStyle.NIL, size: 0, color: 'FFFFFF' }
-  const topLine   = { bottom: cellNil, left: cellNil, right: cellNil, top: { style: BorderStyle.SINGLE, size: 8, color: TEAL } }
-  const scale2    = (template.logo_scale_pct ?? 100) / 100
-  const logoW     = Math.round((template.logo_width  ?? 60) * scale2)
-  const logoH     = Math.round((template.logo_height ?? 40) * scale2)
-  return new Table({
-    width: { size: 9360, type: WidthType.DXA },
-    columnWidths: [9360],
-    borders: { top: cellNil, bottom: cellNil, left: cellNil, right: cellNil, insideH: cellNil, insideV: cellNil },
-    rows: [new TableRow({
-      children: [new TableCell({
-        width: { size: 9360, type: WidthType.DXA }, borders: topLine, verticalAlign: VerticalAlign.CENTER,
-        children: [new Paragraph({
-          children: [new ImageRun({
-            data: Buffer.from(template.logo_data!, 'base64'),
-            transformation: { width: logoW, height: logoH },
-            type: (template.logo_mime!.split('/')[1] as any) || 'png',
-          })],
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 80 },
-        })],
-      })],
-    })],
-  })
+  })]
 }
 
 // ── Route POST ────────────────────────────────────────────────────────────────
@@ -598,17 +641,13 @@ export async function POST(request: Request) {
 
   const template: TemplateV2 | null = templateRow ?? null
 
-  const hasFooterLogo = template?.logo_position === 'footer' && !!(template?.logo_data)
   const sections = letters.map((letter: DpeAdresseData) => ({
     properties: {
       page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } }
     },
     headers: {
-      default: { options: { children: [buildHeader(commercial, template), new Paragraph({ children: [], spacing: { after: 200 } })] } }
+      default: { options: { children: [...buildHeader(commercial, template), new Paragraph({ children: [], spacing: { after: 200 } })] } }
     },
-    ...(hasFooterLogo ? {
-      footers: { default: { options: { children: [buildFooter(template!)] } } }
-    } : {}),
     children: template
       ? buildLetterV2(letter, commercial, template)
       : buildLetterLegacy(letter, commercial),
@@ -714,6 +753,6 @@ function buildLetterLegacy(letter: DpeAdresseData, commercial: any): Paragraph[]
   paras.push(new Paragraph({ children: [], spacing: { after: 120 } }))
   paras.push(body(getPolitesse1(null)))
   paras.push(body(getPolitesse2(null)))
-  appendSignature(paras, agentNom, commercial)
+  appendSignature(paras, agentNom, commercial, null)
   return paras
 }

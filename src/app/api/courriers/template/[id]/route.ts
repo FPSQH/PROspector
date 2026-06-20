@@ -57,6 +57,13 @@ export async function PUT(request: Request, { params }: Ctx) {
   if (typeof body.envelope_enabled === 'boolean') patch.envelope_enabled = body.envelope_enabled
   if (typeof body.envelope_line1   === 'string')  patch.envelope_line1   = body.envelope_line1
   if (typeof body.envelope_line2   === 'string')  patch.envelope_line2   = body.envelope_line2
+  // En-tête et pied de page personnalisables
+  if (typeof body.header_enabled   === 'boolean') patch.header_enabled   = body.header_enabled
+  if ('header_html'                in body) patch.header_html            = body.header_html ?? null
+  if (typeof body.header_height_mm === 'number')  patch.header_height_mm = Math.max(10, Math.min(80, body.header_height_mm))
+  if (typeof body.footer_enabled   === 'boolean') patch.footer_enabled   = body.footer_enabled
+  if ('footer_html'                in body) patch.footer_html            = body.footer_html ?? null
+  if (typeof body.footer_height_mm === 'number')  patch.footer_height_mm = Math.max(10, Math.min(80, body.footer_height_mm))
 
   const { data, error } = await supabase
     .from('lettre_templates_v2')
