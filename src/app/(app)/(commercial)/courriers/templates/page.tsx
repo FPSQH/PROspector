@@ -794,6 +794,7 @@ export default function TemplatesPage() {
   const [previewWithAudit, setPreviewWithAudit] = useState(false)
   const [previewType,      setPreviewType]      = useState<'appartement'|'maison'>('appartement')
   const [expandedSec, setExpandedSec] = useState<string | null>(null)
+  const [viewMode,    setViewMode]    = useState<'list' | 'editor'>('list')
 
   // Drag-drop state
   const dragIdx = useRef<number>(-1)
@@ -906,16 +907,27 @@ export default function TemplatesPage() {
     } finally { setCreating(false) }
   }
 
-  // ── Supprimer le template actif ───────────────────────────────────────────
-  const deleteTemplate = async () => {
-    if (!activeId || !draft) return
-    if (!confirm(`Supprimer le template "${draft.name}" ? Cette action est irréversible.`)) return
-    await fetch(`/api/courriers/template/${activeId}`, { method: 'DELETE' })
-    const remaining = templates.filter(t => t.id !== activeId)
+  // ── Supprimer un template par id ─────────────────────────────────────────
+  const deleteTemplate = async (templateId: string) => {
+    const target = templates.find(t => t.id === templateId)
+    if (!target) return
+    if (target.is_default) return
+    if (!confirm(`Supprimer le template "${target.name}" ? Cette action est irréversible.`)) return
+    await fetch(`/api/courriers/template/${templateId}`, { method: 'DELETE' })
+    const remaining = templates.filter(t => t.id !== templateId)
     setTemplates(remaining)
-    const next = remaining[0] ?? null
-    if (next) { setActiveId(next.id); setSaved(next); setDraft(hydrate(next)) }
-    else { setActiveId(null); setSaved(null); setDraft(null) }
+    if (activeId === templateId) {
+      const next = remaining[0] ?? null
+      if (next) { setActiveId(next.id); setSaved(next); setDraft(hydrate(next)) }
+      else { setActiveId(null); setSaved(null); setDraft(null) }
+      if (viewMode === 'editor') setViewMode('list')
+    }
+  }
+
+  // ── Ouvrir l'éditeur pour le template actif ───────────────────────────────
+  const openEditor = (id: string) => {
+    switchTemplate(id)
+    setViewMode('editor')
   }
 
   // ── Définir comme défaut ──────────────────────────────────────────────────
@@ -1111,7 +1123,7 @@ export default function TemplatesPage() {
     <div style={{ display:'flex', height:'100dvh', background:C.bg, color:C.text, overflow:'hidden' }}>
 
       {/* ── Sidebar gauche : liste des templates ─────────────────────── */}
-      <div style={{ width:200, flexShrink:0, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', background:C.card, overflow:'hidden' }}>
+      <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', background:C.card, overflow:'hidden' }}>
 
         <div style={{ padding:'14px 14px 10px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
           <Link href="/courriers" style={{ textDecoration:'none', fontSize:12, color:C.muted, display:'block', marginBottom:10 }}>
@@ -1121,51 +1133,52 @@ export default function TemplatesPage() {
           <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>Courriers DPE</div>
         </div>
 
-        <nav style={{ flex:1, overflowY:'auto', padding:'8px 8px' }}>
-          {templates.map(t => (
-            <div key={t.id} style={{ position:'relative', marginBottom:2 }}>
-              <button onClick={() => switchTemplate(t.id)}
-                title={t.updated_at ? `Modifié le ${new Date(t.updated_at).toLocaleDateString('fr-FR')}` : undefined}
-                style={{
-                  width:'100%', textAlign:'left', padding:'7px 30px 7px 8px', borderRadius:7,
-                  border:`1px solid ${activeId===t.id ? C.primary+'40' : 'transparent'}`,
-                  background: activeId===t.id ? 'rgba(29,158,117,0.10)' : 'transparent',
-                  color: activeId===t.id ? C.primary : C.mid,
-                  fontWeight: activeId===t.id ? 600 : 400,
-                  fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:5,
-                }}>
-                {/* Badge mode */}
-                <span style={{ fontSize:9, fontWeight:700, padding:'1px 4px', borderRadius:3, flexShrink:0,
-                  background: t.mode==='unique' ? 'rgba(217,119,6,0.15)' : 'rgba(96,165,250,0.12)',
-                  color: t.mode==='unique' ? C.gold : '#93C5FD' }}>
-                  {t.mode==='unique' ? 'T' : 'S'}
-                </span>
-                <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</span>
-                {t.is_default && <span style={{ fontSize:9, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'1px 5px', borderRadius:3, flexShrink:0 }}>défaut</span>}
-              </button>
-              {/* Bouton dupliquer */}
-              <button onClick={e => { e.stopPropagation(); duplicateTemplate(t) }}
-                title="Dupliquer ce template"
-                style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
-                  padding:'1px 5px', borderRadius:4, border:`1px solid ${C.border}`,
-                  background:'rgba(255,255,255,0.04)', color:C.dim, fontSize:12, cursor:'pointer', lineHeight:1.4 }}>
-                ⧉
-              </button>
-            </div>
-          ))}
-        </nav>
-
-        <div style={{ padding:'10px 10px', borderTop:`1px solid ${C.border}`, flexShrink:0, display:'flex', flexDirection:'column', gap:6 }}>
+        {/* Bouton Nouveau template en haut de la liste */}
+        <div style={{ padding:'8px 8px 4px' }}>
           <button onClick={createTemplate} disabled={creating}
-            style={{ width:'100%', padding:'8px', borderRadius:7, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, fontSize:12, cursor:'pointer' }}>
+            style={{ width:'100%', padding:'8px', borderRadius:7, border:`1px dashed ${C.borderl}`, background:'rgba(255,255,255,0.03)', color:C.muted, fontSize:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
             + Nouveau template
           </button>
-          <button onClick={createFromNadege} disabled={creating}
-            title="Crée un template pré-rempli avec le modèle Nadège (texte unique avec variables)"
-            style={{ width:'100%', padding:'8px', borderRadius:7, border:`1px solid rgba(217,119,6,0.3)`, background:'rgba(217,119,6,0.07)', color:C.gold, fontSize:11, cursor:'pointer' }}>
-            ✦ Modèle Nadège
-          </button>
         </div>
+
+        <nav style={{ flex:1, overflowY:'auto', padding:'4px 8px 8px' }}>
+          {templates.map(t => {
+            const isActive = activeId === t.id
+            return (
+              <div key={t.id} style={{ marginBottom:4, borderRadius:8, border:`1px solid ${isActive ? C.primary+'50' : C.border}`, background: isActive ? 'rgba(29,158,117,0.07)' : 'rgba(255,255,255,0.02)', overflow:'hidden' }}>
+                {/* Ligne nom — clic = sélectionner + aperçu */}
+                <button onClick={() => { switchTemplate(t.id); setViewMode('list') }}
+                  title={t.updated_at ? `Modifié le ${new Date(t.updated_at).toLocaleDateString('fr-FR')}` : undefined}
+                  style={{ width:'100%', textAlign:'left', padding:'7px 8px', border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
+                  <span style={{ fontSize:9, fontWeight:700, padding:'1px 4px', borderRadius:3, flexShrink:0,
+                    background: t.mode==='unique' ? 'rgba(217,119,6,0.15)' : 'rgba(96,165,250,0.12)',
+                    color: t.mode==='unique' ? C.gold : '#93C5FD' }}>
+                    {t.mode==='unique' ? 'T' : 'S'}
+                  </span>
+                  <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:13, color: isActive ? C.primary : C.mid, fontWeight: isActive ? 600 : 400 }}>
+                    {t.name}
+                  </span>
+                  {t.is_default && <span style={{ fontSize:9, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'1px 5px', borderRadius:3, flexShrink:0 }}>défaut</span>}
+                </button>
+                {/* Ligne boutons actions */}
+                <div style={{ display:'flex', gap:4, padding:'0 6px 6px', borderTop:`1px solid ${C.border}` }}>
+                  <button onClick={() => openEditor(t.id)}
+                    title="Modifier ce template"
+                    style={{ flex:1, padding:'4px 6px', borderRadius:5, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, fontSize:11, cursor:'pointer' }}>
+                    ✎ Modifier
+                  </button>
+                  <button
+                    onClick={() => deleteTemplate(t.id)}
+                    disabled={t.is_default}
+                    title={t.is_default ? 'Le template par défaut ne peut pas être supprimé' : 'Supprimer ce template'}
+                    style={{ padding:'4px 7px', borderRadius:5, border:`1px solid ${t.is_default ? C.border : 'rgba(239,68,68,0.3)'}`, background: t.is_default ? 'transparent' : 'rgba(239,68,68,0.05)', color: t.is_default ? C.dim : C.danger, fontSize:11, cursor: t.is_default ? 'not-allowed' : 'pointer', opacity: t.is_default ? 0.4 : 1 }}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </nav>
       </div>
 
       {/* ── Zone principale ───────────────────────────────────────────── */}
@@ -1173,15 +1186,45 @@ export default function TemplatesPage() {
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16, color:C.muted }}>
           <div style={{ fontSize:40 }}>📄</div>
           <div>Aucun template. Créez-en un pour commencer.</div>
-          <div style={{ display:'flex', gap:10 }}>
-            <button onClick={createTemplate}
-              style={{ padding:'10px 24px', borderRadius:8, border:'none', background:C.primary, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
-              Créer un template vide
+          <button onClick={createTemplate}
+            style={{ padding:'10px 24px', borderRadius:8, border:'none', background:C.primary, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
+            Créer un template vide
+          </button>
+        </div>
+      ) : viewMode === 'list' ? (
+        /* ── Mode liste : panneau aperçu ─────────────────────────────── */
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
+          {/* Barre haut aperçu */}
+          <div style={{ padding:'10px 20px', borderBottom:`1px solid ${C.border}`, flexShrink:0, display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ flex:1 }}>
+              <span style={{ fontWeight:700, fontSize:15, color:C.text }}>{draft.name}</span>
+              <span style={{ marginLeft:8, fontSize:11, fontWeight:700, padding:'2px 6px', borderRadius:3,
+                background: draft.mode==='unique' ? 'rgba(217,119,6,0.15)' : 'rgba(96,165,250,0.12)',
+                color: draft.mode==='unique' ? C.gold : '#93C5FD' }}>
+                {draft.mode === 'unique' ? 'Texte unique' : 'Sections'}
+              </span>
+              {draft.is_default && <span style={{ marginLeft:6, fontSize:11, background:'rgba(29,158,117,0.2)', color:C.primary, padding:'2px 7px', borderRadius:3 }}>★ Défaut</span>}
+            </div>
+            <span style={{ fontSize:11, color:C.dim }}>Aperçu avec données fictives (DPE E, appartement, Bordeaux)</span>
+            <button onClick={() => activeId && openEditor(activeId)}
+              style={{ padding:'7px 16px', borderRadius:8, border:'none', background:C.primary, color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', flexShrink:0 }}>
+              ✎ Modifier ce template
             </button>
-            <button onClick={createFromNadege}
-              style={{ padding:'10px 24px', borderRadius:8, border:`1px solid rgba(217,119,6,0.4)`, background:'rgba(217,119,6,0.1)', color:C.gold, fontSize:14, fontWeight:600, cursor:'pointer' }}>
-              ✦ Démarrer avec le modèle Nadège
-            </button>
+          </div>
+          {/* Aperçu scrollable */}
+          <div style={{ flex:1, overflowY:'auto', padding:'24px 32px', background:'rgba(255,255,255,0.02)' }}>
+            <div style={{ background:'#fff', borderRadius:10, padding:'32px 40px', boxShadow:'0 4px 24px rgba(0,0,0,0.4)', fontFamily:'Arial, sans-serif', fontSize:13, lineHeight:1.75, color:'#1A1A1A', maxWidth:700, margin:'0 auto' }}
+              dangerouslySetInnerHTML={{ __html: generatePreviewHTMLV2({
+                ...PREVIEW_BASE,
+                dpe_etiquette: 'E',
+                type_bien: 'appartement',
+                agent_nom: 'Dupont', agent_prenom: 'Jean',
+                agent_titre: 'Conseillère Immobilier',
+                agent_agence: 'Square Habitat',
+                agent_telephone: '05 56 00 00 00',
+                agent_email: 'contact@squarehabitat.fr',
+              }, draft) }}
+            />
           </div>
         </div>
       ) : (
@@ -1189,6 +1232,11 @@ export default function TemplatesPage() {
 
           {/* ── Barre du haut ── */}
           <div style={{ padding:'10px 20px', borderBottom:`1px solid ${C.border}`, flexShrink:0, display:'flex', alignItems:'center', gap:10 }}>
+            {/* Retour à la liste */}
+            <button onClick={() => setViewMode('list')}
+              style={{ padding:'5px 10px', borderRadius:7, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.03)', color:C.muted, fontSize:12, cursor:'pointer', flexShrink:0, whiteSpace:'nowrap' }}>
+              ← Liste
+            </button>
             {/* Nom du template */}
             <input
               value={draft.name}
@@ -1220,10 +1268,12 @@ export default function TemplatesPage() {
             {draft.is_default && (
               <span style={{ fontSize:11, color:C.primary, flexShrink:0 }}>★ Défaut</span>
             )}
-            <button onClick={deleteTemplate}
-              style={{ padding:'5px 10px', borderRadius:7, border:`1px solid rgba(239,68,68,0.25)`, background:'rgba(239,68,68,0.05)', color:C.danger, fontSize:11, cursor:'pointer', flexShrink:0 }}>
-              Supprimer
-            </button>
+            {!draft.is_default && (
+              <button onClick={() => activeId && deleteTemplate(activeId)}
+                style={{ padding:'5px 10px', borderRadius:7, border:`1px solid rgba(239,68,68,0.25)`, background:'rgba(239,68,68,0.05)', color:C.danger, fontSize:11, cursor:'pointer', flexShrink:0 }}>
+                Supprimer
+              </button>
+            )}
             {saveErr && <span style={{ fontSize:12, color:C.danger }}>{saveErr}</span>}
             {saveOk  && <span style={{ fontSize:12, color:C.success }}>✓ Sauvegardé</span>}
             {hasChanges && (

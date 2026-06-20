@@ -54,29 +54,37 @@ export async function GET() {
     }
   }
 
-  // ── Option A : seeder automatique pour les nouveaux utilisateurs ─────────────
+  // ── Seeder automatique pour les nouveaux utilisateurs : 2 templates par défaut ──
   if ((data ?? []).length === 0) {
-    const { data: seeded, error: seedErr } = await supabase
-      .from('lettre_templates_v2')
-      .insert({
-        commercial_id:    user.id,
-        name:             'Template Nadège',
-        is_default:       true,
-        mode:             'unique',
-        unique_text:      NADEGE_UNIQUE_TEXT,
-        logo_data:        null,
-        logo_mime:        null,
-        logo_scale_pct:   100,
-        logo_position:    'header',
-        sections_config:  DEFAULT_SECTIONS as unknown as TemplateSection[],
-        envelope_enabled: false,
-        envelope_line1:   'Monsieur Madame le Propriétaire',
-        envelope_line2:   '',
-      })
-      .select()
-      .single()
+    const baseFields = {
+      commercial_id:    user.id,
+      logo_data:        null,
+      logo_mime:        null,
+      logo_scale_pct:   100,
+      logo_position:    'header',
+      sections_config:  DEFAULT_SECTIONS as unknown as TemplateSection[],
+      envelope_enabled: false,
+      envelope_line1:   'Monsieur Madame le Propriétaire',
+      envelope_line2:   '',
+    }
 
-    if (!seedErr && seeded) return NextResponse.json({ templates: [seeded] })
+    const { data: t1 } = await supabase.from('lettre_templates_v2').insert({
+      ...baseFields,
+      name:        'Sections par défaut',
+      is_default:  true,
+      mode:        'sections',
+      unique_text: null,
+    }).select().single()
+
+    const { data: t2 } = await supabase.from('lettre_templates_v2').insert({
+      ...baseFields,
+      name:        'Template Nadège',
+      is_default:  false,
+      mode:        'unique',
+      unique_text: NADEGE_UNIQUE_TEXT,
+    }).select().single()
+
+    return NextResponse.json({ templates: [t1, t2].filter(Boolean) })
   }
 
   return NextResponse.json({ templates: data ?? [] })
