@@ -159,7 +159,13 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
       parts.push(`<div style="display:flex;justify-content:flex-end;margin:0 0 24px;"><div style="border:1px solid #c8c8c8;padding:12px 16px;font-size:12px;line-height:1.9;font-family:Arial,sans-serif;min-width:200px;max-width:260px;background:#fafafa;letter-spacing:0.02em;">${lines.map(l => `<div>${l}</div>`).join('')}</div></div>`)
     }
     parts.push(`<p style="text-align:right;font-size:12px;color:#5F5E5A;font-style:italic;">${ville ? ville + ', le ' : 'Le '}${today}</p>`)
-    const uBody = p(fillVarsHtml(template.unique_text, vars))
+    const filled = fillVarsHtml(template.unique_text, vars)
+    // Si le contenu contient déjà des balises bloc (<p>, <div>, <br>), on l'utilise tel quel
+    // dans un wrapper div ; sinon on applique le wrap <p> legacy.
+    const hasBlockTags = /<p[\s>]|<div[\s>]|<br\s*\/?>/i.test(filled)
+    const uBody = hasBlockTags
+      ? `<div style="font-size:13px;line-height:1.8;color:#1A1A1A;">${filled}</div>`
+      : p(filled)
     const ui = template.unique_image
     if (ui?.data && ui?.mime) {
       parts.push(wrapImgPreview({ data: ui.data, mime: ui.mime, position: ui.position, width_pct: ui.width_pct, valign: ui.valign }, uBody))

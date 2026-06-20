@@ -7,26 +7,8 @@ import { NextResponse } from 'next/server'
 import type { TemplateV2, TemplateSection } from '@/lib/lettres/templateEngine'
 import { DEFAULT_SECTIONS } from '@/lib/lettres/templateEngine'
 
-// ── Template Nadège — texte unique, genre-agnostique via {agentTitre} ──────────
-const NADEGE_UNIQUE_TEXT = `Madame, Monsieur,
-
-Je me permets de vous adresser ce courrier après avoir consulté les données récentes publiées par l'ADEME, indiquant la réalisation d'un Diagnostic de Performance Énergétique (DPE {dpe}) concernant {typeBien} situé {adresse}.
-
-Cette démarche est souvent liée à une réflexion ou à un projet de mise en vente. Dans ce contexte, je serais ravi(e) de pouvoir échanger avec vous et de vous proposer mon accompagnement dans les différentes étapes de votre projet immobilier.
-
-En tant que {agentTitre} au sein de {agenceNom}, je mets à votre disposition mon expertise du marché local {ctx}, ainsi que les atouts d'un réseau reconnu pour la qualité de son accompagnement et la confiance de ses clients.
-
-Qu'il s'agisse d'une simple estimation ou d'un accompagnement complet jusqu'à la vente, je reste à votre écoute pour vous conseiller au mieux.
-
-N'hésitez pas à me contacter pour toute question ou pour convenir d'un rendez-vous. Ce serait un plaisir d'échanger avec vous.
-
-Dans cette attente, je vous adresse mes salutations les plus sincères.
-
-{agentNom}
-{agentTitre} – Transaction Vente
-{agenceNom}
-📞 {agenceTel}
-✉ {agenceEmail}`
+// ── Template Nadège — texte unique, mise en page HTML soignée ────────────────
+const NADEGE_UNIQUE_TEXT = `<p style="margin:0 0 20px;">Madame, Monsieur,</p><p style="margin:0 0 13px;text-align:justify;">Je me permets de vous adresser ce courrier après avoir consulté les données publiées par l'ADEME, indiquant la réalisation d'un Diagnostic de Performance Énergétique (<strong>DPE&nbsp;{dpe}</strong>) concernant {typeBien} situé <strong>{adresse}</strong>, à <strong>{ville}</strong>.</p><p style="margin:0 0 13px;text-align:justify;">Cette démarche est souvent le signe d'une réflexion en cours — qu'il s'agisse d'un projet de mise en vente, d'une rénovation énergétique ou d'une mise en location. Dans ce contexte, je serais ravi(e) de pouvoir échanger avec vous et de vous proposer un accompagnement personnalisé.</p><p style="margin:0 0 13px;text-align:justify;">En tant que <strong>{agentTitre}</strong> au sein de <strong>{agenceNom}</strong>, je mets à votre disposition mon expertise du marché immobilier {ctx}, ainsi que les atouts d'un réseau reconnu pour la qualité de son accompagnement et la confiance de ses clients.</p><p style="margin:0 0 13px;text-align:justify;">Qu'il s'agisse d'une <strong>estimation gratuite et sans engagement</strong>, d'un accompagnement complet jusqu'à la vente ou de conseils sur les démarches de rénovation, je reste à votre écoute pour vous guider au mieux dans votre projet.</p><p style="margin:0 0 13px;text-align:justify;">N'hésitez pas à me contacter pour toute question ou pour convenir d'un rendez-vous — ce serait un réel plaisir d'échanger avec vous.</p><p style="margin:0 0 0;">Dans cette attente, veuillez agréer, Madame, Monsieur, l'expression de mes salutations distinguées.</p>`
 
 export async function GET() {
   const supabase = await createClient()
@@ -72,6 +54,14 @@ export async function GET() {
   const hasNadege        = list.some(t => t.is_locked && t.mode === 'unique')
   const noDefault        = !list.some(t => t.is_default)
   const seeded: typeof list = []
+
+  // ── Migration silencieuse : mettre à jour le unique_text des Nadège sans HTML ──
+  for (const t of list) {
+    if (t.is_locked && t.mode === 'unique' && t.unique_text && !/<p[\s>]/i.test(t.unique_text)) {
+      await supabase.from('lettre_templates_v2').update({ unique_text: NADEGE_UNIQUE_TEXT }).eq('id', t.id)
+      t.unique_text = NADEGE_UNIQUE_TEXT
+    }
+  }
 
   if (!hasPersonnalise) {
     const { data: t1 } = await supabase.from('lettre_templates_v2').insert({
