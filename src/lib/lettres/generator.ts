@@ -87,6 +87,7 @@ export interface DpeAdresseData {
   agent_telephone?:       string
   agent_email?:           string
   agent_tel_direct?:      string
+  agent_email_direct?:   string
 }
 
 // ── Textes fixes (référence DOCX + HTML) ─────────────────────────────────────

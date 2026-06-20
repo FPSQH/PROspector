@@ -21,13 +21,13 @@ export async function GET(request: Request) {
   // ── Commercial connecté ───────────────────────────────────────────────────
   let { data: commercial } = await adminDb
     .from('commerciaux')
-    .select('id, nom, prenom, telephone, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email')
+    .select('id, nom, prenom, telephone, email, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email')
     .eq('id', user.id).maybeSingle()
 
   if (!commercial) {
     const { data: asManager } = await adminDb
       .from('commerciaux')
-      .select('id, nom, prenom, telephone, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email')
+      .select('id, nom, prenom, telephone, email, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email')
       .eq('manager_id', user.id).limit(1).maybeSingle()
     commercial = asManager ?? null
   }
@@ -130,6 +130,8 @@ export async function GET(request: Request) {
       agent_agence_adresse:  commercial?.agence_adresse   ?? '',
       agent_telephone:       commercial?.agence_telephone ?? '',
       agent_email:           commercial?.agence_email     ?? '',
+      agent_email_direct:    commercial?.email            ?? '',
+
       agent_tel_direct:      commercial?.telephone        ?? '',
     }
   })

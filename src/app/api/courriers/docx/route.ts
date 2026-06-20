@@ -477,6 +477,19 @@ function buildLetterV2(letter: DpeAdresseData, commercial: any, template: Templa
   return paras
 }
 
+function fillDocxVars(html: string, commercial: any): string {
+  const agentNomFull = [commercial?.prenom, commercial?.nom].filter(Boolean).join(' ') || ''
+  return html
+    .replace(/\{agentNom\}/g,       agentNomFull)
+    .replace(/\{agentTitre\}/g,     commercial?.agent_titre      || '')
+    .replace(/\{agentTel\}/g,       commercial?.telephone        || '')
+    .replace(/\{agentEmail\}/g,     commercial?.email            || '')
+    .replace(/\{agenceNom\}/g,      commercial?.agence_nom       || '')
+    .replace(/\{agenceAdresse\}/g,  commercial?.agence_adresse   || '')
+    .replace(/\{agenceTel\}/g,      commercial?.agence_telephone || '')
+    .replace(/\{agenceEmail\}/g,    commercial?.agence_email     || '')
+}
+
 function appendSignature(paras: (Paragraph | Table)[], agentNom: string, commercial: any, template?: TemplateV2 | null) {
   const footerEnabled = template?.footer_enabled !== false
   if (!footerEnabled) return
@@ -495,7 +508,7 @@ function appendSignature(paras: (Paragraph | Table)[], agentNom: string, commerc
 
   if (template?.footer_html) {
     // Footer personnalisé
-    const footerParas = htmlToParagraphs(template.footer_html, {
+    const footerParas = htmlToParagraphs(fillDocxVars(template.footer_html, commercial), {
       logoData:  template.logo_data,
       logoMime:  template.logo_mime,
       logoW, logoH,
@@ -551,7 +564,7 @@ function buildHeader(commercial: any, template?: TemplateV2 | null): (Paragraph 
 
   if (template?.header_html) {
     // En-tête personnalisé : HTML → Paragraphs avec bordure basse
-    const paras = htmlToParagraphs(template.header_html, {
+    const paras = htmlToParagraphs(fillDocxVars(template.header_html, commercial), {
       logoData:  template.logo_data,
       logoMime:  template.logo_mime,
       logoW, logoH,
@@ -635,7 +648,7 @@ export async function POST(request: Request) {
 
   // Charger le commercial + le template v2 en parallèle
   const [{ data: commercial }, { data: templateRow }] = await Promise.all([
-    adminDb.from('commerciaux').select('id, nom, prenom, telephone, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
+    adminDb.from('commerciaux').select('id, nom, prenom, telephone, email, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
     template_id
       ? supabase.from('lettre_templates_v2').select('*').eq('id', template_id).eq('commercial_id', user.id).maybeSingle()
       : supabase.from('lettre_templates_v2').select('*').eq('commercial_id', user.id).eq('is_default', true).maybeSingle(),

@@ -5,6 +5,7 @@
 
 ALTER TABLE commerciaux
   ADD COLUMN IF NOT EXISTS telephone        TEXT,
+  ADD COLUMN IF NOT EXISTS email            TEXT,
   ADD COLUMN IF NOT EXISTS agence_nom       TEXT,
   ADD COLUMN IF NOT EXISTS agence_adresse   TEXT,
   ADD COLUMN IF NOT EXISTS agence_telephone TEXT,

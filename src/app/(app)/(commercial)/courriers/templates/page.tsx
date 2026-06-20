@@ -1204,6 +1204,17 @@ export default function TemplatesPage() {
     setDraft(prev => prev ? { ...prev, is_default: true } : prev)
   }
 
+  // ── Définir par défaut depuis la liste ───────────────────────────────────
+  const setDefaultFromList = async (id: string) => {
+    const r = await fetch(`/api/courriers/template/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_default: true }),
+    })
+    if (!r.ok) return
+    setTemplates(prev => prev.map(t => ({ ...t, is_default: t.id === id })))
+    if (activeId === id) setDraft(prev => prev ? { ...prev, is_default: true } : prev)
+  }
+
   // ── Patcher le draft ──────────────────────────────────────────────────────
   const patchDraft = useCallback((patch: Partial<TemplateV2>) => {
     setDraft(prev => prev ? { ...prev, ...patch } : prev)
@@ -1349,10 +1360,12 @@ export default function TemplatesPage() {
     ...PREVIEW_BASE, ...PREVIEW_AUDIT, dpe_etiquette: previewDpe,
     type_bien: previewType,
     agent_nom: 'Dupont', agent_prenom: 'Jean',
-    agent_titre:     'Conseillère Immobilier',
-    agent_agence:    'Square Habitat',
-    agent_telephone: '05 56 00 00 00',
-    agent_email:     'contact@squarehabitat.fr',
+    agent_titre:          'Conseillère Immobilier',
+    agent_agence:         'Square Habitat',
+    agent_telephone:      '05 56 00 00 00',
+    agent_email:          'contact@squarehabitat.fr',
+    agent_tel_direct:     '06 12 34 56 78',
+    agent_email_direct:   'jean.dupont@squarehabitat.fr',
   }
   // Génère l'aperçu depuis le template v2 (reflète vraiment les personnalisations)
   const letterHTML = draft
@@ -1430,6 +1443,13 @@ export default function TemplatesPage() {
                     style={{ flex:1, padding:'4px 6px', borderRadius:5, border:`1px solid ${C.borderl}`, background:'rgba(255,255,255,0.04)', color:C.mid, fontSize:11, cursor:'pointer' }}>
                     ✎ Modifier
                   </button>
+                  {!t.is_default && (
+                    <button onClick={() => setDefaultFromList(t.id)}
+                      title="Définir comme template par défaut"
+                      style={{ padding:'4px 6px', borderRadius:5, border:`1px solid rgba(29,158,117,0.3)`, background:'rgba(29,158,117,0.06)', color:C.primary, fontSize:11, cursor:'pointer' }}>
+                      ★
+                    </button>
+                  )}
                   <button
                     onClick={() => deleteTemplate(t.id)}
                     disabled={!!t.is_locked}
@@ -1486,6 +1506,8 @@ export default function TemplatesPage() {
                 agent_agence: 'Square Habitat',
                 agent_telephone: '05 56 00 00 00',
                 agent_email: 'contact@squarehabitat.fr',
+                agent_tel_direct: '06 12 34 56 78',
+                agent_email_direct: 'jean.dupont@squarehabitat.fr',
               }, draft) }}
             />
           </div>
@@ -1907,7 +1929,7 @@ export default function TemplatesPage() {
                 <div style={{ marginBottom:20, padding:'10px 14px', background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, borderRadius:8 }}>
                   <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Variables disponibles dans l'en-tête et le pied de page :</div>
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                    {['{logo}','{agentNom}','{agentTitre}','{agentTel}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}'].map(v => (
+                    {['{logo}','{agentNom}','{agentTitre}','{agentTel}','{agentEmail}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}'].map(v => (
                       <span key={v} style={{ fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(96,165,250,0.1)', color:'#93C5FD', border:'1px solid rgba(96,165,250,0.2)', fontFamily:'monospace' }}>{v}</span>
                     ))}
                   </div>
@@ -1963,7 +1985,7 @@ export default function TemplatesPage() {
                           value={draft.header_html}
                           onChange={html => patchDraft({ header_html: html || null })}
                           placeholder="Rédigez votre en-tête ici… ex : {logo} {agenceNom} {agentNom}"
-                          vars={['{logo}','{agentNom}','{agentTitre}','{agentTel}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
+                          vars={['{logo}','{agentNom}','{agentTitre}','{agentTel}','{agentEmail}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
                           allowImages
                         />
                       )}
@@ -2020,7 +2042,7 @@ export default function TemplatesPage() {
                           value={draft.footer_html}
                           onChange={html => patchDraft({ footer_html: html || null })}
                           placeholder="Rédigez votre signature ici… ex : {agentNom} {agentTitre} {agenceNom}"
-                          vars={['{logo}','{agentNom}','{agentTitre}','{agentTel}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
+                          vars={['{logo}','{agentNom}','{agentTitre}','{agentTel}','{agentEmail}','{agenceNom}','{agenceAdresse}','{agenceTel}','{agenceEmail}']}
                           allowImages
                         />
                       )}
