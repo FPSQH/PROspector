@@ -29,6 +29,7 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
   const agenceAdresse = data.agent_agence_adresse  ?? ''
   const agenceTel     = data.agent_telephone       ?? '05 56 00 00 00'
   const agenceEmail   = data.agent_email           ?? 'contact@squarehabitat.fr'
+  const agentTel      = data.agent_tel_direct      ?? ''
 
   const vars: Record<string, string> = {
     typeBien, ctx, dpe, ville,
@@ -37,12 +38,12 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
     cout:       data.cout_annuel  ? `${Math.round(data.cout_annuel).toLocaleString('fr-FR')} €` : '',
     ges:        data.ges_m2       ? `${data.ges_m2} kgeqCO₂/m²/an` : '',
     energie:    data.energie_principale ?? '',
-    agentNom, agentTitre, agenceNom, agenceAdresse, agenceTel, agenceEmail,
+    agentNom, agentTitre, agenceNom, agenceAdresse, agenceTel, agenceEmail, agentTel,
   }
 
   // ── Résolution des variables pour en-tête/pied de page ─────────────────────
   const headerFooterVars: Record<string, string> = {
-    agentNom, agentTitre, agenceNom, agenceAdresse, agenceTel, agenceEmail,
+    agentNom, agentTitre, agenceNom, agenceAdresse, agenceTel, agenceEmail, agentTel,
     logo: '', // sera remplacé inline plus bas
   }
 
@@ -68,6 +69,7 @@ export function generatePreviewHTMLV2(data: DpeAdresseData, template: TemplateV2
       .replace(/\{agenceAdresse\}/g, agenceAdresse)
       .replace(/\{agenceTel\}/g,     agenceTel)
       .replace(/\{agenceEmail\}/g,   agenceEmail)
+      .replace(/\{agentTel\}/g,      agentTel)
   }
 
   // ── En-tête ────────────────────────────────────────────────────────────────

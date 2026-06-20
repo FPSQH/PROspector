@@ -208,6 +208,7 @@ export const ALL_VARIABLES: VarDef[] = [
   { key: '{agenceAdresse}', label: 'Adresse de l\'agence', example: '12 Rue du Commerce, 33000 Bordeaux' },
   { key: '{agenceTel}',     label: 'Téléphone agence',     example: '05 56 00 00 00' },
   { key: '{agenceEmail}',   label: 'Email agence',         example: 'contact@squarehabitat.fr' },
+  { key: '{agentTel}',      label: 'Téléphone agent',      example: '06 12 34 56 78' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

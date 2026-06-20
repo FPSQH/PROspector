@@ -136,6 +136,7 @@ function buildVars(letter: DpeAdresseData, commercial: any): Record<string, stri
     agenceAdresse:  commercial?.agence_adresse    || '',
     agenceTel:      commercial?.agence_telephone  || '',
     agenceEmail:    commercial?.agence_email      || '',
+    agentTel:       commercial?.telephone         || '',
   }
 }
 
@@ -634,7 +635,7 @@ export async function POST(request: Request) {
 
   // Charger le commercial + le template v2 en parallèle
   const [{ data: commercial }, { data: templateRow }] = await Promise.all([
-    adminDb.from('commerciaux').select('id, nom, prenom, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
+    adminDb.from('commerciaux').select('id, nom, prenom, telephone, agent_titre, agence_nom, agence_adresse, agence_telephone, agence_email').eq('id', user.id).maybeSingle(),
     template_id
       ? supabase.from('lettre_templates_v2').select('*').eq('id', template_id).eq('commercial_id', user.id).maybeSingle()
       : supabase.from('lettre_templates_v2').select('*').eq('commercial_id', user.id).eq('is_default', true).maybeSingle(),
