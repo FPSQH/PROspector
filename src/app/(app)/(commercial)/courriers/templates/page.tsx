@@ -54,6 +54,15 @@ const TITLE_PALETTE = [
   '#EA580C','#CA8A04','#16A34A','#1A1A1A','#6B7280',
 ]
 
+// ── Presets encadrés ──────────────────────────────────────────────────────────
+const ENCADRE_PRESETS = [
+  { label: 'Info',   border: '#2563EB', bg: '#EFF6FF' },
+  { label: 'Succès', border: '#319834', bg: '#F0FAF0' },
+  { label: 'Alerte', border: '#EA580C', bg: '#FFF8F0' },
+  { label: 'Danger', border: '#CC1016', bg: '#FFF5F5' },
+  { label: 'Neutre', border: '#6B7280', bg: '#F9FAFB' },
+]
+
 // ── ID auto pour sections custom ──────────────────────────────────────────────
 function uid() { return crypto.randomUUID() }
 
@@ -69,22 +78,58 @@ interface RichEditorProps {
 }
 
 function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [showVars, setShowVars] = useState(false)
+  const ref          = useRef<HTMLDivElement>(null)
+  const savedRange   = useRef<Range | null>(null)
+  const savedEncadre = useRef<HTMLElement | null>(null)
+  const lastEmitted  = useRef('')
 
-  // Sync value → DOM uniquement quand value change de l'extérieur (pas depuis onInput)
-  const lastEmitted = useRef('')
+  const [showVars,    setShowVars]    = useState(false)
+  const [showEncadre, setShowEncadre] = useState(false)
+  const [textColor,   setTextColor]   = useState('#000000')
+  const [hlColor,     setHlColor]     = useState('#FFE066')
+  const [encadreBorder, setEncadreBorder] = useState('#2563EB')
+  const [encadreBg,     setEncadreBg]     = useState('#EFF6FF')
+  const [encadreType,   setEncadreType]   = useState<'left' | 'all'>('left')
+
+  // Sync value → DOM uniquement quand value change de l'extérieur
   useEffect(() => {
     if (!ref.current) return
-    // Si la valeur vient du parent (différente de ce qu'on a émis), on met à jour le DOM
     if (value !== lastEmitted.current) {
       ref.current.innerHTML = value
       lastEmitted.current = value
     }
   }, [value])
 
-  const exec = (cmd: string, val?: string) => {
+  // ── Sauvegarde / restauration de la sélection ────────────────────────────
+  const saveSelection = () => {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && ref.current?.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange()
+    }
+    // Détecter si le curseur est à l'intérieur d'un encadré
+    let node: Node | null = window.getSelection()?.anchorNode ?? null
+    savedEncadre.current = null
+    while (node && node !== ref.current) {
+      if (node.nodeType === 1) {
+        const el = node as HTMLElement
+        if (el.tagName === 'DIV' && el.style.padding && (el.style.borderLeft || el.style.border)) {
+          savedEncadre.current = el; break
+        }
+      }
+      node = node.parentNode
+    }
+  }
+
+  const restoreSelection = () => {
     ref.current?.focus()
+    const sel = window.getSelection()
+    if (savedRange.current && sel) {
+      try { sel.removeAllRanges(); sel.addRange(savedRange.current) } catch {}
+    }
+  }
+
+  const exec = (cmd: string, val?: string) => {
+    restoreSelection()
     document.execCommand(cmd, false, val)
     emit()
   }
@@ -96,7 +141,7 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
   }
 
   const insertVar = (v: string) => {
-    ref.current?.focus()
+    restoreSelection()
     const sel = window.getSelection()
     if (sel && sel.rangeCount > 0) {
       const range = sel.getRangeAt(0)
@@ -111,6 +156,71 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
     emit()
   }
 
+  // ── Encadrés ─────────────────────────────────────────────────────────────
+  const encadreCss = (border: string, bg: string, type: 'left' | 'all') =>
+    type === 'left'
+      ? `border-left:4px solid ${border};padding:10px 12px 10px 14px;background:${bg};border-radius:0 6px 6px 0;margin:8px 0;`
+      : `border:2px solid ${border};padding:12px 14px;background:${bg};border-radius:6px;margin:8px 0;`
+
+  const insertEncadre = () => {
+    restoreSelection()
+    const sel = window.getSelection()
+    const div = document.createElement('div')
+    div.setAttribute('style', encadreCss(encadreBorder, encadreBg, encadreType))
+    div.innerHTML = 'Votre texte ici…'
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0)
+      range.collapse(false)
+      range.insertNode(div)
+      const after = document.createElement('p')
+      after.innerHTML = '&nbsp;'
+      div.after(after)
+      const nr = document.createRange()
+      nr.selectNodeContents(div)
+      nr.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(nr)
+    } else {
+      ref.current!.appendChild(div)
+    }
+    emit()
+    setShowEncadre(false)
+  }
+
+  const modifyEncadre = () => {
+    if (!savedEncadre.current) return
+    savedEncadre.current.setAttribute('style', encadreCss(encadreBorder, encadreBg, encadreType))
+    emit()
+    setShowEncadre(false)
+  }
+
+  const deleteEncadre = () => {
+    const el = savedEncadre.current
+    if (!el?.parentNode) return
+    while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el)
+    el.parentNode.removeChild(el)
+    savedEncadre.current = null
+    emit()
+    setShowEncadre(false)
+  }
+
+  const openEncadrePanel = (e: React.MouseEvent) => {
+    e.preventDefault()
+    // Pré-remplir depuis l'encadré existant si le curseur y est
+    if (savedEncadre.current) {
+      const el = savedEncadre.current
+      const bl = el.style.borderLeft || ''
+      const m  = bl.match(/(#[0-9a-fA-F]{3,8})/)
+      if (m) setEncadreBorder(m[1])
+      const bg = el.style.background || el.style.backgroundColor || ''
+      if (bg && bg !== 'transparent') setEncadreBg(bg)
+      const hasFullBorder = !!(el.style.border && !el.style.borderLeft)
+      setEncadreType(hasFullBorder ? 'all' : 'left')
+    }
+    setShowEncadre(v => !v)
+  }
+
+  // ── Styles toolbar ───────────────────────────────────────────────────────
   const toolbar: React.CSSProperties = {
     display: 'flex', gap: 4, flexWrap: 'wrap', padding: '6px 8px',
     background: C.card2, borderRadius: '6px 6px 0 0',
@@ -122,32 +232,56 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
     color: active ? C.primary : C.mid, fontSize: 12, cursor: 'pointer',
     fontFamily: 'inherit',
   })
+  const sep = <div style={{ width: 1, background: C.border, margin: '2px 2px' }} />
+
+  // Bouton color picker (label overlay sur un div visuellement stylé)
+  const ColorBtn = ({ color, onPick, label, title }: { color: string; onPick: (c: string) => void; label: React.ReactNode; title: string }) => (
+    <label style={{ ...btn(), cursor: 'pointer', position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', padding: '2px 5px', minWidth: 28 }} title={title}>
+      {label}
+      <div style={{ width: '100%', height: 3, background: color, borderRadius: 2, marginTop: 2 }} />
+      <input type="color" value={color}
+        onMouseDown={() => saveSelection()}
+        onChange={e => { onPick(e.target.value); restoreSelection(); document.execCommand(title.includes('Surlign') ? 'hiliteColor' : 'foreColor', false, e.target.value); emit() }}
+        style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer', border: 'none', padding: 0 }}
+      />
+    </label>
+  )
+
+  const inEncadre = !!savedEncadre.current
 
   return (
     <div style={{ border: `1px solid ${C.borderl}`, borderRadius: 8, overflow: 'visible' }}>
-      {/* Toolbar */}
+      {/* ── Toolbar ── */}
       <div style={toolbar}>
         <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('bold')}} title="Gras"><strong>B</strong></button>
         <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('italic')}} title="Italique"><em>I</em></button>
         <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('underline')}} title="Souligné"><u>S</u></button>
-        <div style={{ width: 1, background: C.border, margin: '2px 2px' }} />
+        {sep}
         {/* Couleur texte */}
-        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-          <input type="color" defaultValue="#1A1A1A"
-            onChange={e => { exec('foreColor', e.target.value) }}
-            style={{ width: 24, height: 24, padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 4 }}
-            title="Couleur du texte"
-          />
-        </div>
-        {/* Taille de police */}
+        <ColorBtn color={textColor} title="Couleur du texte"
+          label={<span style={{ fontSize: 12, fontWeight: 700, color: C.mid }}>A</span>}
+          onPick={setTextColor}
+        />
+        {/* Surlignage */}
+        <ColorBtn color={hlColor} title="Surligner le texte"
+          label={<span style={{ fontSize: 11, fontWeight: 700, background: hlColor, color: '#1A1A1A', padding: '0 2px', borderRadius: 2 }}>ab</span>}
+          onPick={setHlColor}
+        />
+        {sep}
+        {/* Taille */}
         <select style={{ ...btn(), padding: '3px 5px' }} defaultValue="3"
-          onChange={e => exec('fontSize', e.target.value)} title="Taille">
+          onChange={e => exec('fontSize', e.target.value)} title="Taille de police">
           {[['1','8pt'],['2','10pt'],['3','12pt'],['4','14pt'],['5','18pt'],['6','24pt']].map(([v,l]) =>
             <option key={v} value={v}>{l}</option>
           )}
         </select>
-        <div style={{ width: 1, background: C.border, margin: '2px 2px' }} />
-        <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('removeFormat')}} title="Effacer la mise en forme" >✕ Style</button>
+        {sep}
+        <button style={btn()} onMouseDown={e=>{e.preventDefault();exec('removeFormat')}} title="Effacer la mise en forme">✕ Style</button>
+        {sep}
+        {/* Encadré */}
+        <button style={btn(showEncadre)} onMouseDown={openEncadrePanel} title="Insérer / modifier un encadré">
+          ▣ Encadré
+        </button>
         {/* Variables */}
         {vars.length > 0 && (
           <button style={{ ...btn(showVars), marginLeft: 4 }} onMouseDown={e=>{e.preventDefault();setShowVars(v=>!v)}}>
@@ -156,7 +290,85 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
         )}
       </div>
 
-      {/* Variables dropdown */}
+      {/* ── Panel encadré ── */}
+      {showEncadre && (
+        <div style={{ padding: '10px 12px', background: '#16161A', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 11, color: C.mid, marginBottom: 8, fontWeight: 600 }}>
+            {inEncadre ? '▣ Modifier l\'encadré (curseur à l\'intérieur)' : '▣ Insérer un encadré à la position du curseur'}
+          </div>
+          {/* Presets */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+            {ENCADRE_PRESETS.map(p => (
+              <button key={p.label}
+                onMouseDown={e => { e.preventDefault(); setEncadreBorder(p.border); setEncadreBg(p.bg) }}
+                style={{ padding: '3px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  border: `2px solid ${p.border}`, background: p.bg, color: '#1A1A1A',
+                  outline: encadreBorder === p.border && encadreBg === p.bg ? `2px solid ${C.primary}` : 'none',
+                  outlineOffset: 1 }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Custom colors + type */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.muted, cursor: 'pointer' }}>
+              Bordure :
+              <input type="color" value={encadreBorder} onChange={e => setEncadreBorder(e.target.value)}
+                style={{ width: 22, height: 20, padding: 0, border: 'none', borderRadius: 3, cursor: 'pointer' }} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.muted, cursor: 'pointer' }}>
+              Fond :
+              <input type="color" value={encadreBg} onChange={e => setEncadreBg(e.target.value)}
+                style={{ width: 22, height: 20, padding: 0, border: 'none', borderRadius: 3, cursor: 'pointer' }} />
+            </label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([['left', '◧ Bord gauche'], ['all', '□ Contour complet']] as const).map(([t, l]) => (
+                <button key={t} onMouseDown={e => { e.preventDefault(); setEncadreType(t) }}
+                  style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
+                    border: `1px solid ${encadreType === t ? C.primary : C.border}`,
+                    background: encadreType === t ? 'rgba(29,158,117,0.1)' : 'transparent',
+                    color: encadreType === t ? C.primary : C.muted }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Aperçu */}
+          <div style={{
+            marginBottom: 10,
+            ...(encadreType === 'left'
+              ? { borderLeft: `4px solid ${encadreBorder}`, paddingLeft: 12, paddingTop: 6, paddingBottom: 6 }
+              : { border: `2px solid ${encadreBorder}`, padding: '6px 12px' }),
+            background: encadreBg, borderRadius: encadreType === 'left' ? '0 4px 4px 0' : 4,
+            fontSize: 11, color: '#333',
+          }}>
+            Aperçu de l'encadré
+          </div>
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onMouseDown={e => { e.preventDefault(); insertEncadre() }}
+              style={{ padding: '4px 12px', borderRadius: 5, border: 'none', background: C.primary, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              + Insérer
+            </button>
+            {inEncadre && <>
+              <button onMouseDown={e => { e.preventDefault(); modifyEncadre() }}
+                style={{ padding: '4px 12px', borderRadius: 5, border: `1px solid ${C.borderl}`, background: 'rgba(255,255,255,0.06)', color: C.mid, fontSize: 11, cursor: 'pointer' }}>
+                ✎ Appliquer
+              </button>
+              <button onMouseDown={e => { e.preventDefault(); deleteEncadre() }}
+                style={{ padding: '4px 12px', borderRadius: 5, border: `1px solid rgba(239,68,68,0.3)`, background: 'rgba(239,68,68,0.05)', color: C.danger, fontSize: 11, cursor: 'pointer' }}>
+                ✕ Supprimer l'encadré
+              </button>
+            </>}
+            <button onMouseDown={e => { e.preventDefault(); setShowEncadre(false) }}
+              style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 5, border: `1px solid ${C.border}`, background: 'transparent', color: C.dim, fontSize: 11, cursor: 'pointer' }}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Variables dropdown ── */}
       {showVars && vars.length > 0 && (
         <div style={{ padding: '8px 10px', background: '#1A1A1E', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {vars.map(v => {
@@ -174,12 +386,15 @@ function RichEditor({ value, onChange, placeholder, vars = [] }: RichEditorProps
         </div>
       )}
 
-      {/* Zone éditable — pas de dangerouslySetInnerHTML, géré par useEffect */}
+      {/* ── Zone éditable ── */}
       <div
         ref={ref}
         contentEditable
         suppressContentEditableWarning
         onInput={emit}
+        onMouseUp={saveSelection}
+        onKeyUp={saveSelection}
+        onSelect={saveSelection}
         data-placeholder={placeholder}
         style={{
           minHeight: 100, padding: '10px 12px',
