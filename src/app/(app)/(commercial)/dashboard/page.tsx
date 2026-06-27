@@ -1,4 +1,5 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import PeriodeSelector    from './PeriodeSelector'
@@ -379,17 +380,19 @@ export default async function DashboardPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Supporte la délégation manager→commercial
+  const uid = await getEffectiveCommercialId()
+
   const { data: commercial } = await supabase
-    .from('commerciaux').select('*').eq('id', user.id).single()
+    .from('commerciaux').select('*').eq('id', uid).single()
   if (!commercial) redirect('/login')
 
   const { data: communes } = await supabase
     .from('communes').select('id, nom, code_insee, chargee_at')
-    .eq('commercial_id', commercial.id)
+    .eq('commercial_id', uid)
   if (!communes || communes.length === 0) redirect('/onboarding')
 
   const communesInsee = communes.map((c: any) => String(c.code_insee))
-  const uid = user.id
 
   // ── Sélecteur période CRM ──────────────────────────────────────────────
   const PERIODES_VALIDES = ['mois', 'annee', 'tout']
@@ -475,6 +478,9 @@ export default async function DashboardPage({
     lastMonthSessionsRes,
     // ── Contacts avec zone_id pour répartition ──
     contactsZoneRes,
+
+    // ── Sessions DPE (sans zone) pour boitage DPE ──
+    dpeSessionsRes,
   ] = await Promise.all([
     supabase.from('zones_prospection')
       .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
@@ -524,6 +530,13 @@ export default async function DashboardPage({
       .select('id, adresse_id, adresses(zone_id)')
       .eq('commercial_id', uid)
       .neq('statut_pipeline', 'perdu'),
+
+    // Sessions DPE réalisées (zone_id = null) — pour le comptage DPE boîtés
+    supabase.from('sessions_prospection')
+      .select('id')
+      .eq('commercial_id', uid)
+      .eq('type_session', 'dpe')
+      .eq('statut', 'realisee'),
   ])
 
   const zones            = zonesRes.data ?? []
@@ -536,6 +549,7 @@ export default async function DashboardPage({
   const nbAdresses       = nbAdressesRes.count ?? 0
   const lastMonthSessions  = lastMonthSessionsRes.data ?? []
   const contactsZone       = contactsZoneRes.data ?? []
+  const dpeSessions        = dpeSessionsRes.data ?? []
 
   // ══════════════════════════════════════════════════════════════════════════
   // INTERACTIONS VIA adminDb
@@ -703,12 +717,16 @@ export default async function DashboardPage({
 
   const BOITAGE_ACTIONS = ['courrier_depose', 'courrier', 'boite', 'flyer_depose']
 
+  // Sessions zonées + sessions DPE (sans zone) pour le boitage
+  const dpeSessionIds = dpeSessions.map((s: any) => s.id)
+  const allBoitageSessionIds = [...allZonedSessionIds, ...dpeSessionIds]
+
   let dpeBoites = 0
-  if (allZonedSessionIds.length > 0 && dpeAdresseIdSet.size > 0) {
+  if (allBoitageSessionIds.length > 0 && dpeAdresseIdSet.size > 0) {
     let boitageQuery = adminDb
       .from('interactions')
       .select('adresse_id')
-      .in('session_id', allZonedSessionIds)
+      .in('session_id', allBoitageSessionIds)
       .in('action', BOITAGE_ACTIONS)
     if (dpeDateDebut) {
       boitageQuery = boitageQuery.gte('created_at', dpeDateDebut) as any
