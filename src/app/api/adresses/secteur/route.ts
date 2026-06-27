@@ -21,24 +21,26 @@ export async function GET() {
 
   const codesInsee = communes.map((c: any) => c.code_insee)
 
-  // Charger toutes les adresses avec pagination
-  const adresses: any[] = []
-  const batchSize = 5
-  for (let i = 0; i < codesInsee.length; i += batchSize) {
-    const batch = codesInsee.slice(i, i + batchSize)
-    let from = 0
-    while (true) {
-      const { data, error } = await supabase
-        .from('adresses')
-        .select('id, lat, lon, type_bien, prospectable, zone_id, batiment_groupe_id')
-        .in('code_insee', batch)
-        .range(from, from + 999)
-      if (error || !data || data.length === 0) break
-      adresses.push(...data)
-      if (data.length < 1000) break
-      from += 1000
-    }
-  }
+  // Charger toutes les adresses en parallèle par commune
+  const adressesByCommune = await Promise.all(
+    codesInsee.map(async (code: string) => {
+      const rows: any[] = []
+      let from = 0
+      while (true) {
+        const { data, error } = await supabase
+          .from('adresses')
+          .select('id, lat, lon, type_bien, prospectable, zone_id, batiment_groupe_id')
+          .eq('code_insee', code)
+          .range(from, from + 999)
+        if (error || !data || data.length === 0) break
+        rows.push(...data)
+        if (data.length < 1000) break
+        from += 1000
+      }
+      return rows
+    })
+  )
+  const adresses = adressesByCommune.flat()
 
   if (!adresses.length) return NextResponse.json({ adresses: [] })
 

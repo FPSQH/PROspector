@@ -39,14 +39,15 @@ export async function GET() {
       .gte('date_session', firstOfMonth)
       .lte('date_session', today),
 
-    // Dernière session réalisée par zone
+    // Dernière session réalisée par zone (limite raisonnable pour éviter de tout charger)
     supabase
       .from('sessions_prospection')
       .select('zone_id, date_session')
       .eq('commercial_id', user.id)
       .in('zone_id', zoneIds)
       .eq('statut', 'realisee')
-      .order('date_session', { ascending: false }),
+      .order('date_session', { ascending: false })
+      .limit(zoneIds.length * 10),
 
     // Contacts rattachés à la zone
     supabase
@@ -97,13 +98,19 @@ export async function GET() {
   const dpeMap: Record<string, number> = {}
   if (allAdresseIds.length > 0) {
     const adminDb = createAdminClient()
+    const batches: string[][] = []
     for (let i = 0; i < allAdresseIds.length; i += 500) {
-      const batch = allAdresseIds.slice(i, i + 500)
-      const { data: dpes } = await adminDb
+      batches.push(allAdresseIds.slice(i, i + 500))
+    }
+    const dpeResults = await Promise.all(
+      batches.map(batch => adminDb
         .from('dpe_logement')
         .select('adresse_id')
         .in('adresse_id', batch)
         .gte('date_etablissement', twoMonthsAgo)
+      )
+    )
+    for (const { data: dpes } of dpeResults) {
       for (const d of (dpes ?? [])) {
         const zoneId = adresseToZone[d.adresse_id]
         if (zoneId) dpeMap[zoneId] = (dpeMap[zoneId] ?? 0) + 1
@@ -134,5 +141,7 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ stats })
+  return NextResponse.json({ stats }, {
+    headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+  })
 }

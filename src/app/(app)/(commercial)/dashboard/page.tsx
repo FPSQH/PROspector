@@ -1,4 +1,5 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { getEffectiveCommercialId } from '@/lib/delegation'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import PeriodeSelector    from './PeriodeSelector'
@@ -379,17 +380,19 @@ export default async function DashboardPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Supporte la délégation manager→commercial
+  const uid = await getEffectiveCommercialId()
+
   const { data: commercial } = await supabase
-    .from('commerciaux').select('*').eq('id', user.id).single()
+    .from('commerciaux').select('*').eq('id', uid).single()
   if (!commercial) redirect('/login')
 
   const { data: communes } = await supabase
     .from('communes').select('id, nom, code_insee, chargee_at')
-    .eq('commercial_id', commercial.id)
+    .eq('commercial_id', uid)
   if (!communes || communes.length === 0) redirect('/onboarding')
 
   const communesInsee = communes.map((c: any) => String(c.code_insee))
-  const uid = user.id
 
   // ── Sélecteur période CRM ──────────────────────────────────────────────
   const PERIODES_VALIDES = ['mois', 'annee', 'tout']
@@ -475,6 +478,9 @@ export default async function DashboardPage({
     lastMonthSessionsRes,
     // ── Contacts avec zone_id pour répartition ──
     contactsZoneRes,
+
+    // ── Sessions DPE (sans zone) pour boitage DPE ──
+    dpeSessionsRes,
   ] = await Promise.all([
     supabase.from('zones_prospection')
       .select('id, nom, numero, couleur, nb_prospectables, nb_adresses, nb_logements_sociaux, statut')
@@ -524,6 +530,13 @@ export default async function DashboardPage({
       .select('id, adresse_id, adresses(zone_id)')
       .eq('commercial_id', uid)
       .neq('statut_pipeline', 'perdu'),
+
+    // Sessions DPE réalisées (zone_id = null) — pour le comptage DPE boîtés
+    supabase.from('sessions_prospection')
+      .select('id')
+      .eq('commercial_id', uid)
+      .eq('type_session', 'dpe')
+      .eq('statut', 'realisee'),
   ])
 
   const zones            = zonesRes.data ?? []
@@ -536,6 +549,7 @@ export default async function DashboardPage({
   const nbAdresses       = nbAdressesRes.count ?? 0
   const lastMonthSessions  = lastMonthSessionsRes.data ?? []
   const contactsZone       = contactsZoneRes.data ?? []
+  const dpeSessions        = dpeSessionsRes.data ?? []
 
   // ══════════════════════════════════════════════════════════════════════════
   // INTERACTIONS VIA adminDb
@@ -639,30 +653,56 @@ export default async function DashboardPage({
   const dpeMaisonTotal  = (dpeMaisonTotalRes as any)?.count ?? 0
   const dpeAppartTotal  = (dpeAppartTotalRes as any)?.count ?? 0
 
-  // ── DPE zone/hors zone : JOIN direct dpe_logement → adresses(zone_id) ──
-  const dpeZoneRows: { type_batiment: string | null; zone_id: string | null }[] = []
-  {
-    let dpePageFrom = 0
-    while (true) {
-      let q = adminDb
-        .from('dpe_logement')
-        .select('type_batiment, adresses(zone_id)')
-        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
-        .not('etiquette_dpe', 'is', null)
-        .range(dpePageFrom, dpePageFrom + 999)
-      if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
-      const { data: batch } = await q
-      if (!batch?.length) break
-      for (const d of batch) {
-        dpeZoneRows.push({
-          type_batiment: (d as any).type_batiment ?? null,
-          zone_id:       (d as any).adresses?.zone_id ?? null,
-        })
+  // ── DPE zone/hors zone + adresses boîtées : deux boucles en parallèle ──
+  const codesFiltres = communesInsee.length > 0 ? communesInsee : ['__none__']
+
+  const [dpeZoneRows, dpeAdresseIdsRaw] = await Promise.all([
+    (async (): Promise<{ type_batiment: string | null; zone_id: string | null }[]> => {
+      const rows: { type_batiment: string | null; zone_id: string | null }[] = []
+      let from = 0
+      while (true) {
+        let q = adminDb
+          .from('dpe_logement')
+          .select('type_batiment, adresses(zone_id)')
+          .in('code_insee', codesFiltres)
+          .not('etiquette_dpe', 'is', null)
+          .range(from, from + 999)
+        if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
+        const { data: batch } = await q
+        if (!batch?.length) break
+        for (const d of batch) {
+          rows.push({
+            type_batiment: (d as any).type_batiment ?? null,
+            zone_id:       (d as any).adresses?.zone_id ?? null,
+          })
+        }
+        if (batch.length < 1000) break
+        from += 1000
       }
-      if (batch.length < 1000) break
-      dpePageFrom += 1000
-    }
-  }
+      return rows
+    })(),
+    (async (): Promise<string[]> => {
+      const ids: string[] = []
+      let from = 0
+      while (true) {
+        let q = adminDb
+          .from('dpe_logement')
+          .select('adresse_id')
+          .in('code_insee', codesFiltres)
+          .not('adresse_id', 'is', null)
+          .range(from, from + 999)
+        if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
+        const { data: batch } = await q
+        if (!batch?.length) break
+        ids.push(...batch.map((d: any) => d.adresse_id).filter(Boolean))
+        if (batch.length < 1000) break
+        from += 1000
+      }
+      return ids
+    })(),
+  ])
+
+  const dpeAdresseIdSet = new Set(dpeAdresseIdsRaw)
 
   const dpeInZoneRows    = dpeZoneRows.filter(d => d.zone_id && zoneIds.includes(d.zone_id))
   const dpeHorsZoneRows  = dpeZoneRows.filter(d => !d.zone_id || !zoneIds.includes(d.zone_id))
@@ -675,35 +715,18 @@ export default async function DashboardPage({
   const dpeHorsZoneAppart = dpeHorsZoneRows.filter(d => d.type_batiment !== 'maison' && d.type_batiment != null).length
   const dpeHorsZoneTotal  = dpeHorsZoneRows.length
 
-  // ── DPE boîtés : adresses DPE ayant reçu un boitage ─────────────────────
-  const dpeAdresseIds: string[] = []
-  {
-    let q2From = 0
-    while (true) {
-      let q2 = adminDb
-        .from('dpe_logement')
-        .select('adresse_id')
-        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
-        .not('adresse_id', 'is', null)
-        .range(q2From, q2From + 999)
-      if (dpeDateDebut) q2 = (q2 as any).gte('date_etablissement', dpeDateDebut)
-      const { data: batch } = await q2
-      if (!batch?.length) break
-      dpeAdresseIds.push(...batch.map((d: any) => d.adresse_id).filter(Boolean))
-      if (batch.length < 1000) break
-      q2From += 1000
-    }
-  }
-  const dpeAdresseIdSet = new Set(dpeAdresseIds)
-
   const BOITAGE_ACTIONS = ['courrier_depose', 'courrier', 'boite', 'flyer_depose']
 
+  // Sessions zonées + sessions DPE (sans zone) pour le boitage
+  const dpeSessionIds = dpeSessions.map((s: any) => s.id)
+  const allBoitageSessionIds = [...allZonedSessionIds, ...dpeSessionIds]
+
   let dpeBoites = 0
-  if (allZonedSessionIds.length > 0 && dpeAdresseIdSet.size > 0) {
+  if (allBoitageSessionIds.length > 0 && dpeAdresseIdSet.size > 0) {
     let boitageQuery = adminDb
       .from('interactions')
       .select('adresse_id')
-      .in('session_id', allZonedSessionIds)
+      .in('session_id', allBoitageSessionIds)
       .in('action', BOITAGE_ACTIONS)
     if (dpeDateDebut) {
       boitageQuery = boitageQuery.gte('created_at', dpeDateDebut) as any

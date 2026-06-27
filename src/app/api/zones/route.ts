@@ -47,7 +47,9 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ zones: zonesData, nb_adresses_total: nbAdressesTotal })
+  return NextResponse.json({ zones: zonesData, nb_adresses_total: nbAdressesTotal }, {
+    headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+  })
 }
 
 // POST /api/zones — créer une zone manuellement depuis l'éditeur

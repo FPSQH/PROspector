@@ -30,6 +30,8 @@ export async function GET(req: Request) {
   const recherche    = searchParams.get('recherche')    ?? ''
   const type_contact = searchParams.get('type_contact') ?? ''
   const zone_id      = searchParams.get('zone_id')      ?? ''
+  const limit        = Math.min(parseInt(searchParams.get('limit')  ?? '200', 10), 500)
+  const offset       = Math.max(parseInt(searchParams.get('offset') ?? '0',   10), 0)
 
   let query = supabase
     .from('contacts')
@@ -52,9 +54,9 @@ export async function GET(req: Request) {
   if (type_contact) query = query.eq('type_contact', type_contact)
   if (recherche)    query = query.or(`nom.ilike.%${recherche}%,prenom.ilike.%${recherche}%,notes.ilike.%${recherche}%`)
 
-  const { data, error } = await query
+  const { data, error } = await query.range(offset, offset + limit - 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ contacts: data ?? [] })
+  return NextResponse.json({ contacts: data ?? [], limit, offset })
 }
 
 export async function POST(req: Request) {

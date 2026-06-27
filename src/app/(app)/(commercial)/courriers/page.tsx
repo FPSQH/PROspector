@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { generateLetterHTML } from '@/lib/lettres/generator'
 import type { DpeAdresseData } from '@/lib/lettres/generator'
@@ -45,8 +44,9 @@ export default function CourriersPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list'|'map'|'detail'>('list')
   const mapRef    = useRef<HTMLDivElement>(null)
-  const mapInst   = useRef<maplibregl.Map | null>(null)
-  const markers   = useRef<maplibregl.Marker[]>([])
+  const mapInst   = useRef<any>(null)
+  const markers   = useRef<any[]>([])
+  const mglRef    = useRef<any>(null)
   const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
@@ -137,38 +137,44 @@ export default function CourriersPage() {
   // ── Init carte ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || mapInst.current) return
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: {
-        version: 8 as const,
-        sources: {
-          osm: {
-            type: 'raster' as const,
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '© OpenStreetMap contributors',
-          }
+    let destroyed = false
+    import('maplibre-gl').then(({ default: mgl }) => {
+      if (destroyed || !mapRef.current) return
+      mglRef.current = mgl
+      const map = new mgl.Map({
+        container: mapRef.current,
+        style: {
+          version: 8 as const,
+          sources: {
+            osm: {
+              type: 'raster' as const,
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: '© OpenStreetMap contributors',
+            }
+          },
+          layers: [{ id: 'osm-tiles', type: 'raster' as const, source: 'osm' }],
         },
-        layers: [{ id: 'osm-tiles', type: 'raster' as const, source: 'osm' }],
-      },
-      center: [-3.0, 48.5],
-      zoom: 10,
+        center: [-3.0, 48.5],
+        zoom: 10,
+      })
+      map.addControl(new mgl.NavigationControl(), 'top-right')
+      mapInst.current = map
+      map.on('load', () => setMapReady(true))
     })
-    map.addControl(new maplibregl.NavigationControl(), 'top-right')
-    mapInst.current = map
-    map.on('load', () => setMapReady(true))
-    return () => { map.remove(); mapInst.current = null }
+    return () => { destroyed = true; if (mapInst.current) { mapInst.current.remove(); mapInst.current = null } }
   }, [])
 
   // ── Mettre à jour les marqueurs ───────────────────────────────────────────────
   useEffect(() => {
+    const mgl = mglRef.current
     const map = mapInst.current
-    if (!map || !map.loaded()) return
+    if (!mgl || !map || !map.loaded()) return
     markers.current.forEach(m => m.remove())
     markers.current = []
     const filtered = getFiltered()
     if (!filtered.length) return
-    const bounds = new maplibregl.LngLatBounds()
+    const bounds = new mgl.LngLatBounds()
     for (const a of filtered) {
       if (!a.lat || !a.lon) continue
       const dpe = (a.dpe_etiquette ?? '?').toUpperCase()
@@ -180,7 +186,7 @@ export default function CourriersPage() {
       </svg>`
       el.style.cssText = 'cursor:pointer;width:28px;height:36px'
       el.addEventListener('click', () => { setSelected(a) })
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      const marker = new mgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([a.lon, a.lat])
         .addTo(map)
       markers.current.push(marker)
