@@ -92,6 +92,7 @@ export async function GET(_req: Request, { params }: Params) {
     .select('adresse_id, date_etablissement, etiquette_dpe, has_audit, audit_n')
     .in('adresse_id', adresseIds)
     .order('date_etablissement', { ascending: false })
+    .limit(adresseIds.length * 5)
 
   for (const d of (dpes ?? [])) {
     if (!dpeMap[d.adresse_id]) {

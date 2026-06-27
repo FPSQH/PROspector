@@ -639,30 +639,56 @@ export default async function DashboardPage({
   const dpeMaisonTotal  = (dpeMaisonTotalRes as any)?.count ?? 0
   const dpeAppartTotal  = (dpeAppartTotalRes as any)?.count ?? 0
 
-  // ── DPE zone/hors zone : JOIN direct dpe_logement → adresses(zone_id) ──
-  const dpeZoneRows: { type_batiment: string | null; zone_id: string | null }[] = []
-  {
-    let dpePageFrom = 0
-    while (true) {
-      let q = adminDb
-        .from('dpe_logement')
-        .select('type_batiment, adresses(zone_id)')
-        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
-        .not('etiquette_dpe', 'is', null)
-        .range(dpePageFrom, dpePageFrom + 999)
-      if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
-      const { data: batch } = await q
-      if (!batch?.length) break
-      for (const d of batch) {
-        dpeZoneRows.push({
-          type_batiment: (d as any).type_batiment ?? null,
-          zone_id:       (d as any).adresses?.zone_id ?? null,
-        })
+  // ── DPE zone/hors zone + adresses boîtées : deux boucles en parallèle ──
+  const codesFiltres = communesInsee.length > 0 ? communesInsee : ['__none__']
+
+  const [dpeZoneRows, dpeAdresseIdsRaw] = await Promise.all([
+    (async (): Promise<{ type_batiment: string | null; zone_id: string | null }[]> => {
+      const rows: { type_batiment: string | null; zone_id: string | null }[] = []
+      let from = 0
+      while (true) {
+        let q = adminDb
+          .from('dpe_logement')
+          .select('type_batiment, adresses(zone_id)')
+          .in('code_insee', codesFiltres)
+          .not('etiquette_dpe', 'is', null)
+          .range(from, from + 999)
+        if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
+        const { data: batch } = await q
+        if (!batch?.length) break
+        for (const d of batch) {
+          rows.push({
+            type_batiment: (d as any).type_batiment ?? null,
+            zone_id:       (d as any).adresses?.zone_id ?? null,
+          })
+        }
+        if (batch.length < 1000) break
+        from += 1000
       }
-      if (batch.length < 1000) break
-      dpePageFrom += 1000
-    }
-  }
+      return rows
+    })(),
+    (async (): Promise<string[]> => {
+      const ids: string[] = []
+      let from = 0
+      while (true) {
+        let q = adminDb
+          .from('dpe_logement')
+          .select('adresse_id')
+          .in('code_insee', codesFiltres)
+          .not('adresse_id', 'is', null)
+          .range(from, from + 999)
+        if (dpeDateDebut) q = (q as any).gte('date_etablissement', dpeDateDebut)
+        const { data: batch } = await q
+        if (!batch?.length) break
+        ids.push(...batch.map((d: any) => d.adresse_id).filter(Boolean))
+        if (batch.length < 1000) break
+        from += 1000
+      }
+      return ids
+    })(),
+  ])
+
+  const dpeAdresseIdSet = new Set(dpeAdresseIdsRaw)
 
   const dpeInZoneRows    = dpeZoneRows.filter(d => d.zone_id && zoneIds.includes(d.zone_id))
   const dpeHorsZoneRows  = dpeZoneRows.filter(d => !d.zone_id || !zoneIds.includes(d.zone_id))
@@ -674,27 +700,6 @@ export default async function DashboardPage({
   const dpeHorsZoneMaison = dpeHorsZoneRows.filter(d => d.type_batiment === 'maison').length
   const dpeHorsZoneAppart = dpeHorsZoneRows.filter(d => d.type_batiment !== 'maison' && d.type_batiment != null).length
   const dpeHorsZoneTotal  = dpeHorsZoneRows.length
-
-  // ── DPE boîtés : adresses DPE ayant reçu un boitage ─────────────────────
-  const dpeAdresseIds: string[] = []
-  {
-    let q2From = 0
-    while (true) {
-      let q2 = adminDb
-        .from('dpe_logement')
-        .select('adresse_id')
-        .in('code_insee', communesInsee.length > 0 ? communesInsee : ['__none__'])
-        .not('adresse_id', 'is', null)
-        .range(q2From, q2From + 999)
-      if (dpeDateDebut) q2 = (q2 as any).gte('date_etablissement', dpeDateDebut)
-      const { data: batch } = await q2
-      if (!batch?.length) break
-      dpeAdresseIds.push(...batch.map((d: any) => d.adresse_id).filter(Boolean))
-      if (batch.length < 1000) break
-      q2From += 1000
-    }
-  }
-  const dpeAdresseIdSet = new Set(dpeAdresseIds)
 
   const BOITAGE_ACTIONS = ['courrier_depose', 'courrier', 'boite', 'flyer_depose']
 

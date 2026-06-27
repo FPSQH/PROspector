@@ -221,6 +221,8 @@ export default function TerrainPage() {
     } finally { setLoading(false) }
   }
 
+  const handleNoopClick = useCallback(() => {}, [])
+
   const handleStartSession = async (zone: Zone) => {
     setLoading(true)
     try {
@@ -719,7 +721,7 @@ export default function TerrainPage() {
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
               {preLoading
                 ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
-                : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} contacts={preContacts} defaultShowDpe={true} />}
+                : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={handleNoopClick} contacts={preContacts} defaultShowDpe={true} />}
             </div>
             {/* Panneau stats */}
             <div style={{ width: 340, background: C.card, borderLeft: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -770,7 +772,7 @@ export default function TerrainPage() {
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {preLoading
             ? <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontSize: '0.875rem', color: C.muted }}>Chargement…</div>
-            : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={() => {}} contacts={preContacts} defaultShowDpe={true} />}
+            : <TerrainMap adresses={preAdressesForMap} zonePolygon={null} prochaineAdresseId={null} onAdresseClick={handleNoopClick} contacts={preContacts} defaultShowDpe={true} />}
         </div>
 
         {/* Bouton démarrer */}
