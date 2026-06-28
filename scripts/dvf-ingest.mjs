@@ -248,7 +248,27 @@ let totalProcessed = 0
 let totalUpserted  = 0
 
 for (const year of ANNEES) {
-  const { processed, upserted } = await ingestYear(year, depts)
+  let processed = 0
+  let upserted  = 0
+  let attempt   = 0
+  const maxAttempts = 4
+  while (attempt < maxAttempts) {
+    attempt++
+    try {
+      ;({ processed, upserted } = await ingestYear(year, depts))
+      break
+    } catch (err) {
+      const isRetryable = err?.code === 'UND_ERR_SOCKET' || err?.message?.includes('other side closed') || err?.message?.includes('socket')
+      if (isRetryable && attempt < maxAttempts) {
+        const delay = 2 ** attempt * 1000
+        console.warn(`[${year}] Erreur réseau (tentative ${attempt}/${maxAttempts}) : ${err.message} — retry dans ${delay / 1000}s`)
+        await new Promise(r => setTimeout(r, delay))
+      } else {
+        console.error(`[${year}] Échec définitif après ${attempt} tentative(s) : ${err.message}`)
+        break
+      }
+    }
+  }
   totalProcessed += processed
   totalUpserted  += upserted
 }
