@@ -191,9 +191,14 @@ async function ingestYear(year, depts) {
   const gunzip     = createGunzip()
   source.pipe(gunzip)
   const rl         = createInterface({ input: gunzip, crlfDelay: Infinity })
-  // .pipe() ne propage pas les erreurs — forwarder depuis chaque étape vers rl
-  source.on('error', err => rl.destroy(err))
-  gunzip.on('error', err => rl.destroy(err))
+
+  // .pipe() ne propage pas les erreurs. On capture l'erreur dans une variable,
+  // on ferme rl proprement (rl.close() termine le for-await sans throw),
+  // puis on throw après la boucle pour activer le retry.
+  let streamError = null
+  source.on('error', err => { streamError = err; rl.close() })
+  gunzip.on('error', err => { streamError = err; rl.close() })
+  rl.on('error', () => {}) // éviter "Unhandled 'error' event" si rl.destroy est appelé ailleurs
 
   let headers   = null
   let batch     = []
@@ -231,6 +236,8 @@ async function ingestYear(year, depts) {
       }
     }
   }
+
+  if (streamError) throw streamError  // active le retry dans la boucle principale
 
   if (batch.length > 0) {
     await upsertBatch(batch)
