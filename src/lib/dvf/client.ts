@@ -1,61 +1,26 @@
 // ============================================================
-// Client DVF – API tabulaire data.gouv.fr
-//
-// Dataset : DVF géolocalisé (Etalab/Cerema)
-// Différent du DVF brut DGFiP (TXT.ZIP) — ce dataset publie des CSV
-// avec coordonnées GPS, queryables via tabular-api.
+// Client DVF – fichiers CSV statiques Etalab
 //
 // Source : https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/
-// Les resource_id sont les UUID des fichiers CSV dans ce dataset.
-// Configurable par année via DVF_RESOURCE_IDS (JSON) ou DVF_RESOURCE_ID (unique).
+// Les CSV sont servis par commune :
+//   https://files.data.gouv.fr/geo-dvf/latest/csv/{dept}/communes/{code_commune}.csv
+//
+// Pas de tabular-api (le fichier unique 3.5Go est trop lourd).
+// Un fichier par commune = requêtes ciblées et rapides.
 // ============================================================
 
-export const DVF_BASE = 'https://tabular-api.data.gouv.fr/api'
+export const DVF_GEO_BASE = 'https://files.data.gouv.fr/geo-dvf/latest/csv'
 
-// Resource IDs par année — à mettre à jour depuis data.gouv.fr
-// Format JSON : '{"2025":"uuid-2025","2024":"uuid-2024",...}'
-function loadResourceIds(): Record<string, string> {
-  const envJson = process.env.DVF_RESOURCE_IDS
-  if (envJson) {
-    try { return JSON.parse(envJson) } catch (_) {}
-  }
-  // Fallback : resource_id unique (rétrocompat)
-  const single = process.env.DVF_RESOURCE_ID
-  if (single) return { default: single }
-  return {}
+// Extrait le code département depuis le code INSEE commune
+export function getDeptCode(codeCommune: string): string {
+  // DOM-TOM : 971, 972, 973, 974, 976
+  if (codeCommune.startsWith('97')) return codeCommune.slice(0, 3)
+  return codeCommune.slice(0, 2)
 }
 
-export const DVF_RESOURCE_IDS = loadResourceIds()
-
-// Pour un appel simple (un seul resource_id), utiliser le plus récent disponible
-export function getDefaultResourceId(): string {
-  const ids = Object.values(DVF_RESOURCE_IDS)
-  return ids[0] ?? ''
+export function getDvfCommuneUrl(codeCommune: string): string {
+  return `${DVF_GEO_BASE}/${getDeptCode(codeCommune)}/communes/${codeCommune}.csv`
 }
-
-export const DVF_PAGE_SIZE = 1000
-
-// Colonnes à récupérer (subset pertinent pour PROspector)
-export const DVF_COLUMNS = [
-  'id_mutation',
-  'date_mutation',
-  'nature_mutation',
-  'valeur_fonciere',
-  'adresse_numero',
-  'adresse_suffixe',
-  'adresse_nom_voie',
-  'code_postal',
-  'code_commune',
-  'nom_commune',
-  'code_departement',
-  'id_parcelle',
-  'type_local',
-  'surface_reelle_bati',
-  'nombre_pieces_principales',
-  'surface_terrain',
-  'longitude',
-  'latitude',
-].join(',')
 
 export interface DvfRow {
   id_mutation: string
@@ -78,63 +43,78 @@ export interface DvfRow {
   latitude: string | null
 }
 
-export interface DvfPageResult {
-  rows: DvfRow[]
-  nextPage: number | null
-  totalRows: number | null
+// Parse un CSV texte en tableau de DvfRow
+// Le CSV Etalab utilise la virgule comme séparateur, UTF-8, première ligne = headers
+function parseCsv(text: string): DvfRow[] {
+  const lines = text.split('\n')
+  if (lines.length < 2) return []
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+
+  const rows: DvfRow[] = []
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    // Découpage simple : les valeurs DVF ne contiennent pas de virgules dans les chaînes
+    const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, '') || null)
+
+    const obj: Record<string, string | null> = {}
+    headers.forEach((h, idx) => { obj[h] = values[idx] ?? null })
+
+    if (!obj['id_mutation'] || !obj['date_mutation']) continue
+
+    rows.push({
+      id_mutation:               obj['id_mutation'] ?? '',
+      date_mutation:             obj['date_mutation'] ?? '',
+      nature_mutation:           obj['nature_mutation'],
+      valeur_fonciere:           obj['valeur_fonciere'],
+      adresse_numero:            obj['adresse_numero'],
+      adresse_suffixe:           obj['adresse_suffixe'],
+      adresse_nom_voie:          obj['adresse_nom_voie'],
+      code_postal:               obj['code_postal'],
+      code_commune:              obj['code_commune'] ?? '',
+      nom_commune:               obj['nom_commune'],
+      code_departement:          obj['code_departement'],
+      id_parcelle:               obj['id_parcelle'],
+      type_local:                obj['type_local'],
+      surface_reelle_bati:       obj['surface_reelle_bati'],
+      nombre_pieces_principales: obj['nombre_pieces_principales'],
+      surface_terrain:           obj['surface_terrain'],
+      longitude:                 obj['longitude'],
+      latitude:                  obj['latitude'],
+    })
+  }
+  return rows
 }
 
-// Récupère une page de mutations DVF filtrée par code_commune
-export async function fetchDvfPage(
-  codeCommune: string,
-  page = 1,
-  resourceId?: string
-): Promise<DvfPageResult> {
-  const rid = resourceId ?? getDefaultResourceId()
-  if (!rid) throw new Error('Aucun DVF_RESOURCE_ID configuré — voir variables d\'environnement Vercel')
-  const url = new URL(`${DVF_BASE}/resources/${rid}/data/`)
-  url.searchParams.set('code_commune__exact', codeCommune)
-  url.searchParams.set('page', String(page))
-  url.searchParams.set('page_size', String(DVF_PAGE_SIZE))
-  // Ne pas passer 'columns' — non garanti supporté par la tabular-api
+// Télécharge et parse le CSV DVF pour une commune
+export async function fetchDvfCommune(codeCommune: string): Promise<{ rows: DvfRow[]; totalRows: number }> {
+  const url = getDvfCommuneUrl(codeCommune)
 
-  const resp = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(30_000),
+  const resp = await fetch(url, {
+    headers: { Accept: 'text/csv,text/plain,*/*' },
+    signal: AbortSignal.timeout(60_000), // fichiers potentiellement lourds
   })
 
+  if (resp.status === 404) {
+    // Commune sans mutations enregistrées — c'est normal pour les petites communes
+    return { rows: [], totalRows: 0 }
+  }
+
   if (!resp.ok) {
-    // Récupérer le corps de l'erreur pour diagnostic
-    let detail = ''
-    try { detail = await resp.text() } catch (_) {}
-    throw new Error(`DVF API HTTP ${resp.status} pour commune ${codeCommune} — ${detail.slice(0, 300)}`)
+    throw new Error(`DVF HTTP ${resp.status} pour commune ${codeCommune} (${url})`)
   }
 
-  const data = await resp.json()
-
-  // La tabular-api renvoie { data: [...], meta: { page, page_size, total } }
-  // Certaines versions renvoient { results: [...], next, count } (format DRF)
-  const rows: DvfRow[] = data.data ?? data.results ?? []
-  const meta = data.meta ?? {}
-  const total: number | null = meta.total ?? data.count ?? null
-  const currentPage: number = meta.page ?? page
-  const pageSize: number = meta.page_size ?? DVF_PAGE_SIZE
-
-  let nextPage: number | null = null
-  if (data.next) {
-    // Format DRF : URL next fournie directement
-    nextPage = currentPage + 1
-  } else if (total !== null && currentPage * pageSize < total) {
-    nextPage = currentPage + 1
-  }
-
-  return { rows, nextPage, totalRows: total }
+  const text = await resp.text()
+  const rows = parseCsv(text)
+  return { rows, totalRows: rows.length }
 }
 
 // Convertit une ligne brute DVF en objet typé pour l'upsert Supabase
 export function normalizeDvfRow(r: DvfRow) {
   const parseNum = (v: string | null) =>
-    v !== null && v !== '' ? parseFloat(v.replace(',', '.')) : null
+    v !== null && v !== '' ? parseFloat(v) : null
   const parseInt2 = (v: string | null) =>
     v !== null && v !== '' ? parseInt(v, 10) : null
 

@@ -1,19 +1,16 @@
 // ============================================================
 // POST /api/dvf/ingest
 //
-// Ingestion des mutations DVF pour une commune donnée.
-// Pagine automatiquement l'API tabulaire data.gouv.fr et
-// upsert les résultats dans dvf_mutations.
+// Ingestion des mutations DVF pour une commune depuis les CSV
+// statiques Etalab : files.data.gouv.fr/geo-dvf/latest/csv/
 //
-// Body  : { code_insee: string, page?: number }
-// Retourne : { nb_upserted, next_page, total_rows, has_more, code_commune }
-//
-// Appel récursif : si has_more=true, relancer avec page=next_page.
+// Body    : { code_insee: string }
+// Retourne: { nb_upserted, total_rows, code_commune }
 // ============================================================
 
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { fetchDvfPage, normalizeDvfRow } from '@/lib/dvf/client'
+import { fetchDvfCommune, normalizeDvfRow } from '@/lib/dvf/client'
 
 const CRON_SECRET = process.env.CRON_SECRET ?? '05091974'
 
@@ -24,7 +21,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 export async function POST(req: Request) {
-  // Auth : session utilisateur OU appel cron interne
   const cronHeader = req.headers.get('x-cron-secret')
   if (cronHeader !== CRON_SECRET) {
     const supabase = await createClient()
@@ -34,32 +30,30 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null)
   const codeInsee: string | undefined = body?.code_insee
-  const page: number = body?.page ?? 1
+  if (!codeInsee) return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
 
-  if (!codeInsee) {
-    return NextResponse.json({ error: 'code_insee requis' }, { status: 400 })
-  }
-
-  // ── Appel API DVF tabulaire ───────────────────────────────────────
-  let rows, nextPage, totalRows
+  // ── Téléchargement + parsing du CSV commune ───────────────────────
+  let rows, totalRows
   try {
-    ;({ rows, nextPage, totalRows } = await fetchDvfPage(codeInsee, page))
+    ;({ rows, totalRows } = await fetchDvfCommune(codeInsee))
   } catch (err: any) {
-    return NextResponse.json({ error: `API DVF: ${err.message}` }, { status: 502 })
+    return NextResponse.json({ error: `DVF: ${err.message}` }, { status: 502 })
   }
 
   if (rows.length === 0) {
-    return NextResponse.json({
-      nb_upserted: 0, next_page: null, total_rows: totalRows, has_more: false, code_commune: codeInsee,
-    })
+    await createAdminClient()
+      .from('communes')
+      .update({ derniere_verif_dvf: new Date().toISOString(), nb_dvf: 0 })
+      .eq('code_insee', codeInsee)
+    return NextResponse.json({ nb_upserted: 0, total_rows: 0, code_commune: codeInsee })
   }
 
-  // ── Normalisation + filtrage lignes valides ───────────────────────
+  // ── Normalisation ─────────────────────────────────────────────────
   const toUpsert = rows
     .map(normalizeDvfRow)
     .filter(r => r.id_mutation && r.code_commune && r.date_mutation)
 
-  // ── Upsert en base par batch de 200 ──────────────────────────────
+  // ── Upsert par batch de 200 ───────────────────────────────────────
   const adminDb = createAdminClient()
   let nbUpserted = 0
 
@@ -71,35 +65,20 @@ export async function POST(req: Request) {
         ignoreDuplicates: false,
         count: 'exact',
       })
-
-    if (error) {
-      console.error('[DVF] upsert error:', error.message)
-    } else {
-      nbUpserted += count ?? batch.length
-    }
+    if (error) console.error('[DVF ingest] upsert error:', error.message)
+    else nbUpserted += count ?? batch.length
   }
 
-  // ── Mise à jour commune si dernière page ──────────────────────────
-  if (nextPage === null) {
-    const { count: total } = await adminDb
-      .from('dvf_mutations')
-      .select('id', { count: 'exact', head: true })
-      .eq('code_commune', codeInsee)
+  // ── Mise à jour commune ───────────────────────────────────────────
+  const { count: total } = await adminDb
+    .from('dvf_mutations')
+    .select('id', { count: 'exact', head: true })
+    .eq('code_commune', codeInsee)
 
-    await adminDb
-      .from('communes')
-      .update({
-        derniere_verif_dvf: new Date().toISOString(),
-        nb_dvf: total ?? 0,
-      })
-      .eq('code_insee', codeInsee)
-  }
+  await adminDb
+    .from('communes')
+    .update({ derniere_verif_dvf: new Date().toISOString(), nb_dvf: total ?? 0 })
+    .eq('code_insee', codeInsee)
 
-  return NextResponse.json({
-    nb_upserted: nbUpserted,
-    next_page: nextPage,
-    total_rows: totalRows,
-    has_more: nextPage !== null,
-    code_commune: codeInsee,
-  })
+  return NextResponse.json({ nb_upserted: nbUpserted, total_rows: totalRows, code_commune: codeInsee })
 }
