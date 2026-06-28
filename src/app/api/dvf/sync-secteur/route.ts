@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     has_more: boolean
     next_page: number | null
   }> = {}
-  const communesEnErreur: string[] = []
+  const communesEnErreur: { code: string; erreur: string }[] = []
 
   // Ingestion séquentielle pour ne pas surcharger l'API DVF
   // (max 20 communes → séquentiel acceptable)
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
       }
     } catch (err: any) {
       console.error(`[DVF sync] commune ${commune.code_insee}:`, err.message)
-      communesEnErreur.push(commune.code_insee)
+      communesEnErreur.push({ code: commune.code_insee, erreur: err.message ?? String(err) })
     }
   }
 
