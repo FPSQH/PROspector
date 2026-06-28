@@ -1,0 +1,41 @@
+name: DVF – Ingestion données
+
+on:
+  # Mise à jour annuelle : chaque 1er janvier à 3h UTC (DVF publie les données N-1 en avril)
+  schedule:
+    - cron: '0 3 1 1 *'
+
+  # Déclenchement manuel : nouvel utilisateur dans un nouveau département, ou rattrapage
+  workflow_dispatch:
+    inputs:
+      departements:
+        description: 'Codes département séparés par virgule (ex: 22,56) ou "all" pour tous les départements en base'
+        required: false
+        default: 'all'
+      annees:
+        description: 'Années séparées par virgule (ex: 2023,2024) ou "all" pour 2019→présent'
+        required: false
+        default: 'all'
+
+jobs:
+  ingest:
+    name: Ingestion DVF
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lancer l'ingestion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DEPARTEMENTS: ${{ inputs.departements || 'all' }}
+          ANNEES: ${{ inputs.annees || 'all' }}
+        run: node scripts/dvf-ingest.mjs
