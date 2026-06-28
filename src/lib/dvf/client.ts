@@ -1,20 +1,37 @@
 // ============================================================
 // Client DVF – API tabulaire data.gouv.fr
 //
-// Dataset : DVF géolocalisé (DGFiP / Etalab)
-// Doc     : https://tabular-api.data.gouv.fr/api/doc
+// Dataset : DVF géolocalisé (Etalab/Cerema)
+// Différent du DVF brut DGFiP (TXT.ZIP) — ce dataset publie des CSV
+// avec coordonnées GPS, queryables via tabular-api.
 //
-// Le resource_id correspond au fichier CSV du dataset DVF géolocalisé
-// sur data.gouv.fr. À mettre à jour via DVF_RESOURCE_ID si le dataset
-// est republié avec un nouvel identifiant.
+// Source : https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/
+// Les resource_id sont les UUID des fichiers CSV dans ce dataset.
+// Configurable par année via DVF_RESOURCE_IDS (JSON) ou DVF_RESOURCE_ID (unique).
 // ============================================================
 
 export const DVF_BASE = 'https://tabular-api.data.gouv.fr/api'
 
-// Resource ID du dataset DVF géolocalisé (toutes années, toute France)
-// Source : https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/
-export const DVF_RESOURCE_ID =
-  process.env.DVF_RESOURCE_ID ?? '90a98de0-f562-4328-aa16-fe0dd1dca60f'
+// Resource IDs par année — à mettre à jour depuis data.gouv.fr
+// Format JSON : '{"2025":"uuid-2025","2024":"uuid-2024",...}'
+function loadResourceIds(): Record<string, string> {
+  const envJson = process.env.DVF_RESOURCE_IDS
+  if (envJson) {
+    try { return JSON.parse(envJson) } catch (_) {}
+  }
+  // Fallback : resource_id unique (rétrocompat)
+  const single = process.env.DVF_RESOURCE_ID
+  if (single) return { default: single }
+  return {}
+}
+
+export const DVF_RESOURCE_IDS = loadResourceIds()
+
+// Pour un appel simple (un seul resource_id), utiliser le plus récent disponible
+export function getDefaultResourceId(): string {
+  const ids = Object.values(DVF_RESOURCE_IDS)
+  return ids[0] ?? ''
+}
 
 export const DVF_PAGE_SIZE = 1000
 
@@ -70,9 +87,12 @@ export interface DvfPageResult {
 // Récupère une page de mutations DVF filtrée par code_commune
 export async function fetchDvfPage(
   codeCommune: string,
-  page = 1
+  page = 1,
+  resourceId?: string
 ): Promise<DvfPageResult> {
-  const url = new URL(`${DVF_BASE}/resources/${DVF_RESOURCE_ID}/data/`)
+  const rid = resourceId ?? getDefaultResourceId()
+  if (!rid) throw new Error('Aucun DVF_RESOURCE_ID configuré — voir variables d\'environnement Vercel')
+  const url = new URL(`${DVF_BASE}/resources/${rid}/data/`)
   url.searchParams.set('code_commune__exact', codeCommune)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(DVF_PAGE_SIZE))
