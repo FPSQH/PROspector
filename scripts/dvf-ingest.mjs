@@ -104,6 +104,16 @@ async function getRequiredDepts() {
 }
 
 async function upsertBatch(rows) {
+  // Dédupliquer par clé composite — le CSV DVF peut avoir des doublons
+  // dans un même batch, ce que PostgreSQL ON CONFLICT DO UPDATE rejette
+  const seen = new Set()
+  const deduped = rows.filter(r => {
+    const key = `${r.id_mutation}|${r.type_local ?? ''}|${r.id_parcelle ?? ''}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
   const resp = await sbFetch(
     '/dvf_mutations?on_conflict=id_mutation,type_local,id_parcelle',
     {
@@ -112,7 +122,7 @@ async function upsertBatch(rows) {
         'Content-Type': 'application/json',
         Prefer: 'resolution=merge-duplicates,return=minimal',
       },
-      body: JSON.stringify(rows),
+      body: JSON.stringify(deduped),
     }
   )
   if (!resp.ok) {
