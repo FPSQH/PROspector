@@ -269,8 +269,9 @@ for (const year of ANNEES) {
       ;({ processed, upserted } = await ingestYear(year, depts))
       break
     } catch (err) {
-      const isRetryable = err?.code === 'UND_ERR_SOCKET' || err?.message?.includes('other side closed') || err?.message?.includes('socket')
-      if (isRetryable && attempt < maxAttempts) {
+      // Retenter toutes les erreurs réseau (terminated, socket closed, etc.)
+      // Les erreurs 404/HTTP sont gérées dans ingestYear et ne throw pas
+      if (attempt < maxAttempts) {
         const delay = 2 ** attempt * 1000
         console.warn(`[${year}] Erreur réseau (tentative ${attempt}/${maxAttempts}) : ${err.message} — retry dans ${delay / 1000}s`)
         await new Promise(r => setTimeout(r, delay))
