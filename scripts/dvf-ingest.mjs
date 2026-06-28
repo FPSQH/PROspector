@@ -187,9 +187,11 @@ async function ingestYear(year, depts) {
     return { processed: 0, upserted: 0 }
   }
 
-  const gunzip    = createGunzip()
+  const gunzip     = createGunzip()
   const nodeStream = Readable.fromWeb(resp.body).pipe(gunzip)
-  const rl        = createInterface({ input: nodeStream, crlfDelay: Infinity })
+  const rl         = createInterface({ input: nodeStream, crlfDelay: Infinity })
+  // .pipe() ne propage pas les erreurs — les forwarder à rl pour que for-await throw
+  nodeStream.on('error', err => rl.destroy(err))
 
   let headers   = null
   let batch     = []
