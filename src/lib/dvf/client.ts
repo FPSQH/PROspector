@@ -76,29 +76,37 @@ export async function fetchDvfPage(
   url.searchParams.set('code_commune__exact', codeCommune)
   url.searchParams.set('page', String(page))
   url.searchParams.set('page_size', String(DVF_PAGE_SIZE))
-  url.searchParams.set('columns', DVF_COLUMNS)
+  // Ne pas passer 'columns' — non garanti supporté par la tabular-api
 
   const resp = await fetch(url.toString(), {
     headers: { Accept: 'application/json' },
-    // 30s timeout via signal
     signal: AbortSignal.timeout(30_000),
   })
 
   if (!resp.ok) {
-    throw new Error(`DVF API HTTP ${resp.status} pour commune ${codeCommune}`)
+    // Récupérer le corps de l'erreur pour diagnostic
+    let detail = ''
+    try { detail = await resp.text() } catch (_) {}
+    throw new Error(`DVF API HTTP ${resp.status} pour commune ${codeCommune} — ${detail.slice(0, 300)}`)
   }
 
   const data = await resp.json()
 
   // La tabular-api renvoie { data: [...], meta: { page, page_size, total } }
-  const rows: DvfRow[] = data.data ?? []
+  // Certaines versions renvoient { results: [...], next, count } (format DRF)
+  const rows: DvfRow[] = data.data ?? data.results ?? []
   const meta = data.meta ?? {}
-  const total: number | null = meta.total ?? null
+  const total: number | null = meta.total ?? data.count ?? null
   const currentPage: number = meta.page ?? page
   const pageSize: number = meta.page_size ?? DVF_PAGE_SIZE
 
-  const nextPage =
-    total !== null && currentPage * pageSize < total ? currentPage + 1 : null
+  let nextPage: number | null = null
+  if (data.next) {
+    // Format DRF : URL next fournie directement
+    nextPage = currentPage + 1
+  } else if (total !== null && currentPage * pageSize < total) {
+    nextPage = currentPage + 1
+  }
 
   return { rows, nextPage, totalRows: total }
 }
