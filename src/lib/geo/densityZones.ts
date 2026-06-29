@@ -18,6 +18,7 @@ export interface GeoPoint {
   type_bien?:          string          // BAN (fallback)
   type_batiment_bdnb?: string          // BDNB: 'maison' | 'appartement' | 'tertiaire' | null
   has_dpe?:            boolean         // Présence d'un DPE (signal de transaction, toute note)
+  dvf_score?:          number          // Nb transactions DVF à proximité (pré-calculé)
   // Champs legacy conservés pour compatibilité
   dpe_chauds?:         number
   dpe_tiedes?:         number
@@ -71,7 +72,8 @@ export function generateDensityZones(
   nb_zones:       number,
   capacite_cible: number,
   rayon_metres:   number,
-  dpeParams:      DpeParams = { poids: 0, seuil_inclusion: 10, poids_collectif: 0 }
+  dpeParams:      DpeParams = { poids: 0, seuil_inclusion: 10, poids_collectif: 0 },
+  dvfPoids:       number    = 0
 ): { zones: DensityZone[]; horsZone: GeoPoint[] } {
 
   if (points.length === 0) return { zones: [], horsZone: [] }
@@ -202,7 +204,10 @@ export function generateDensityZones(
       // Signal DPE : présence d'un DPE, toute note confondue (indicateur de transaction)
       const nbDpe = inR.filter(p => p.has_dpe || (p.dpe_chauds ?? 0) > 0 || (p.dpe_tiedes ?? 0) > 0).length
 
-      const score = (inR.length > 0 ? densite : 0.5) + nbDpe * dpeParams.poids
+      // Signal DVF : adresses avec au moins 1 transaction DVF à proximité
+      const nbDvf = dvfPoids > 0 ? inR.filter(p => (p.dvf_score ?? 0) > 0).length : 0
+
+      const score = (inR.length > 0 ? densite : 0.5) + nbDpe * dpeParams.poids + nbDvf * dvfPoids
 
       if (score > bestScore) {
         bestScore  = score

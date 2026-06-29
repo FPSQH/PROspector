@@ -12,6 +12,7 @@ interface ZoneConfig {
   dpe_poids:                 number
   dpe_seuil_inclusion:       number
   poids_collectif:           number
+  dvf_poids:                 number
 }
 
 export type { ZoneConfig }
@@ -26,6 +27,7 @@ export const DEFAULT_CONFIG: ZoneConfig = {
   dpe_poids:                 1.0,
   dpe_seuil_inclusion:       10,
   poids_collectif:           0,
+  dvf_poids:                 0,
 }
 
 interface Props {
@@ -94,6 +96,14 @@ function dpePoidLabel(poids: number): string {
   return                   'Dominant — DPE determinant dans la selection'
 }
 
+function dvfPoidLabel(poids: number): string {
+  if (poids === 0)  return 'DVF ignore — selection par densite uniquement'
+  if (poids <= 0.5) return 'Faible — volume complement a la densite'
+  if (poids <= 1.0) return 'Equilibre — densite et volume DVF a egalite'
+  if (poids <= 1.5) return 'Fort — volume DVF priorise sur la densite'
+  return                   'Dominant — zones a fort marche selectionnees en priorite'
+}
+
 export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props) {
   const [prequalLoading, setPrequalLoading] = useState(false)
   const [prequalResult, setPrequalResult]   = useState<{ nb_qualifiees: number; nb_adresses_distinctes: number } | null>(null)
@@ -114,6 +124,8 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
   const zonesRecommandees = Math.ceil(nbAdressesTotal / config.capacite_cible)
   const dpeActif = config.dpe_poids > 0
   const dpePct   = Math.round(config.dpe_poids * 100)
+  const dvfActif = config.dvf_poids > 0
+  const dvfPct   = Math.round(config.dvf_poids * 100)
 
   return (
     <div onClick={onCancel} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:20 }}>
@@ -226,6 +238,31 @@ export function ZoneConfigModal({ nbAdressesTotal, onConfirm, onCancel }: Props)
                   </p>
                 </div>
               </>
+            )}
+          </div>
+
+          {/* Signal DVF */}
+          <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:20 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <p style={{ fontSize:11, fontWeight:700, color: C.dim, letterSpacing:'0.08em', textTransform:'uppercase', margin:0 }}>
+                Signal DVF
+              </p>
+              {dvfActif && <span style={{ fontSize:11, background:'rgba(59,130,246,0.12)', color:'#60A5FA', borderRadius:20, padding:'2px 8px', fontWeight:600 }}>Actif</span>}
+            </div>
+            <p style={{ fontSize:12, color: C.mid, marginBottom:16, lineHeight:1.55 }}>
+              Priorise les zones où le <strong style={{ color: C.text }}>volume de ventes est élevé</strong> (données DVF, 4 dernières années).
+              Un marché actif = plus de propriétaires susceptibles de vendre.
+              Nécessite que les données DVF soient ingérées pour vos communes.
+            </p>
+            <Slider label="Poids du signal DVF" value={dvfPct} min={0} max={200} step={10} unit="%"
+              onChange={v => set('dvf_poids', v / 100)} hint={dvfPoidLabel(config.dvf_poids)} />
+            {dvfActif && (
+              <div style={{ background:'rgba(59,130,246,0.08)', border:'1px solid rgba(59,130,246,0.25)', borderRadius:10, padding:'12px 14px', marginBottom:20 }}>
+                <p style={{ margin:0, fontSize:12, color:'#60A5FA', lineHeight:1.6 }}>
+                  Chaque maison = <strong>1 pt</strong> &bull; Chaque adresse avec une vente DVF à proximité = <strong>+{dvfPct}%</strong>.
+                  Les zones à fort volume de transactions sont sélectionnées en priorité.
+                </p>
+              </div>
             )}
           </div>
 
