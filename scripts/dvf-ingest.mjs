@@ -248,6 +248,36 @@ async function ingestYear(year, depts) {
   return { processed, upserted }
 }
 
+// ── Qualification type_bien ───────────────────────────────────
+
+async function enrichTypesBiens(depts) {
+  console.log('\nQualification type_bien des adresses...')
+
+  const deptFilter = [...depts].map(d => `code_insee.like.${d}%`).join(',')
+  const resp = await sbFetch(`/communes?or=(${deptFilter})&select=code_insee`)
+  if (!resp.ok) {
+    console.error('Impossible de récupérer les communes pour enrichissement')
+    return
+  }
+
+  const communes = await resp.json()
+  const codes = communes.map(c => c.code_insee)
+
+  const rpcResp = await sbFetch('/rpc/enrich_adresses_type_bien', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_codes_insee: codes }),
+  })
+
+  if (rpcResp.ok) {
+    const updated = await rpcResp.json()
+    console.log(`${updated} adresses qualifiées`)
+  } else {
+    const text = await rpcResp.text()
+    console.error(`Erreur enrichissement type_bien: ${rpcResp.status} ${text.slice(0, 200)}`)
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────
 
 const depts = await getRequiredDepts()
@@ -286,6 +316,7 @@ for (const year of ANNEES) {
 }
 
 await updateCommuneStats(depts)
+await enrichTypesBiens(depts)
 
 console.log('\n' + '─'.repeat(60))
 console.log(`✓ Import terminé`)
