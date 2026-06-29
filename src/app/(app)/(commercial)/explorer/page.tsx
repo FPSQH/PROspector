@@ -17,25 +17,39 @@ const C = {
 interface Address {
   id: string; lat: number; lon: number
   type_bien: string; zone_id: string | null
-  zones_prospection?: any
 }
 
-interface Zone { id: string; nom: string; couleur: string; polygone_geojson?: any }
+interface Zone {
+  id: string; nom: string; couleur: string; polygone_geojson?: any
+}
+
+interface DvfPoint {
+  id: string; lat: number; lon: number
+  valeur_fonciere: number; type_local: string
+}
+
+interface DvfParcelle {
+  id_parcelle: string; nb_ventes: number; valeur_moyenne: number
+}
 
 const DEFAULT_FILTERS: FilterState = {
   type_bien: '', zone_id: '', has_dpe: false, has_dvf: false,
-  statut: '', showZones: true, showDpe: false, showDvf: false,
+  statut: '', showZones: true, showDpe: false, showDvf: false, showCadastre: false,
 }
 
 export default function ExplorerPage() {
   const [addresses, setAddresses]     = useState<Address[]>([])
   const [zones, setZones]             = useState<Zone[]>([])
+  const [dvfPoints, setDvfPoints]     = useState<DvfPoint[]>([])
+  const [dvfParcelles, setDvfParcelles] = useState<DvfParcelle[]>([])
   const [filters, setFilters]         = useState<FilterState>(DEFAULT_FILTERS)
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [loading, setLoading]         = useState(false)
+  const [loadingDvf, setLoadingDvf]   = useState(false)
   const [count, setCount]             = useState(0)
   const [showFilters, setShowFilters] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dvfLoadedRef = useRef(false)
 
   // Fetch zones once
   useEffect(() => {
@@ -45,6 +59,21 @@ export default function ExplorerPage() {
       .catch(() => {})
   }, [])
 
+  // Fetch DVF data when heatmap or cadastre is enabled (once)
+  useEffect(() => {
+    if ((!filters.showDvf && !filters.showCadastre) || dvfLoadedRef.current) return
+    dvfLoadedRef.current = true
+    setLoadingDvf(true)
+    fetch('/api/explorer/dvf-points')
+      .then(r => r.json())
+      .then(d => {
+        setDvfPoints(d.points ?? [])
+        setDvfParcelles(d.parcelles ?? [])
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDvf(false))
+  }, [filters.showDvf, filters.showCadastre])
+
   const fetchAddresses = useCallback(async (f: FilterState) => {
     setLoading(true)
     const params = new URLSearchParams()
@@ -53,17 +82,15 @@ export default function ExplorerPage() {
     if (f.statut)    params.set('statut', f.statut)
     if (f.has_dpe)   params.set('has_dpe', 'true')
     if (f.has_dvf)   params.set('has_dvf', 'true')
-
     try {
       const res = await fetch(`/api/explorer/addresses?${params}`)
       const data = await res.json()
       setAddresses(data.addresses ?? [])
-      setCount(data.addresses?.length ?? 0)
+      setCount(data.total ?? 0)
     } catch {}
     setLoading(false)
   }, [])
 
-  // Debounce filter changes
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => fetchAddresses(filters), 300)
@@ -74,7 +101,9 @@ export default function ExplorerPage() {
     setFilters(f => ({ ...f, ...partial }))
   }, [])
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+  // Détection mobile via état pour éviter hydration mismatch
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => { setIsMobile(window.innerWidth < 768) }, [])
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg, color: C.text }}>
@@ -88,10 +117,12 @@ export default function ExplorerPage() {
         </svg>
         <span style={{ fontWeight: 700, fontSize: 15 }}>Exploration</span>
         <span style={{ fontSize: 12, color: C.mid, marginLeft: 4 }}>
-          {loading ? 'Chargement…' : `${count.toLocaleString('fr-FR')} adresses`}
+          {loading
+            ? 'Chargement…'
+            : `${count.toLocaleString('fr-FR')} adresses`}
+          {loadingDvf && ' · DVF en cours…'}
         </span>
         <div style={{ flex: 1 }} />
-        {/* Mobile: toggle filters */}
         <button
           onClick={() => setShowFilters(v => !v)}
           style={{
@@ -112,13 +143,12 @@ export default function ExplorerPage() {
 
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        {/* Filters panel — desktop sidebar, mobile overlay */}
-        {(showFilters || (!isMobile)) && (
+        {/* Filters panel */}
+        {(showFilters || !isMobile) && (
           <div style={{
             position: isMobile ? 'absolute' : 'relative',
             top: 0, left: 0, bottom: 0,
             zIndex: isMobile ? 200 : undefined,
-            display: 'flex', flexDirection: 'column',
           }}>
             <ExplorerFilters filters={filters} zones={zones} onChange={updateFilter} />
           </div>
@@ -131,8 +161,10 @@ export default function ExplorerPage() {
             zones={zones}
             selectedId={selectedId}
             showDvfHeatmap={filters.showDvf}
-            showDpeLayer={filters.showDpe}
             showZones={filters.showZones}
+            showCadastre={filters.showCadastre}
+            dvfPoints={dvfPoints}
+            dvfParcelles={dvfParcelles}
             onAddressClick={id => { setSelectedId(id); setShowFilters(false) }}
           />
           {loading && (
@@ -141,12 +173,12 @@ export default function ExplorerPage() {
               background: 'rgba(0,0,0,0.75)', color: '#fff', borderRadius: 20,
               padding: '6px 16px', fontSize: 12, pointerEvents: 'none',
             }}>
-              Chargement…
+              Chargement des adresses…
             </div>
           )}
         </div>
 
-        {/* Address card — desktop right panel, mobile bottom sheet */}
+        {/* Address card */}
         {selectedId && (
           <div style={{
             width: isMobile ? '100%' : 340,
