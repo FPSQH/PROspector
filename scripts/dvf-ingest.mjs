@@ -104,8 +104,8 @@ async function getRequiredDepts() {
 }
 
 async function upsertBatch(rows) {
-  // Dédupliquer par (id_mutation, type_local, id_parcelle) — le CSV DVF peut contenir
-  // des doublons dans un même batch, ce que PostgreSQL ON CONFLICT rejette
+  // Dédupliquer par clé composite — le CSV DVF peut avoir des doublons
+  // dans un même batch, ce que PostgreSQL ON CONFLICT DO UPDATE rejette
   const seen = new Set()
   const deduped = rows.filter(r => {
     const key = `${r.id_mutation}|${r.type_local ?? ''}|${r.id_parcelle ?? ''}`
@@ -187,9 +187,18 @@ async function ingestYear(year, depts) {
     return { processed: 0, upserted: 0 }
   }
 
-  const gunzip    = createGunzip()
-  const nodeStream = Readable.fromWeb(resp.body).pipe(gunzip)
-  const rl        = createInterface({ input: nodeStream, crlfDelay: Infinity })
+  const source     = Readable.fromWeb(resp.body)
+  const gunzip     = createGunzip()
+  source.pipe(gunzip)
+  const rl         = createInterface({ input: gunzip, crlfDelay: Infinity })
+
+  // .pipe() ne propage pas les erreurs. On capture l'erreur dans une variable,
+  // on ferme rl proprement (rl.close() termine le for-await sans throw),
+  // puis on throw après la boucle pour activer le retry.
+  let streamError = null
+  source.on('error', err => { streamError = err; rl.close() })
+  gunzip.on('error', err => { streamError = err; rl.close() })
+  rl.on('error', () => {}) // éviter "Unhandled 'error' event" si rl.destroy est appelé ailleurs
 
   let headers   = null
   let batch     = []
@@ -228,6 +237,8 @@ async function ingestYear(year, depts) {
     }
   }
 
+  if (streamError) throw streamError  // active le retry dans la boucle principale
+
   if (batch.length > 0) {
     await upsertBatch(batch)
     upserted += batch.length
@@ -235,6 +246,36 @@ async function ingestYear(year, depts) {
 
   console.log(`[${year}] ✓ ${processed.toLocaleString()} filtrées, ${upserted.toLocaleString()} upsertées`)
   return { processed, upserted }
+}
+
+// ── Qualification type_bien ───────────────────────────────────
+
+async function enrichTypesBiens(depts) {
+  console.log('\nQualification type_bien des adresses...')
+
+  const deptFilter = [...depts].map(d => `code_insee.like.${d}%`).join(',')
+  const resp = await sbFetch(`/communes?or=(${deptFilter})&select=code_insee`)
+  if (!resp.ok) {
+    console.error('Impossible de récupérer les communes pour enrichissement')
+    return
+  }
+
+  const communes = await resp.json()
+  const codes = communes.map(c => c.code_insee)
+
+  const rpcResp = await sbFetch('/rpc/enrich_adresses_type_bien', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_codes_insee: codes }),
+  })
+
+  if (rpcResp.ok) {
+    const updated = await rpcResp.json()
+    console.log(`${updated} adresses qualifiées`)
+  } else {
+    const text = await rpcResp.text()
+    console.error(`Erreur enrichissement type_bien: ${rpcResp.status} ${text.slice(0, 200)}`)
+  }
 }
 
 // ── Main ──────────────────────────────────────────────────────
@@ -248,12 +289,34 @@ let totalProcessed = 0
 let totalUpserted  = 0
 
 for (const year of ANNEES) {
-  const { processed, upserted } = await ingestYear(year, depts)
+  let processed = 0
+  let upserted  = 0
+  let attempt   = 0
+  const maxAttempts = 4
+  while (attempt < maxAttempts) {
+    attempt++
+    try {
+      ;({ processed, upserted } = await ingestYear(year, depts))
+      break
+    } catch (err) {
+      // Retenter toutes les erreurs réseau (terminated, socket closed, etc.)
+      // Les erreurs 404/HTTP sont gérées dans ingestYear et ne throw pas
+      if (attempt < maxAttempts) {
+        const delay = 2 ** attempt * 1000
+        console.warn(`[${year}] Erreur réseau (tentative ${attempt}/${maxAttempts}) : ${err.message} — retry dans ${delay / 1000}s`)
+        await new Promise(r => setTimeout(r, delay))
+      } else {
+        console.error(`[${year}] Échec définitif après ${attempt} tentative(s) : ${err.message}`)
+        break
+      }
+    }
+  }
   totalProcessed += processed
   totalUpserted  += upserted
 }
 
 await updateCommuneStats(depts)
+await enrichTypesBiens(depts)
 
 console.log('\n' + '─'.repeat(60))
 console.log(`✓ Import terminé`)
