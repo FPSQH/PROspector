@@ -18,6 +18,7 @@ export interface ZoneGenerationOptions {
   dpe_fenetre_mois: number
   poids_collectif: number
   dpe_seuil_inclusion: number
+  dvf_poids: number
 }
 
 export interface GenerationResult {
@@ -51,6 +52,7 @@ export class ZoneService {
 
     const dpeMap  = await this.fetchDpeMap(codesInsee, options.dpe_poids, options.dpe_fenetre_mois)
     const bdnbMap = await this.fetchBdnbTypeMap(adresses)
+    const dvfMap  = await this.fetchDvfDensityMap(codesInsee, options.dvf_poids)
 
     const points: GeoPoint[] = adresses.map((a: any) => {
       const bdnb    = bdnbMap.get(a.batiment_groupe_id)
@@ -67,6 +69,7 @@ export class ZoneService {
         has_dpe:             (dpe != null) || (bdnb?.classe_bilan_dpe != null),
         dpe_chauds:          dpe?.chauds ?? 0,
         dpe_tiedes:          dpe?.tiedes ?? 0,
+        dvf_score:           dvfMap.get(a.id) ?? 0,
       }
     })
 
@@ -77,7 +80,7 @@ export class ZoneService {
     }
 
     const { zones: densityZones, horsZone } = generateDensityZones(
-      points, options.nb_zones, options.capacite_cible, options.rayon_metres, dpeParams
+      points, options.nb_zones, options.capacite_cible, options.rayon_metres, dpeParams, options.dvf_poids
     )
 
     const warnings: string[] = []
@@ -185,6 +188,26 @@ export class ZoneService {
       }
     }
     return dpeMap
+  }
+
+  private async fetchDvfDensityMap(codesInsee: string[], dvfPoids: number): Promise<Map<string, number>> {
+    const map = new Map<string, number>()
+    if (dvfPoids <= 0) return map
+
+    const { data, error } = await this.supabase.rpc('dvf_density_per_address', {
+      p_codes_insee: codesInsee,
+      p_annees: 4,
+    })
+
+    if (error) {
+      console.error('[ZoneService] dvf_density_per_address error:', error.message)
+      return map
+    }
+
+    for (const row of (data ?? [])) {
+      map.set(row.adresse_id, row.nb_dvf)
+    }
+    return map
   }
 
   private async saveSnapshotAndClearZones(userId: string, codesInsee: string[]) {

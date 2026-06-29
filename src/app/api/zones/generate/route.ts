@@ -19,7 +19,8 @@ export async function POST(req: Request) {
       dpe_fenetre_mois:    body.dpe_fenetre_mois    ?? 6,
       dpe_poids:           body.dpe_poids           ?? 0,
       dpe_seuil_inclusion: body.dpe_seuil_inclusion ?? 10,
-      poids_collectif:     body.poids_collectif      ?? 0.5,
+      poids_collectif:     body.poids_collectif     ?? 0.5,
+      dvf_poids:           body.dvf_poids           ?? 0,
     }
 
     // Utilisation du Service Layer pour toute la logique métier
