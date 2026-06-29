@@ -143,6 +143,14 @@ export async function POST(request: Request) {
     await supabase.from('communes').update({ chargee_at: new Date().toISOString() }).eq('id', commune_id)
     console.log(`[BAN] ✓ ${totalInserted} adresses insérées pour ${nom}`)
 
+    // Qualifier type_bien depuis DVF (fire-and-forget, non bloquant)
+    supabase.rpc('enrich_adresses_type_bien', { p_codes_insee: [codeInsee] })
+      .then(({ data, error }) => {
+        if (error) console.error(`[DVF enrich] ${codeInsee}: ${error.message}`)
+        else console.log(`[DVF enrich] ${codeInsee}: ${data} adresses qualifiées`)
+      })
+      .catch(() => {})
+
     // L'ingestion BDNB est gérée exclusivement par useBdnbSync côté client
     // (pagination complète + gestion de reprise dans bdnb_sync_progress)
     return NextResponse.json({ ok: true, count: totalInserted })
