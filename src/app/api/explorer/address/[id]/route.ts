@@ -15,7 +15,7 @@ export async function GET(
     .from('adresses')
     .select(`
       id, numero, nom_voie, code_postal, commune, code_insee,
-      type_bien, prospectable, zone_id, batiment_groupe_id, lat, lon,
+      type_bien, prospectable, zone_id, batiment_groupe_id, lat, lon, id_parcelle,
       zones_prospection (id, nom, couleur, numero)
     `)
     .eq('id', id)

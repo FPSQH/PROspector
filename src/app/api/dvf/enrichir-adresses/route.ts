@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   // ── Récupérer les adresses de la commune (type_bien inconnu ou null) ──
   const { data: adresses } = await adminDb
     .from('adresses')
-    .select('id, lat, lon, type_bien, numero, nom_voie')
+    .select('id, lat, lon, type_bien, numero, nom_voie, id_parcelle')
     .eq('code_insee', codeInsee)
 
   if (!adresses?.length) return NextResponse.json({ nb_enrichies: 0, nb_maisons: 0, nb_appartements: 0 })
@@ -49,11 +49,17 @@ export async function POST(req: Request) {
 
   if (!mutations?.length) return NextResponse.json({ nb_enrichies: 0, nb_maisons: 0, nb_appartements: 0 })
 
-  // ── Croisement par proximité GPS (50m) ────────────────────────────
-  // Pour chaque adresse sans type ou type_bien='inconnu', chercher le DVF le plus proche
+  // Index DVF par id_parcelle pour correspondance directe
+  const dvfByParcelle = new Map<string, string>()
+  for (const mut of mutations) {
+    if (mut.id_parcelle && !dvfByParcelle.has(mut.id_parcelle)) {
+      dvfByParcelle.set(mut.id_parcelle, mut.type_local)
+    }
+  }
+
   const toUpdate: { id: string; type_bien: string }[] = []
 
-  const R = 6371000 // rayon Terre en mètres
+  const R = 6371000
   function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const dLat = (lat2 - lat1) * Math.PI / 180
     const dLon = (lon2 - lon1) * Math.PI / 180
@@ -62,7 +68,6 @@ export async function POST(req: Request) {
     return R * 2 * Math.asin(Math.sqrt(a))
   }
 
-  // Mapper type_local DVF → type_bien PROspector
   function dvfTypeToTypeBien(typeLocal: string): 'maison' | 'appartement' | null {
     if (typeLocal === 'Maison') return 'maison'
     if (typeLocal === 'Appartement') return 'appartement'
@@ -70,8 +75,18 @@ export async function POST(req: Request) {
   }
 
   for (const adr of adresses) {
-    // Ne pas écraser un type déjà qualifié manuellement
     if (adr.type_bien && adr.type_bien !== 'inconnu') continue
+
+    // Priorité 1 : correspondance par id_parcelle cadastrale
+    if ((adr as any).id_parcelle) {
+      const typeLocal = dvfByParcelle.get((adr as any).id_parcelle)
+      if (typeLocal) {
+        const typeBien = dvfTypeToTypeBien(typeLocal)
+        if (typeBien) { toUpdate.push({ id: adr.id, type_bien: typeBien }); continue }
+      }
+    }
+
+    // Priorité 2 : proximité GPS (50m)
     if (adr.lat == null || adr.lon == null) continue
 
     let bestDist = Infinity
