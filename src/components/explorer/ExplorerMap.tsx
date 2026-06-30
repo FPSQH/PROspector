@@ -22,15 +22,15 @@ interface DvfParcelle {
 }
 
 export interface ExplorerMapProps {
-  addresses:       Address[]
-  zones:           Zone[]
-  selectedId:      string | null
-  showDvfHeatmap:  boolean
-  showZones:       boolean
-  showCadastre:    boolean
-  dvfPoints:       DvfPoint[]
-  dvfParcelles:    DvfParcelle[]
-  onAddressClick:  (id: string) => void
+  addresses:      Address[]
+  zones:          Zone[]
+  selectedId:     string | null
+  showDvfHeatmap: boolean
+  showZones:      boolean
+  showCadastre:   boolean
+  dvfPoints:      DvfPoint[]
+  dvfParcelles:   DvfParcelle[]
+  onAddressClick: (id: string) => void
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -41,15 +41,24 @@ const TYPE_COLORS: Record<string, string> = {
   logement_social: '#A78BFA',
 }
 
-// Cadastral vector tiles from etalab / gouvernement.fr
-const CADASTRE_TILES = 'https://openmaptiles.geo.data.gouv.fr/data/cadastre/{z}/{x}/{y}.pbf'
+// IGN cadastral raster tiles (free, no key needed)
+const CADASTRE_RASTER =
+  'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+  '&LAYER=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&STYLE=normal' +
+  '&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fpng'
 
-// Couleur d'une parcelle selon nb de ventes (0→5+)
-function parcelColor(nb: number): string {
-  if (nb >= 5) return '#ef4444'
-  if (nb >= 3) return '#f97316'
-  if (nb >= 2) return '#facc15'
+function dvfCircleColor(valeur: number): string {
+  if (valeur >= 400000) return '#ef4444'
+  if (valeur >= 250000) return '#f97316'
+  if (valeur >= 150000) return '#facc15'
   return '#86efac'
+}
+
+// Distance approximative en mètres entre deux points
+function distM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dy = (lat2 - lat1) * 111000
+  const dx = (lon2 - lon1) * 111000 * Math.cos(lat1 * Math.PI / 180)
+  return Math.sqrt(dx * dx + dy * dy)
 }
 
 export default function ExplorerMap({
@@ -58,15 +67,26 @@ export default function ExplorerMap({
   dvfPoints, dvfParcelles,
   onAddressClick,
 }: ExplorerMapProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef       = useRef<any>(null)
-  const markersRef   = useRef<any[]>([])
-  const scRef        = useRef<any>(null)
+  const containerRef   = useRef<HTMLDivElement>(null)
+  const mapRef         = useRef<any>(null)
+  const markersRef     = useRef<any[]>([])
+  const scRef          = useRef<any>(null)
+  const addressesRef   = useRef<Address[]>(addresses)
+  const mapReadyRef    = useRef(false)
+
+  // Keep addresses ref in sync for click handler
+  useEffect(() => { addressesRef.current = addresses }, [addresses])
+
+  // ── Helper: safely add/remove layers + sources ────────────────
+  const safeRemove = useCallback((map: any, layers: string[], sources: string[]) => {
+    for (const l of layers) if (map.getLayer(l)) map.removeLayer(l)
+    for (const s of sources) if (map.getSource(s)) map.removeSource(s)
+  }, [])
 
   // ── Render address clusters ───────────────────────────────────
   const renderClusters = useCallback(() => {
-    if (!mapRef.current || !scRef.current) return
-    const map  = mapRef.current
+    const map = mapRef.current
+    if (!map || !scRef.current) return
     const zoom = Math.round(map.getZoom())
     const b    = map.getBounds()
     const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]
@@ -75,15 +95,15 @@ export default function ExplorerMap({
     for (const m of markersRef.current) m.remove()
     markersRef.current = []
 
-    const maplibregl = (window as any).maplibregl
-    if (!maplibregl) return
+    const ml = (window as any).maplibregl
+    if (!ml) return
 
-    for (const feature of clusters) {
-      const [lon, lat] = feature.geometry.coordinates
+    for (const f of clusters) {
+      const [lon, lat] = f.geometry.coordinates
       const el = document.createElement('div')
 
-      if (feature.properties.cluster) {
-        const count = feature.properties.point_count
+      if (f.properties.cluster) {
+        const count = f.properties.point_count
         const size  = count > 100 ? 42 : count > 20 ? 34 : 26
         el.style.cssText = `
           width:${size}px;height:${size}px;border-radius:50%;
@@ -91,30 +111,32 @@ export default function ExplorerMap({
           display:flex;align-items:center;justify-content:center;
           font-size:${size < 30 ? 10 : 12}px;font-weight:700;
           border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);cursor:pointer;
+          pointer-events:all;
         `
         el.textContent = count > 999 ? `${Math.round(count / 1000)}k` : String(count)
-        el.addEventListener('click', () => {
-          const z = scRef.current.getClusterExpansionZoom(feature.properties.cluster_id)
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          const z = scRef.current.getClusterExpansionZoom(f.properties.cluster_id)
           map.easeTo({ center: [lon, lat], zoom: Math.min(z, 18) })
         })
       } else {
-        const type     = feature.properties.type_bien ?? 'inconnu'
-        const color    = TYPE_COLORS[type] ?? TYPE_COLORS.inconnu
-        const isSel    = feature.properties.id === selectedId
-        const size     = isSel ? 14 : 10
+        const type  = f.properties.type_bien ?? 'inconnu'
+        const color = TYPE_COLORS[type] ?? TYPE_COLORS.inconnu
+        const isSel = f.properties.id === selectedId
+        const size  = isSel ? 14 : 10
         el.style.cssText = `
           width:${size}px;height:${size}px;border-radius:50%;
           background:${color};
           border:${isSel ? '3px solid #fff' : '1.5px solid rgba(255,255,255,0.5)'};
           box-shadow:${isSel ? `0 0 0 3px ${color}` : '0 1px 3px rgba(0,0,0,0.4)'};
-          cursor:pointer;transition:transform 0.1s;
+          cursor:pointer;transition:transform 0.1s;pointer-events:all;
         `
-        el.addEventListener('click', (e) => { e.stopPropagation(); onAddressClick(feature.properties.id) })
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          onAddressClick(f.properties.id)
+        })
       }
-
-      markersRef.current.push(
-        new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map)
-      )
+      markersRef.current.push(new ml.Marker({ element: el }).setLngLat([lon, lat]).addTo(map))
     }
   }, [addresses, selectedId, onAddressClick])
 
@@ -131,22 +153,57 @@ export default function ExplorerMap({
     document.head.appendChild(link)
 
     script.onload = () => {
-      const maplibregl = (window as any).maplibregl
-      const map = new maplibregl.Map({
+      const ml = (window as any).maplibregl
+      const map = new ml.Map({
         container: containerRef.current!,
         style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
         center: [-2.5, 48.2], zoom: 10,
       })
       mapRef.current = map
+
       map.on('load', () => {
+        mapReadyRef.current = true
+
+        // Clic sur fond de carte → adresse la plus proche (<100m)
+        map.on('click', (e: any) => {
+          const { lng, lat } = e.lngLat
+          const addrs = addressesRef.current
+          if (!addrs.length) return
+          let nearest: Address | null = null
+          let minD = Infinity
+          for (const a of addrs) {
+            const d = distM(lat, lng, a.lat, a.lon)
+            if (d < minD) { minD = d; nearest = a }
+          }
+          if (nearest && minD < 100) onAddressClick(nearest.id)
+        })
+
+        // Clic sur cercle DVF → adresse la plus proche
+        map.on('click', 'dvf-circles', (e: any) => {
+          e.preventDefault()
+          const f = e.features?.[0]
+          if (!f) return
+          const [lon, lat] = f.geometry.coordinates
+          const addrs = addressesRef.current
+          let nearest: Address | null = null
+          let minD = Infinity
+          for (const a of addrs) {
+            const d = distM(lat, lon, a.lat, a.lon)
+            if (d < minD) { minD = d; nearest = a }
+          }
+          if (nearest) onAddressClick(nearest.id)
+        })
+        map.on('mouseenter', 'dvf-circles', () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', 'dvf-circles', () => { map.getCanvas().style.cursor = '' })
+
         map.on('moveend', renderClusters)
         renderClusters()
       })
     }
-    return () => { mapRef.current?.remove(); mapRef.current = null }
+    return () => { mapRef.current?.remove(); mapRef.current = null; mapReadyRef.current = false }
   }, [])
 
-  // ── Update Supercluster when addresses change ─────────────────
+  // ── Supercluster update ───────────────────────────────────────
   useEffect(() => {
     if (addresses.length === 0) return
     const features = addresses.map(a => ({
@@ -156,29 +213,28 @@ export default function ExplorerMap({
     }))
     scRef.current = new Supercluster({ radius: 40, maxZoom: 16 })
     scRef.current.load(features)
-
     const map = mapRef.current
     if (map?.loaded()) {
-      if (!map._centered && addresses.length > 0) {
+      if (!map._centered) {
         const lats = addresses.map(a => a.lat)
         const lons = addresses.map(a => a.lon)
-        map.setCenter([(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2])
+        map.setCenter([(Math.min(...lons)+Math.max(...lons))/2, (Math.min(...lats)+Math.max(...lats))/2])
         map._centered = true
       }
       renderClusters()
     }
   }, [addresses, renderClusters])
 
-  useEffect(() => { if (mapRef.current?.loaded()) renderClusters() }, [selectedId, renderClusters])
+  useEffect(() => {
+    if (mapRef.current?.loaded()) renderClusters()
+  }, [selectedId, renderClusters])
 
-  // ── Zone polygons ─────────────────────────────────────────────
+  // ── Zones ─────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map?.loaded()) return
-    if (map.getLayer('zones-fill'))   map.removeLayer('zones-fill')
-    if (map.getLayer('zones-border')) map.removeLayer('zones-border')
-    if (map.getSource('zones'))       map.removeSource('zones')
-    if (!showZones || zones.length === 0) return
+    safeRemove(map, ['zones-fill', 'zones-border'], ['zones'])
+    if (!showZones || !zones.length) return
     const features = zones.filter(z => z.polygone_geojson).map(z => {
       let geo = z.polygone_geojson
       if (typeof geo === 'string') try { geo = JSON.parse(geo) } catch { return null }
@@ -187,15 +243,15 @@ export default function ExplorerMap({
     map.addSource('zones', { type: 'geojson', data: { type: 'FeatureCollection', features } })
     map.addLayer({ id: 'zones-fill',   type: 'fill', source: 'zones', paint: { 'fill-color': ['get', 'couleur'], 'fill-opacity': 0.12 } })
     map.addLayer({ id: 'zones-border', type: 'line', source: 'zones', paint: { 'line-color': ['get', 'couleur'], 'line-width': 1.5, 'line-opacity': 0.7 } })
-  }, [zones, showZones])
+  }, [zones, showZones, safeRemove])
 
-  // ── DVF heatmap ───────────────────────────────────────────────
+  // ── Heatmap DVF ───────────────────────────────────────────────
+  // Représentation : densité de transactions → dégradé de couleur
   useEffect(() => {
     const map = mapRef.current
     if (!map?.loaded()) return
-    if (map.getLayer('dvf-heat'))   map.removeLayer('dvf-heat')
-    if (map.getSource('dvf-heat'))  map.removeSource('dvf-heat')
-    if (!showDvfHeatmap || dvfPoints.length === 0) return
+    safeRemove(map, ['dvf-heat'], ['dvf-heat'])
+    if (!showDvfHeatmap || !dvfPoints.length) return
 
     const features = dvfPoints
       .filter(p => p.lat && p.lon)
@@ -205,160 +261,175 @@ export default function ExplorerMap({
         properties: { valeur: Math.min(p.valeur_fonciere ?? 0, 600000) },
       }))
 
-    map.addSource('dvf-heat', { type: 'geojson', data: { type: 'FeatureCollection', features } })
-    map.addLayer({
-      id: 'dvf-heat', type: 'heatmap', source: 'dvf-heat',
-      paint: {
-        'heatmap-weight':     ['interpolate', ['linear'], ['get', 'valeur'], 0, 0, 600000, 1],
-        'heatmap-intensity':  ['interpolate', ['linear'], ['zoom'], 8, 0.8, 14, 2],
-        'heatmap-radius':     ['interpolate', ['linear'], ['zoom'], 8, 15, 14, 30],
-        'heatmap-opacity':    0.75,
-        'heatmap-color': [
-          'interpolate', ['linear'], ['heatmap-density'],
-          0,   'rgba(0,0,0,0)',
-          0.2, 'rgba(59,130,246,0.6)',
-          0.4, 'rgba(99,102,241,0.7)',
-          0.6, 'rgba(168,85,247,0.75)',
-          0.8, 'rgba(239,68,68,0.85)',
-          1,   'rgba(255,165,0,1)',
-        ],
-      },
-    }, 'zones-fill') // insérer sous les zones si présentes
-  }, [showDvfHeatmap, dvfPoints])
+    try {
+      map.addSource('dvf-heat', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      })
+      map.addLayer({
+        id: 'dvf-heat',
+        type: 'heatmap',
+        source: 'dvf-heat',
+        // Pas de beforeId — on laisse MapLibre décider de l'ordre
+        paint: {
+          'heatmap-weight':     ['interpolate', ['linear'], ['get', 'valeur'], 0, 0, 600000, 1],
+          'heatmap-intensity':  ['interpolate', ['linear'], ['zoom'], 7, 0.5, 14, 2.5],
+          'heatmap-radius':     ['interpolate', ['linear'], ['zoom'], 7, 12, 14, 35],
+          'heatmap-opacity':    0.8,
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0,   'rgba(0,0,0,0)',
+            0.15,'rgba(59,130,246,0.6)',
+            0.4, 'rgba(99,102,241,0.75)',
+            0.65,'rgba(239,68,68,0.85)',
+            0.85,'rgba(249,115,22,0.9)',
+            1,   'rgba(255,200,0,1)',
+          ],
+        },
+      })
+    } catch (e) {
+      console.error('[ExplorerMap] heatmap error:', e)
+    }
+  }, [showDvfHeatmap, dvfPoints, safeRemove])
 
-  // ── Couche cadastrale + colorisation DVF par parcelle ─────────
+  // ── Cadastre raster + cercles DVF colorés ────────────────────
+  // - Cadastre : raster IGN (frontières parcellaires fiables)
+  // - Cercles DVF : transactions colorées par prix, cliquables
   useEffect(() => {
     const map = mapRef.current
     if (!map?.loaded()) return
-
-    // Nettoyage
-    for (const id of ['cadastre-parcelles-dvf', 'cadastre-parcelles-border', 'cadastre-parcelles']) {
-      if (map.getLayer(id)) map.removeLayer(id)
-    }
-    if (map.getSource('cadastre')) map.removeSource('cadastre')
-
+    safeRemove(map,
+      ['cadastre-layer', 'dvf-circles', 'dvf-circles-label'],
+      ['cadastre', 'dvf-circles']
+    )
     if (!showCadastre) return
 
-    // Source vecteur cadastrale (etalab / gouvernement.fr)
-    map.addSource('cadastre', {
-      type: 'vector',
-      tiles: [CADASTRE_TILES],
-      minzoom: 13,
-      maxzoom: 20,
-      promoteId: { parcelles: 'id' }, // id = identifiant parcellaire (14 chars)
-    })
+    // Raster cadastral IGN (limites parcellaires visibles dès zoom 14)
+    try {
+      map.addSource('cadastre', {
+        type: 'raster',
+        tiles: [CADASTRE_RASTER],
+        tileSize: 256,
+        minzoom: 13, maxzoom: 21,
+      })
+      map.addLayer({
+        id: 'cadastre-layer', type: 'raster', source: 'cadastre',
+        paint: { 'raster-opacity': 0.65 },
+      })
+    } catch (e) {
+      console.error('[ExplorerMap] cadastre error:', e)
+    }
 
-    // Fond des parcelles (blanc très transparent)
-    map.addLayer({
-      id: 'cadastre-parcelles',
-      type: 'fill',
-      source: 'cadastre',
-      'source-layer': 'parcelles',
-      minzoom: 13,
-      paint: {
-        'fill-color': 'rgba(255,255,255,0.04)',
-        'fill-opacity': 1,
-      },
-    })
-
-    // Colorisation DVF par parcelle via feature-state
-    map.addLayer({
-      id: 'cadastre-parcelles-dvf',
-      type: 'fill',
-      source: 'cadastre',
-      'source-layer': 'parcelles',
-      minzoom: 13,
-      paint: {
-        'fill-color': [
-          'case',
-          ['boolean', ['feature-state', 'hasDvf'], false],
-          ['feature-state', 'color'],
-          'rgba(0,0,0,0)',
-        ],
-        'fill-opacity': 0.65,
-      },
-    })
-
-    // Bordure des parcelles
-    map.addLayer({
-      id: 'cadastre-parcelles-border',
-      type: 'line',
-      source: 'cadastre',
-      'source-layer': 'parcelles',
-      minzoom: 13,
-      paint: {
-        'line-color': 'rgba(255,255,200,0.35)',
-        'line-width': 0.5,
-      },
-    })
-
-    // Appliquer les feature-states pour la colorisation DVF
-    if (dvfParcelles.length > 0) {
-      const applyStates = () => {
-        for (const p of dvfParcelles) {
-          map.setFeatureState(
-            { source: 'cadastre', sourceLayer: 'parcelles', id: p.id_parcelle },
-            { hasDvf: true, color: parcelColor(p.nb_ventes) }
-          )
-        }
-      }
-      // Attendre que les tuiles soient chargées
-      if (map.isSourceLoaded('cadastre')) {
-        applyStates()
-      } else {
-        map.once('sourcedata', (e: any) => {
-          if (e.sourceId === 'cadastre' && e.isSourceLoaded) applyStates()
+    // Cercles DVF colorés par prix (transaction par transaction)
+    if (dvfPoints.length > 0) {
+      const features = dvfPoints.filter(p => p.lat && p.lon).map(p => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+        properties: {
+          valeur: p.valeur_fonciere ?? 0,
+          type_local: p.type_local,
+          color: dvfCircleColor(p.valeur_fonciere ?? 0),
+        },
+      }))
+      try {
+        map.addSource('dvf-circles', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features },
+          cluster: true, clusterMaxZoom: 14, clusterRadius: 30,
         })
+        map.addLayer({
+          id: 'dvf-circles', type: 'circle', source: 'dvf-circles',
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-radius':       8,
+            'circle-color':        ['get', 'color'],
+            'circle-opacity':      0.85,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': 'rgba(255,255,255,0.8)',
+          },
+        })
+        // Clusters de transactions
+        map.addLayer({
+          id: 'dvf-clusters', type: 'circle', source: 'dvf-circles',
+          filter: ['has', 'point_count'],
+          paint: {
+            'circle-radius':       ['step', ['get', 'point_count'], 14, 5, 20, 20, 26],
+            'circle-color':        '#f97316',
+            'circle-opacity':      0.75,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#fff',
+          },
+        })
+        map.addLayer({
+          id: 'dvf-clusters-count', type: 'symbol', source: 'dvf-circles',
+          filter: ['has', 'point_count'],
+          layout: {
+            'text-field':  ['get', 'point_count_abbreviated'],
+            'text-size':   11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          },
+          paint: { 'text-color': '#fff' },
+        })
+        map.on('click', 'dvf-clusters', (e: any) => {
+          const f = map.queryRenderedFeatures(e.point, { layers: ['dvf-clusters'] })?.[0]
+          if (!f) return
+          const coords = (f.geometry as any).coordinates
+          map.easeTo({ center: coords, zoom: map.getZoom() + 2 })
+        })
+        map.on('mouseenter', 'dvf-clusters', () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', 'dvf-clusters', () => { map.getCanvas().style.cursor = '' })
+      } catch (e) {
+        console.error('[ExplorerMap] dvf-circles error:', e)
       }
     }
-  }, [showCadastre, dvfParcelles])
-
-  // Re-appliquer feature-states quand les données changent mais la couche est déjà là
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map?.loaded() || !showCadastre || !map.getSource('cadastre')) return
-    for (const p of dvfParcelles) {
-      map.setFeatureState(
-        { source: 'cadastre', sourceLayer: 'parcelles', id: p.id_parcelle },
-        { hasDvf: true, color: parcelColor(p.nb_ventes) }
-      )
-    }
-  }, [dvfParcelles, showCadastre])
+  }, [showCadastre, dvfPoints, safeRemove])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      {/* Légende heatmap DVF */}
+
+      {/* Légende heatmap */}
       {showDvfHeatmap && (
         <div style={{
-          position: 'absolute', bottom: 32, right: 12,
-          background: 'rgba(0,0,0,0.7)', borderRadius: 8, padding: '8px 12px',
-          fontSize: 11, color: '#fff', pointerEvents: 'none',
+          position: 'absolute', bottom: 36, right: 12,
+          background: 'rgba(14,14,16,0.88)', borderRadius: 10, padding: '10px 14px',
+          fontSize: 11, color: '#fff', pointerEvents: 'none', backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}>
-          <div style={{ marginBottom: 4, fontWeight: 600 }}>Densité DVF</div>
-          {[['#3B82F6', 'Faible'], ['#8B5CF6', 'Moyen'], ['#EF4444', 'Fort'], ['#FFA500', 'Très fort']].map(([c, l]) => (
-            <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 2, background: c }} />
-              <span>{l}</span>
-            </div>
-          ))}
+          <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12 }}>Densité transactions DVF</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 4 }}>
+            {['#3B82F6','#6366F1','#EF4444','#F97316','#FFC800'].map(c => (
+              <div key={c} style={{ width: 20, height: 12, background: c }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>
+            <span>Faible</span><span>Fort</span>
+          </div>
         </div>
       )}
-      {/* Légende parcelles cadastrales */}
+
+      {/* Légende cadastre + DVF cercles */}
       {showCadastre && (
         <div style={{
-          position: 'absolute', bottom: 32, left: 12,
-          background: 'rgba(0,0,0,0.7)', borderRadius: 8, padding: '8px 12px',
-          fontSize: 11, color: '#fff', pointerEvents: 'none',
+          position: 'absolute', bottom: 36, left: 12,
+          background: 'rgba(14,14,16,0.88)', borderRadius: 10, padding: '10px 14px',
+          fontSize: 11, color: '#fff', pointerEvents: 'none', backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}>
-          <div style={{ marginBottom: 4, fontWeight: 600 }}>Ventes DVF / parcelle</div>
-          {[['#86efac', '1 vente'], ['#facc15', '2 ventes'], ['#f97316', '3-4 ventes'], ['#ef4444', '5+ ventes']].map(([c, l]) => (
-            <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 2, background: c }} />
+          <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12 }}>Prix de vente DVF</div>
+          {[
+            ['#86efac', '< 150 000 €'],
+            ['#facc15', '150 – 250 k€'],
+            ['#f97316', '250 – 400 k€'],
+            ['#ef4444', '> 400 000 €'],
+          ].map(([c, l]) => (
+            <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+              <div style={{ width: 12, height: 12, borderRadius: '50%', background: c, border: '1.5px solid rgba(255,255,255,0.6)', flexShrink: 0 }} />
               <span>{l}</span>
             </div>
           ))}
-          <div style={{ marginTop: 4, fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>Visible à partir du zoom 13</div>
+          <div style={{ marginTop: 6, fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>
+            Cadastre visible à partir du zoom 13<br/>Cliquer un cercle → fiche adresse
+          </div>
         </div>
       )}
     </div>
