@@ -16,18 +16,21 @@ interface DvfPoint {
   id: string; lat: number; lon: number
   valeur_fonciere: number; type_local: string
   date_mutation: string; id_parcelle: string | null
+  surface_reelle_bati: number | null; surface_terrain: number | null
 }
 
 interface DvfParcelleAgg {
   id_parcelle: string; nb_ventes: number; valeur_moyenne: number
 }
 
+export type DvfHeatmapMode = '' | 'densite' | 'prix_bati' | 'prix_terrain'
+
 export interface ExplorerMapProps {
   addresses:           Address[]
   zones:               Zone[]
   selectedId:          string | null
   showAddresses:       boolean
-  showDvfHeatmap:      boolean
+  dvfHeatmapMode:      DvfHeatmapMode
   showZones:           boolean
   showCadastre:        boolean
   dvfPoints:           DvfPoint[]
@@ -81,7 +84,7 @@ const TYPE_LEGEND = [
 
 export default function ExplorerMap({
   addresses, zones, selectedId,
-  showAddresses, showDvfHeatmap, showZones, showCadastre,
+  showAddresses, dvfHeatmapMode, showZones, showCadastre,
   dvfPoints, dvfParcellesAgg, highlightedParcelles,
   onAddressClick, onParcelClick,
 }: ExplorerMapProps) {
@@ -354,22 +357,36 @@ export default function ExplorerMap({
     const map = mapRef.current
     if (!map?.loaded()) return
     safeRemove(map, ['dvf-heat'], ['dvf-heat'])
-    if (!showDvfHeatmap || !dvfPoints.length) return
+    if (!dvfHeatmapMode || !dvfPoints.length) return
 
+    // Calcul du poids selon le mode
     const features = dvfPoints
-      .filter(p => p.lat && p.lon)
-      .map(p => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
-        properties: { valeur: Math.min(p.valeur_fonciere ?? 0, 600000) },
-      }))
+      .filter(p => {
+        if (!p.lat || !p.lon) return false
+        if (dvfHeatmapMode === 'prix_bati')    return (p.surface_reelle_bati ?? 0) > 0
+        if (dvfHeatmapMode === 'prix_terrain') return (p.surface_terrain ?? 0) > 0
+        return true
+      })
+      .map(p => {
+        let poids = 1
+        if (dvfHeatmapMode === 'prix_bati')    poids = Math.min((p.valeur_fonciere ?? 0) / p.surface_reelle_bati!, 8000)
+        if (dvfHeatmapMode === 'prix_terrain') poids = Math.min((p.valeur_fonciere ?? 0) / p.surface_terrain!, 500)
+        return {
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+          properties: { poids },
+        }
+      })
 
     try {
       map.addSource('dvf-heat', { type: 'geojson', data: { type: 'FeatureCollection', features } })
+      const maxPoids = dvfHeatmapMode === 'prix_bati' ? 8000 : dvfHeatmapMode === 'prix_terrain' ? 500 : 1
       map.addLayer({
         id: 'dvf-heat', type: 'heatmap', source: 'dvf-heat',
         paint: {
-          'heatmap-weight':    ['interpolate', ['linear'], ['get', 'valeur'], 0, 0, 600000, 1],
+          'heatmap-weight':    dvfHeatmapMode === 'densite'
+            ? 1
+            : ['interpolate', ['linear'], ['get', 'poids'], 0, 0, maxPoids, 1],
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 7, 0.5, 14, 2.5],
           'heatmap-radius':    ['interpolate', ['linear'], ['zoom'], 7, 12, 14, 35],
           'heatmap-opacity':   0.8,
@@ -387,7 +404,7 @@ export default function ExplorerMap({
     } catch (e) {
       console.error('[ExplorerMap] heatmap error:', e)
     }
-  }, [showDvfHeatmap, dvfPoints, safeRemove])
+  }, [dvfHeatmapMode, dvfPoints, safeRemove])
 
   // ── Cadastre raster + couche parcelles DVF (WFS) ─────────────
   useEffect(() => {
@@ -489,21 +506,28 @@ export default function ExplorerMap({
       )}
 
       {/* Légende heatmap */}
-      {showDvfHeatmap && (
+      {dvfHeatmapMode && (
         <div style={{
           position: 'absolute', bottom: 36, right: 12,
           background: 'rgba(14,14,16,0.88)', borderRadius: 10, padding: '10px 14px',
           fontSize: 11, color: '#fff', pointerEvents: 'none', backdropFilter: 'blur(4px)',
           border: '1px solid rgba(255,255,255,0.08)',
         }}>
-          <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12 }}>Densité transactions DVF</div>
+          <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12 }}>
+            {dvfHeatmapMode === 'densite'     && 'Densité transactions DVF'}
+            {dvfHeatmapMode === 'prix_bati'   && 'Prix/m² bâti (DVF)'}
+            {dvfHeatmapMode === 'prix_terrain'&& 'Prix/m² terrain (DVF)'}
+          </div>
           <div style={{ display: 'flex', marginBottom: 4 }}>
             {['#3B82F6','#6366F1','#EF4444','#F97316','#FFC800'].map(c => (
               <div key={c} style={{ width: 20, height: 12, background: c }} />
             ))}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>
-            <span>Faible</span><span>Fort</span>
+            {dvfHeatmapMode === 'densite'
+              ? <><span>Faible</span><span>Fort</span></>
+              : <><span>Bas €/m²</span><span>Élevé €/m²</span></>
+            }
           </div>
         </div>
       )}

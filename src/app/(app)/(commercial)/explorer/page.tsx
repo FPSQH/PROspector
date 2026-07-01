@@ -32,7 +32,7 @@ interface DvfPoint {
 
 const DEFAULT_FILTERS: FilterState = {
   type_bien: '', zone_id: '', has_dpe: false, has_dvf: false,
-  statut: '', showAddresses: true, showZones: true, showDpe: false, showDvf: false, showCadastre: false,
+  statut: '', showAddresses: true, showZones: true, showDpe: false, showDvf: '', showCadastre: false,
   dvfAnnees: [], dvfPeriode: 5,
 }
 
@@ -60,6 +60,7 @@ export default function ExplorerPage() {
   // DVF points – chargement lazy, une seule fois
   useEffect(() => {
     if ((!filters.showDvf && !filters.showCadastre) || dvfLoadedRef.current) return
+    // showDvf est maintenant un mode string : '' = off
     dvfLoadedRef.current = true
     setLoadingDvf(true)
     fetch('/api/explorer/dvf-points')
@@ -211,7 +212,7 @@ export default function ExplorerPage() {
             zones={zones}
             selectedId={selectedId}
             showAddresses={filters.showAddresses}
-            showDvfHeatmap={filters.showDvf}
+            dvfHeatmapMode={filters.showDvf}
             showZones={filters.showZones}
             showCadastre={filters.showCadastre}
             dvfPoints={dvfPointsFiltered}

@@ -12,6 +12,8 @@ const C = {
   primary:'#1D9E75',
 }
 
+export type DvfHeatmapMode = '' | 'densite' | 'prix_bati' | 'prix_terrain'
+
 export interface FilterState {
   type_bien:      string
   zone_id:        string
@@ -20,8 +22,7 @@ export interface FilterState {
   statut:         string
   showAddresses:  boolean
   showZones:      boolean
-  showDpe:        boolean
-  showDvf:        boolean
+  showDvf:        DvfHeatmapMode
   showCadastre:   boolean
   dvfAnnees:      number[]
   dvfPeriode:     number
@@ -180,8 +181,20 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
         <div style={{ padding: '4px 16px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Toggle label="Adresses" checked={filters.showAddresses} onChange={v => onChange({ showAddresses: v })} />
           <Toggle label="Zones de prospection" checked={filters.showZones} onChange={v => onChange({ showZones: v })} />
-          <Toggle label="Heatmap DVF (densité)" checked={filters.showDvf} onChange={v => onChange({ showDvf: v })} />
           <Toggle label="Cadastre + DVF/parcelle" checked={filters.showCadastre} onChange={v => onChange({ showCadastre: v })} />
+          <div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Heatmap DVF</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {([
+                { v: '' as const,            l: 'Off' },
+                { v: 'densite' as const,     l: 'Densité' },
+                { v: 'prix_bati' as const,   l: '€/m² bâti' },
+                { v: 'prix_terrain' as const,l: '€/m² terrain' },
+              ] as const).map(({ v, l }) => (
+                <Chip key={v} label={l} active={filters.showDvf === v} onClick={() => onChange({ showDvf: v })} />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
