@@ -10,21 +10,42 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  // Mutations DVF de la parcelle, regroupées
+  // Mutations DVF regroupées par mutation
   const { data: mutations } = await (supabase as any).rpc('dvf_mutations_by_parcelle', {
     p_id_parcelle: id_parcelle,
     p_annees: 10,
   })
 
-  // Adresses rattachées à cette parcelle (via id_parcelle enrichi)
-  const { data: adresses } = await supabase
+  // Adresse de référence dans les DVF (numéro + voie de la mutation la plus récente)
+  const { data: dvfRef } = await supabase
+    .from('dvf_mutations')
+    .select('adresse_numero, adresse_nom_voie')
+    .eq('id_parcelle', id_parcelle)
+    .eq('nature_mutation', 'Vente')
+    .not('adresse_numero', 'is', null)
+    .order('date_mutation', { ascending: false })
+    .limit(1)
+
+  const dvfNumero  = dvfRef?.[0]?.adresse_numero ?? null
+  const dvfNomVoie = dvfRef?.[0]?.adresse_nom_voie ?? null
+
+  // Adresses liées à la parcelle – on trie pour mettre l'adresse
+  // correspondant exactement au numéro DVF en première position
+  const { data: adressesRaw } = await supabase
     .from('adresses')
     .select('id, numero, nom_voie, code_postal, commune, batiment_groupe_id, type_bien')
     .eq('id_parcelle', id_parcelle)
-    .limit(5)
+    .limit(10)
 
-  const adresseIds = (adresses ?? []).map((a: any) => a.id)
-  const batimentIds = (adresses ?? []).map((a: any) => a.batiment_groupe_id).filter(Boolean)
+  // Tri : adresse dont le numéro correspond à la mutation DVF en tête
+  const adresses = (adressesRaw ?? []).sort((a: any, b: any) => {
+    const aMatch = dvfNumero && a.numero === dvfNumero ? 0 : 1
+    const bMatch = dvfNumero && b.numero === dvfNumero ? 0 : 1
+    return aMatch - bMatch
+  })
+
+  const adresseIds  = adresses.map((a: any) => a.id)
+  const batimentIds = adresses.map((a: any) => a.batiment_groupe_id).filter(Boolean)
 
   const [dpeRes, bdnbRes] = await Promise.all([
     adresseIds.length
@@ -53,9 +74,10 @@ export async function GET(
 
   return NextResponse.json({
     id_parcelle,
-    mutations: mutations ?? [],
-    adresses:  adresses ?? [],
-    dpe:       dpeRes.data ?? [],
-    bdnb:      bdnbRes.data ?? [],
+    dvf_adresse: dvfNumero ? { numero: dvfNumero, nom_voie: dvfNomVoie } : null,
+    mutations:   mutations ?? [],
+    adresses,
+    dpe:         dpeRes.data ?? [],
+    bdnb:        bdnbRes.data ?? [],
   })
 }

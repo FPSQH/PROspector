@@ -2,12 +2,17 @@
 
 import { useState } from 'react'
 
+interface DvfAdresse {
+  numero: string; nom_voie: string
+}
+
 interface ParcelData {
-  id_parcelle: string
-  mutations:   Mutation[]
-  adresses:    AdresseInfo[]
-  dpe:         DpeInfo[]
-  bdnb:        BdnbInfo[]
+  id_parcelle:  string
+  dvf_adresse:  DvfAdresse | null
+  mutations:    Mutation[]
+  adresses:     AdresseInfo[]
+  dpe:          DpeInfo[]
+  bdnb:         BdnbInfo[]
 }
 
 interface Mutation {
@@ -87,7 +92,7 @@ function Section({ title, children, defaultOpen = false }: { title: string; chil
 export default function ParcelCard({
   data, onClose,
 }: { data: ParcelData; onClose: () => void }) {
-  const { id_parcelle, mutations, adresses, dpe, bdnb } = data
+  const { id_parcelle, dvf_adresse, mutations, adresses, dpe, bdnb } = data
 
   const totalVentes = mutations.length
   const lastMutation = mutations[0]
@@ -101,12 +106,21 @@ export default function ParcelCard({
           <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#60a5fa', marginBottom: 6 }}>
             {id_parcelle}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {adresses.map(a => (
-              <span key={a.id} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'rgba(29,158,117,0.15)', color: C.primary }}>
-                {a.numero} {a.nom_voie}
-              </span>
-            ))}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {adresses.map(a => {
+              const isPrimary = dvf_adresse ? a.numero === dvf_adresse.numero : false
+              return (
+                <span key={a.id} style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 20,
+                  background: isPrimary ? 'rgba(29,158,117,0.2)' : 'rgba(255,255,255,0.06)',
+                  color: isPrimary ? C.primary : C.mid,
+                  border: isPrimary ? `1px solid rgba(29,158,117,0.3)` : '1px solid transparent',
+                }}>
+                  {a.numero} {a.nom_voie}
+                  {isPrimary && <span style={{ marginLeft: 4, fontSize: 9, opacity: 0.8 }}>✓</span>}
+                </span>
+              )
+            })}
           </div>
         </div>
         <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
