@@ -13,17 +13,18 @@ const C = {
 }
 
 export interface FilterState {
-  type_bien:    string
-  zone_id:      string
-  has_dpe:      boolean
-  has_dvf:      boolean
-  statut:       string
-  showZones:    boolean
-  showDpe:      boolean
-  showDvf:      boolean
-  showCadastre: boolean
-  dvfAnnees:    number[]   // années spécifiques sélectionnées
-  dvfPeriode:   number     // 0 = tout, 3 = 3 ans, 5 = 5 ans, 10 = 10 ans
+  type_bien:      string
+  zone_id:        string
+  has_dpe:        boolean
+  has_dvf:        boolean
+  statut:         string
+  showAddresses:  boolean
+  showZones:      boolean
+  showDpe:        boolean
+  showDvf:        boolean
+  showCadastre:   boolean
+  dvfAnnees:      number[]
+  dvfPeriode:     number
 }
 
 interface Zone { id: string; nom: string; couleur: string }
@@ -155,6 +156,7 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
       <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Couches carte</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Toggle label="Adresses" checked={filters.showAddresses} onChange={v => onChange({ showAddresses: v })} />
           <Toggle label="Zones de prospection" checked={filters.showZones} onChange={v => onChange({ showZones: v })} />
           <Toggle label="Heatmap DVF (densité)" checked={filters.showDvf} onChange={v => onChange({ showDvf: v })} />
           <Toggle label="Cadastre + DVF/parcelle" checked={filters.showCadastre} onChange={v => onChange({ showCadastre: v })} />

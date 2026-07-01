@@ -26,6 +26,7 @@ export interface ExplorerMapProps {
   addresses:           Address[]
   zones:               Zone[]
   selectedId:          string | null
+  showAddresses:       boolean
   showDvfHeatmap:      boolean
   showZones:           boolean
   showCadastre:        boolean
@@ -68,7 +69,7 @@ const WFS_URL = 'https://data.geopf.fr/wfs?SERVICE=WFS&VERSION=2.0.0&REQUEST=Get
 
 export default function ExplorerMap({
   addresses, zones, selectedId,
-  showDvfHeatmap, showZones, showCadastre,
+  showAddresses, showDvfHeatmap, showZones, showCadastre,
   dvfPoints, dvfParcellesAgg, highlightedParcelles,
   onAddressClick, onParcelClick,
 }: ExplorerMapProps) {
@@ -82,6 +83,7 @@ export default function ExplorerMap({
   const addressesRef          = useRef<Address[]>(addresses)
   const dvfParcellesAggRef    = useRef<DvfParcelleAgg[]>(dvfParcellesAgg)
   const highlightedRef        = useRef<string[]>(highlightedParcelles)
+  const showAddressesRef      = useRef(showAddresses)
   const showCadastreRef       = useRef(showCadastre)
   const onParcelClickRef      = useRef(onParcelClick)
   const onAddressClickRef     = useRef(onAddressClick)
@@ -92,6 +94,7 @@ export default function ExplorerMap({
   useEffect(() => { addressesRef.current       = addresses       }, [addresses])
   useEffect(() => { dvfParcellesAggRef.current = dvfParcellesAgg }, [dvfParcellesAgg])
   useEffect(() => { highlightedRef.current     = highlightedParcelles }, [highlightedParcelles])
+  useEffect(() => { showAddressesRef.current   = showAddresses   }, [showAddresses])
   useEffect(() => { showCadastreRef.current    = showCadastre    }, [showCadastre])
   useEffect(() => { onParcelClickRef.current   = onParcelClick   }, [onParcelClick])
   useEffect(() => { onAddressClickRef.current  = onAddressClick  }, [onAddressClick])
@@ -167,13 +170,16 @@ export default function ExplorerMap({
   const renderClusters = useCallback(() => {
     const map = mapRef.current
     if (!map || !scRef.current) return
+
+    for (const m of markersRef.current) m.remove()
+    markersRef.current = []
+
+    if (!showAddressesRef.current) return
+
     const zoom = Math.round(map.getZoom())
     const b    = map.getBounds()
     const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]
     const clusters = scRef.current.getClusters(bbox, zoom)
-
-    for (const m of markersRef.current) m.remove()
-    markersRef.current = []
 
     const ml = (window as any).maplibregl
     if (!ml) return
@@ -295,6 +301,10 @@ export default function ExplorerMap({
   useEffect(() => {
     if (mapRef.current?.loaded()) renderClusters()
   }, [selectedId, renderClusters])
+
+  useEffect(() => {
+    if (mapRef.current?.loaded()) renderClusters()
+  }, [showAddresses, renderClusters])
 
   // ── Zones ─────────────────────────────────────────────────────
   useEffect(() => {

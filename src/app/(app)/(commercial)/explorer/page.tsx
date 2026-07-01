@@ -32,7 +32,7 @@ interface DvfPoint {
 
 const DEFAULT_FILTERS: FilterState = {
   type_bien: '', zone_id: '', has_dpe: false, has_dvf: false,
-  statut: '', showZones: true, showDpe: false, showDvf: false, showCadastre: false,
+  statut: '', showAddresses: true, showZones: true, showDpe: false, showDvf: false, showCadastre: false,
   dvfAnnees: [], dvfPeriode: 5,
 }
 
@@ -210,6 +210,7 @@ export default function ExplorerPage() {
             addresses={addresses}
             zones={zones}
             selectedId={selectedId}
+            showAddresses={filters.showAddresses}
             showDvfHeatmap={filters.showDvf}
             showZones={filters.showZones}
             showCadastre={filters.showCadastre}
