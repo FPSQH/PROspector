@@ -16,11 +16,14 @@ interface ParcelData {
 }
 
 interface Mutation {
-  id_mutation:     string
-  date_mutation:   string
-  valeur_fonciere: number
-  parcelles:       string[]
-  locaux:          Local[]
+  id_mutation:      string
+  date_mutation:    string
+  valeur_fonciere:  number
+  parcelles:        string[]
+  locaux:           Local[]
+  adresse_numero:   string | null
+  adresse_nom_voie: string | null
+  adresse_mismatch: boolean
 }
 
 interface Local {
@@ -165,9 +168,18 @@ export default function ParcelCard({
           : mutations.map(m => (
             <div key={m.id_mutation} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>
               {/* En-tête mutation */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: '#60a5fa' }}>{formatPrice(m.valeur_fonciere)}</span>
-                <span style={{ fontSize: 11, color: C.mid }}>{formatDate(m.date_mutation)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
+                <div>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#60a5fa' }}>{formatPrice(m.valeur_fonciere)}</span>
+                  {m.adresse_mismatch && m.adresse_numero && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                        ⚠ {m.adresse_numero} {m.adresse_nom_voie}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: 11, color: C.mid, flexShrink: 0 }}>{formatDate(m.date_mutation)}</span>
               </div>
 
               {/* Locaux */}

@@ -72,10 +72,16 @@ export async function GET(
       : Promise.resolve({ data: [] }),
   ])
 
+  // Marque les mutations dont l'adresse DVF diffère de l'adresse de référence
+  const mutationsWithFlag = (mutations ?? []).map((m: any) => ({
+    ...m,
+    adresse_mismatch: dvfNumero && m.adresse_numero && m.adresse_numero !== dvfNumero,
+  }))
+
   return NextResponse.json({
     id_parcelle,
     dvf_adresse: dvfNumero ? { numero: dvfNumero, nom_voie: dvfNomVoie } : null,
-    mutations:   mutations ?? [],
+    mutations:   mutationsWithFlag,
     adresses,
     dpe:         dpeRes.data ?? [],
     bdnb:        bdnbRes.data ?? [],
