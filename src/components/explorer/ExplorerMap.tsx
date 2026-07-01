@@ -103,7 +103,7 @@ export default function ExplorerMap({
   const showCadastreRef       = useRef(showCadastre)
   const onParcelClickRef      = useRef(onParcelClick)
   const onAddressClickRef     = useRef(onAddressClick)
-  const rawParcelFeaturesRef  = useRef<any[]>([])
+  const rawParcelFeaturesRef  = useRef<Map<string, any>>(new Map())
   const wfsFetchTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wfsAbortRef           = useRef<AbortController | null>(null)
 
@@ -127,7 +127,7 @@ export default function ExplorerMap({
     const highlighted = new Set(highlightedRef.current)
     const aggMap      = new Map(agg.map(p => [p.id_parcelle, p]))
 
-    const features = rawParcelFeaturesRef.current
+    const features = Array.from(rawParcelFeaturesRef.current.values())
       .filter((f: any) => {
         const idu = f.properties?.IDU ?? f.properties?.idu
         return aggMap.has(idu) || highlighted.has(idu)
@@ -161,7 +161,7 @@ export default function ExplorerMap({
 
   // ── WFS fetch for parcels in viewport ────────────────────────
   const fetchParcels = useCallback(async (map: any) => {
-    if (map.getZoom() < 13.5) return
+    if (map.getZoom() < 13) return
     wfsAbortRef.current?.abort()
     const ctrl = new AbortController()
     wfsAbortRef.current = ctrl
@@ -170,7 +170,11 @@ export default function ExplorerMap({
     try {
       const res = await fetch(`${WFS_URL}&BBOX=${bbox},EPSG:4326`, { signal: ctrl.signal })
       const data = await res.json()
-      rawParcelFeaturesRef.current = data.features ?? []
+      // Accumule par IDU pour ne jamais perdre les parcelles déjà chargées
+      for (const f of (data.features ?? [])) {
+        const idu = f.properties?.IDU ?? f.properties?.idu
+        if (idu) rawParcelFeaturesRef.current.set(idu, f)
+      }
       rebuildParcelLayer()
     } catch (e: any) {
       if (e?.name !== 'AbortError') console.error('[ExplorerMap] WFS error:', e)
@@ -421,7 +425,10 @@ export default function ExplorerMap({
     // Supprimer les anciens event handlers
     map.off('moveend', scheduleFetch)
 
-    if (!showCadastre) return
+    if (!showCadastre) {
+      rawParcelFeaturesRef.current.clear()
+      return
+    }
 
     // Raster cadastral IGN (fond)
     try {
