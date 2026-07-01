@@ -236,25 +236,66 @@ export default function AddressCard({
             }
           </Section>
 
-          {/* Historique DVF */}
-          <Section title={`Transactions DVF (${data.dvf.length})`} defaultOpen={data.dvf.length > 0}>
-            {data.dvf.length === 0
-              ? <p style={{ fontSize: 12, color: C.muted }}>Aucune transaction à proximité.</p>
-              : data.dvf.map((d: any) => (
-                <div key={d.id} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#60a5fa' }}>
-                      {formatPrice(d.valeur_fonciere)}
-                    </span>
-                    <span style={{ fontSize: 11, color: C.mid }}>{formatDate(d.date_mutation)}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.mid }}>
-                    {d.type_local}{d.surface_reelle_bati ? ` · ${d.surface_reelle_bati} m²` : ''} · à {d.distance_metres}m
-                  </div>
-                </div>
-              ))
+          {/* Historique DVF – groupé par id_mutation */}
+          {(() => {
+            const grouped = new Map<string, any>()
+            for (const row of (data.dvf ?? [])) {
+              const key = row.id_mutation ?? row.id
+              if (!grouped.has(key)) {
+                grouped.set(key, {
+                  id_mutation: key,
+                  date_mutation: row.date_mutation,
+                  valeur_fonciere: row.valeur_fonciere,
+                  via_parcelle: row.via_parcelle,
+                  distance_metres: row.distance_metres,
+                  locaux: [],
+                })
+              }
+              grouped.get(key).locaux.push({
+                type_local: row.type_local,
+                surface_reelle_bati: row.surface_reelle_bati,
+                surface_terrain: row.surface_terrain,
+                nombre_pieces_principales: row.nombre_pieces,
+              })
             }
-          </Section>
+            const mutations = Array.from(grouped.values())
+            return (
+              <Section title={`Transactions DVF (${mutations.length})`} defaultOpen={mutations.length > 0}>
+                {mutations.length === 0
+                  ? <p style={{ fontSize: 12, color: C.muted }}>Aucune transaction à proximité.</p>
+                  : mutations.map((m: any) => (
+                    <div key={m.id_mutation} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: '#60a5fa' }}>
+                          {formatPrice(m.valeur_fonciere)}
+                        </span>
+                        <span style={{ fontSize: 11, color: C.mid }}>
+                          {formatDate(m.date_mutation)}
+                          {m.via_parcelle
+                            ? <span title="Correspondance exacte par parcelle"> ✓</span>
+                            : <span title={`à ${m.distance_metres}m`}> ~{m.distance_metres}m</span>}
+                        </span>
+                      </div>
+                      {m.locaux.map((l: any, i: number) => (
+                        <div key={i} style={{ fontSize: 11, color: C.mid, marginBottom: 2 }}>
+                          {l.type_local ?? '—'}
+                          {l.surface_reelle_bati ? ` · ${l.surface_reelle_bati} m²` : ''}
+                          {l.surface_terrain ? ` · terrain ${l.surface_terrain} m²` : ''}
+                          {l.nombre_pieces_principales ? ` · ${l.nombre_pieces_principales} p.` : ''}
+                        </div>
+                      ))}
+                      {m.locaux.length > 1 && (
+                        <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.mid }}>
+                          <span>{m.locaux.length} locaux</span>
+                          <span style={{ fontWeight: 700, color: '#60a5fa' }}>Total : {formatPrice(m.valeur_fonciere)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                }
+              </Section>
+            )
+          })()}
 
           {/* Terrain */}
           <Section title={`Passages terrain (${data.interactions.length})`} defaultOpen={data.interactions.length > 0}>
