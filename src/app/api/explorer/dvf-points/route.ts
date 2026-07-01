@@ -20,7 +20,7 @@ export async function GET(_req: Request) {
 
   const { data: points } = await supabase
     .from('dvf_mutations')
-    .select('id, latitude, longitude, valeur_fonciere, type_local, date_mutation, id_parcelle')
+    .select('id, latitude, longitude, valeur_fonciere, type_local, date_mutation, id_parcelle, surface_reelle_bati, surface_terrain')
     .in('code_commune', codesInsee)
     .eq('nature_mutation', 'Vente')
     .in('type_local', ['Maison', 'Appartement'])
@@ -31,13 +31,15 @@ export async function GET(_req: Request) {
     .limit(10000)
 
   const result = (points ?? []).map((p: any) => ({
-    id:              p.id,
-    lat:             p.latitude,
-    lon:             p.longitude,
-    valeur_fonciere: p.valeur_fonciere,
-    type_local:      p.type_local,
-    date_mutation:   p.date_mutation,
-    id_parcelle:     p.id_parcelle ?? null,
+    id:                  p.id,
+    lat:                 p.latitude,
+    lon:                 p.longitude,
+    valeur_fonciere:     p.valeur_fonciere,
+    type_local:          p.type_local,
+    date_mutation:       p.date_mutation,
+    id_parcelle:         p.id_parcelle ?? null,
+    surface_reelle_bati: p.surface_reelle_bati ?? null,
+    surface_terrain:     p.surface_terrain ?? null,
   }))
 
   return NextResponse.json({ points: result })
