@@ -1,5 +1,7 @@
 'use client'
 
+import { useMemo } from 'react'
+
 const C = {
   bg:     '#141416',
   border: 'rgba(255,255,255,0.08)',
@@ -20,6 +22,8 @@ export interface FilterState {
   showDpe:      boolean
   showDvf:      boolean
   showCadastre: boolean
+  dvfAnnees:    number[]   // années spécifiques sélectionnées
+  dvfPeriode:   number     // 0 = tout, 3 = 3 ans, 5 = 5 ans, 10 = 10 ans
 }
 
 interface Zone { id: string; nom: string; couleur: string }
@@ -69,7 +73,21 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   )
 }
 
+const CURRENT_YEAR = new Date().getFullYear()
+const YEARS = Array.from({ length: 7 }, (_, i) => CURRENT_YEAR - i)
+
 export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFiltersProps) {
+  const toggleAnnee = (y: number) => {
+    const next = filters.dvfAnnees.includes(y)
+      ? filters.dvfAnnees.filter(a => a !== y)
+      : [...filters.dvfAnnees, y]
+    onChange({ dvfAnnees: next, dvfPeriode: 0 })
+  }
+
+  const setPeriode = (p: number) => {
+    onChange({ dvfPeriode: p, dvfAnnees: [] })
+  }
+
   return (
     <div style={{
       background: C.bg, borderRight: `1px solid ${C.border}`,
@@ -134,7 +152,7 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
       </div>
 
       {/* Couches */}
-      <div style={{ padding: '8px 16px' }}>
+      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Couches carte</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Toggle label="Zones de prospection" checked={filters.showZones} onChange={v => onChange({ showZones: v })} />
@@ -143,9 +161,52 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
         </div>
       </div>
 
+      {/* Filtre années DVF */}
+      {(filters.showDvf || filters.showCadastre) && (
+        <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Période DVF</div>
+          {/* Raccourcis période glissante */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            {[
+              { v: 0, l: 'Tout' },
+              { v: 3, l: '3 ans' },
+              { v: 5, l: '5 ans' },
+              { v: 10, l: '10 ans' },
+            ].map(({ v, l }) => (
+              <Chip
+                key={v}
+                label={l}
+                active={filters.dvfPeriode === v && filters.dvfAnnees.length === 0}
+                onClick={() => setPeriode(v)}
+              />
+            ))}
+          </div>
+          {/* Sélection par année */}
+          <div style={{ fontSize: 10, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Ou par année
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {YEARS.map(y => (
+              <button
+                key={y}
+                onClick={() => toggleAnnee(y)}
+                style={{
+                  padding: '3px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 600,
+                  background: filters.dvfAnnees.includes(y) ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.06)',
+                  color: filters.dvfAnnees.includes(y) ? '#60a5fa' : C.mid,
+                }}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Légende */}
       <div style={{ padding: '8px 16px', marginTop: 'auto', borderTop: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Légende</div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Légende adresses</div>
         {[
           { color: '#1D9E75', label: 'Maison' },
           { color: '#3B82F6', label: 'Appartement' },

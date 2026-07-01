@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getEffectiveCommercialId } from '@/lib/delegation'
 import { NextResponse } from 'next/server'
 
-// Retourne les points DVF (mutations) pour la heatmap et les parcelles colorées
+// Retourne les points DVF (10 ans) avec id_parcelle pour filtrage/agrégation client-side
 export async function GET(_req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -13,28 +13,31 @@ export async function GET(_req: Request) {
   const { data: communes } = await supabase
     .from('communes').select('code_insee').eq('commercial_id', effectiveId)
 
-  if (!communes?.length) return NextResponse.json({ points: [], parcelles: [] })
+  if (!communes?.length) return NextResponse.json({ points: [] })
 
   const codesInsee = communes.map((c: any) => c.code_insee)
+  const since = new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  // Points DVF pour heatmap (lat/lon + valeur)
   const { data: points } = await supabase
     .from('dvf_mutations')
-    .select('id, lat, lon, valeur_fonciere, type_local, date_mutation')
+    .select('id, latitude, longitude, valeur_fonciere, type_local, date_mutation, id_parcelle')
     .in('code_commune', codesInsee)
     .eq('nature_mutation', 'Vente')
     .in('type_local', ['Maison', 'Appartement'])
-    .gte('date_mutation', new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
-    .not('lat', 'is', null)
-    .not('lon', 'is', null)
-    .limit(20000)
+    .gte('date_mutation', since)
+    .not('latitude', 'is', null)
+    .not('longitude', 'is', null)
+    .limit(30000)
 
-  // Agrégation par parcelle pour colorisation cadastrale
-  const { data: parcelles } = await (supabase as any)
-    .rpc('dvf_density_per_parcel', { p_codes_insee: codesInsee, p_annees: 5 })
+  const result = (points ?? []).map((p: any) => ({
+    id:              p.id,
+    lat:             p.latitude,
+    lon:             p.longitude,
+    valeur_fonciere: p.valeur_fonciere,
+    type_local:      p.type_local,
+    date_mutation:   p.date_mutation,
+    id_parcelle:     p.id_parcelle ?? null,
+  }))
 
-  return NextResponse.json({
-    points: points ?? [],
-    parcelles: parcelles ?? [],
-  })
+  return NextResponse.json({ points: result })
 }
