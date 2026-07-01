@@ -330,9 +330,11 @@ export default function ExplorerMap({
     if (!showSatellite) return
     try {
       map.addSource('satellite', { type: 'raster', tiles: [SATELLITE_URL], tileSize: 256 })
-      // Insérer avant la première couche pour rester en fond
-      const firstLayer = map.getStyle().layers?.[0]?.id
-      map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite', paint: { 'raster-opacity': 0.9 } }, firstLayer)
+      // Insérer juste après la couche background (fond uni) pour que le satellite
+      // apparaisse sous toutes les couches vectorielles (routes, labels, etc.)
+      const layers = map.getStyle().layers ?? []
+      const afterBg = layers.find((l: any) => l.id !== 'background')?.id
+      map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite', paint: { 'raster-opacity': 0.9 } }, afterBg)
     } catch (e) { console.error('[ExplorerMap] satellite error:', e) }
   }, [showSatellite, safeRemove])
 
