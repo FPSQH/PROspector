@@ -1,7 +1,9 @@
 -- Ajoute adresse_numero/nom_voie à dvf_mutations_by_parcelle
 -- pour permettre de détecter les ventes d'une adresse différente
 
-CREATE OR REPLACE FUNCTION dvf_mutations_by_parcelle(
+DROP FUNCTION IF EXISTS dvf_mutations_by_parcelle(text, integer);
+
+CREATE FUNCTION dvf_mutations_by_parcelle(
   p_id_parcelle text,
   p_annees      int DEFAULT 10
 )
