@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useState } from 'react'
 
 const C = {
   bg:     '#141416',
@@ -74,6 +74,30 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   )
 }
 
+function Section({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={{ borderBottom: `1px solid ${C.border}` }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {title}
+        </span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && <div style={{ padding: '0 16px 12px' }}>{children}</div>}
+    </div>
+  )
+}
+
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 7 }, (_, i) => CURRENT_YEAR - i)
 
@@ -95,13 +119,12 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
       width: 220, flexShrink: 0, overflowY: 'auto',
       display: 'flex', flexDirection: 'column', gap: 0,
     }}>
-      <div style={{ padding: '16px 16px 8px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+      <div style={{ padding: '14px 16px 10px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>
         Filtres
       </div>
 
       {/* Type de bien */}
-      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Type de bien</div>
+      <Section title="Type de bien">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {[
             { v: '', l: 'Tous' },
@@ -113,22 +136,20 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
             <Chip key={v} label={l} active={filters.type_bien === v} onClick={() => onChange({ type_bien: v })} />
           ))}
         </div>
-      </div>
+      </Section>
 
       {/* Zone */}
-      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Zone</div>
+      <Section title="Zone">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           <Chip label="Toutes" active={filters.zone_id === ''} onClick={() => onChange({ zone_id: '' })} />
           {zones.map(z => (
             <Chip key={z.id} label={z.nom} active={filters.zone_id === z.id} color={z.couleur} onClick={() => onChange({ zone_id: z.id })} />
           ))}
         </div>
-      </div>
+      </Section>
 
       {/* Statut prospection */}
-      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Statut terrain</div>
+      <Section title="Statut terrain">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {[
             { v: '', l: 'Tous' },
@@ -141,21 +162,22 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
             <Chip key={v} label={l} active={filters.statut === v} onClick={() => onChange({ statut: v })} />
           ))}
         </div>
-      </div>
+      </Section>
 
       {/* Signaux */}
-      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Signaux</div>
+      <Section title="Signaux">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Chip label="Avec DPE" active={filters.has_dpe} onClick={() => onChange({ has_dpe: !filters.has_dpe })} />
           <Chip label="Avec transaction DVF" active={filters.has_dvf} onClick={() => onChange({ has_dvf: !filters.has_dvf })} />
         </div>
-      </div>
+      </Section>
 
-      {/* Couches */}
-      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Couches carte</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Couches carte – non repliable */}
+      <div style={{ borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ padding: '10px 16px 4px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Couches carte
+        </div>
+        <div style={{ padding: '4px 16px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Toggle label="Adresses" checked={filters.showAddresses} onChange={v => onChange({ showAddresses: v })} />
           <Toggle label="Zones de prospection" checked={filters.showZones} onChange={v => onChange({ showZones: v })} />
           <Toggle label="Heatmap DVF (densité)" checked={filters.showDvf} onChange={v => onChange({ showDvf: v })} />
@@ -163,64 +185,43 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
         </div>
       </div>
 
-      {/* Filtre années DVF */}
-      {(filters.showDvf || filters.showCadastre) && (
-        <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Période DVF</div>
-          {/* Raccourcis période glissante */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-            {[
-              { v: 0, l: 'Tout' },
-              { v: 3, l: '3 ans' },
-              { v: 5, l: '5 ans' },
-              { v: 10, l: '10 ans' },
-            ].map(({ v, l }) => (
-              <Chip
-                key={v}
-                label={l}
-                active={filters.dvfPeriode === v && filters.dvfAnnees.length === 0}
-                onClick={() => setPeriode(v)}
-              />
-            ))}
-          </div>
-          {/* Sélection par année */}
-          <div style={{ fontSize: 10, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Ou par année
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {YEARS.map(y => (
-              <button
-                key={y}
-                onClick={() => toggleAnnee(y)}
-                style={{
-                  padding: '3px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  fontSize: 11, fontWeight: 600,
-                  background: filters.dvfAnnees.includes(y) ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.06)',
-                  color: filters.dvfAnnees.includes(y) ? '#60a5fa' : C.mid,
-                }}
-              >
-                {y}
-              </button>
-            ))}
-          </div>
+      {/* Filtre années DVF – toujours visible */}
+      <Section title="Période DVF">
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          {[
+            { v: 0, l: 'Tout' },
+            { v: 3, l: '3 ans' },
+            { v: 5, l: '5 ans' },
+            { v: 10, l: '10 ans' },
+          ].map(({ v, l }) => (
+            <Chip
+              key={v}
+              label={l}
+              active={filters.dvfPeriode === v && filters.dvfAnnees.length === 0}
+              onClick={() => setPeriode(v)}
+            />
+          ))}
         </div>
-      )}
-
-      {/* Légende */}
-      <div style={{ padding: '8px 16px', marginTop: 'auto', borderTop: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Légende adresses</div>
-        {[
-          { color: '#1D9E75', label: 'Maison' },
-          { color: '#3B82F6', label: 'Appartement' },
-          { color: '#F59E0B', label: 'Commerce' },
-          { color: '#94A3B8', label: 'Inconnu' },
-        ].map(({ color, label }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: C.mid }}>{label}</span>
-          </div>
-        ))}
-      </div>
+        <div style={{ fontSize: 10, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Ou par année
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {YEARS.map(y => (
+            <button
+              key={y}
+              onClick={() => toggleAnnee(y)}
+              style={{
+                padding: '3px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                fontSize: 11, fontWeight: 600,
+                background: filters.dvfAnnees.includes(y) ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.06)',
+                color: filters.dvfAnnees.includes(y) ? '#60a5fa' : C.mid,
+              }}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      </Section>
     </div>
   )
 }

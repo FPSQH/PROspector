@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import Supercluster from 'supercluster'
 
 interface Address {
@@ -67,12 +67,25 @@ const WFS_URL = 'https://data.geopf.fr/wfs?SERVICE=WFS&VERSION=2.0.0&REQUEST=Get
   '&TYPENAMES=CADASTRALPARCELS.PARCELLAIRE_EXPRESS:parcelle' +
   '&OUTPUTFORMAT=application/json&COUNT=600'
 
+const SATELLITE_URL =
+  'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+  '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal' +
+  '&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fjpeg'
+
+const TYPE_LEGEND = [
+  { color: '#1D9E75', label: 'Maison' },
+  { color: '#3B82F6', label: 'Appartement' },
+  { color: '#F59E0B', label: 'Commerce' },
+  { color: '#94A3B8', label: 'Inconnu' },
+]
+
 export default function ExplorerMap({
   addresses, zones, selectedId,
   showAddresses, showDvfHeatmap, showZones, showCadastre,
   dvfPoints, dvfParcellesAgg, highlightedParcelles,
   onAddressClick, onParcelClick,
 }: ExplorerMapProps) {
+  const [showSatellite, setShowSatellite] = useState(false)
   const containerRef          = useRef<HTMLDivElement>(null)
   const mapRef                = useRef<any>(null)
   const markersRef            = useRef<any[]>([])
@@ -306,6 +319,20 @@ export default function ExplorerMap({
     if (mapRef.current?.loaded()) renderClusters()
   }, [showAddresses, renderClusters])
 
+  // ── Satellite ────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map?.loaded()) return
+    safeRemove(map, ['satellite-layer'], ['satellite'])
+    if (!showSatellite) return
+    try {
+      map.addSource('satellite', { type: 'raster', tiles: [SATELLITE_URL], tileSize: 256 })
+      // Insérer avant la première couche pour rester en fond
+      const firstLayer = map.getStyle().layers?.[0]?.id
+      map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite', paint: { 'raster-opacity': 0.9 } }, firstLayer)
+    } catch (e) { console.error('[ExplorerMap] satellite error:', e) }
+  }, [showSatellite, safeRemove])
+
   // ── Zones ─────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
@@ -423,6 +450,43 @@ export default function ExplorerMap({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Bouton satellite */}
+      <button
+        onClick={() => setShowSatellite(v => !v)}
+        title={showSatellite ? 'Désactiver satellite' : 'Vue satellite'}
+        style={{
+          position: 'absolute', top: 12, right: 12,
+          background: showSatellite ? 'rgba(29,158,117,0.9)' : 'rgba(14,14,16,0.88)',
+          border: `1px solid ${showSatellite ? '#1D9E75' : 'rgba(255,255,255,0.15)'}`,
+          borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
+          color: '#fff', fontSize: 11, fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 6,
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        Satellite
+      </button>
+
+      {/* Légende adresses */}
+      {showAddresses && (
+        <div style={{
+          position: 'absolute', top: 12, right: 100,
+          background: 'rgba(14,14,16,0.88)', borderRadius: 8, padding: '8px 12px',
+          fontSize: 11, color: '#fff', pointerEvents: 'none', backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          {TYPE_LEGEND.map(({ color, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+              <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Légende heatmap */}
       {showDvfHeatmap && (
