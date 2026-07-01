@@ -97,6 +97,14 @@ export default function ParcelCard({
   const totalVentes = mutations.length
   const lastMutation = mutations[0]
 
+  // Prix/m² de la dernière vente : surface bâtie du premier local éligible
+  const lastPrixM2 = (() => {
+    if (!lastMutation) return null
+    const surface = lastMutation.locaux?.find(l => (l.surface_reelle_bati ?? 0) > 0)?.surface_reelle_bati
+    if (!surface) return null
+    return Math.round(lastMutation.valeur_fonciere / surface)
+  })()
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.bg, color: C.text, overflowY: 'auto' }}>
       {/* Header */}
@@ -142,6 +150,9 @@ export default function ParcelCard({
             <>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#60a5fa' }}>{formatPrice(lastMutation.valeur_fonciere)}</div>
               <div style={{ fontSize: 10, color: C.mid }}>{formatDate(lastMutation.date_mutation)}</div>
+              {lastPrixM2 && (
+                <div style={{ fontSize: 10, color: C.primary, marginTop: 2 }}>{lastPrixM2.toLocaleString('fr-FR')} €/m²</div>
+              )}
             </>
           ) : <div style={{ fontSize: 12, color: C.muted }}>Aucune</div>}
         </div>
