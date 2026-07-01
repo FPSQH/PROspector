@@ -27,7 +27,8 @@ export async function GET(_req: Request) {
     .gte('date_mutation', since)
     .not('latitude', 'is', null)
     .not('longitude', 'is', null)
-    .limit(30000)
+    .order('date_mutation', { ascending: false })
+    .limit(10000)
 
   const result = (points ?? []).map((p: any) => ({
     id:              p.id,
