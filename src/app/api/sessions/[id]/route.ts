@@ -189,6 +189,8 @@ export async function PATCH(req: Request, { params }: Params) {
   const body = await req.json().catch(() => ({}))
   const { statut, heure_fin, nb_portes, nb_boites, notes, date_session, zone_id } = body
 
+  const todayStr = new Date().toISOString().split('T')[0]
+
   const updates: any = {}
   if (statut)                  updates.statut         = statut
   if (heure_fin)               updates.heure_fin      = heure_fin
@@ -201,6 +203,11 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (statut === 'realisee' && !heure_fin) {
     updates.heure_fin_reel = new Date().toISOString()
+  }
+  // À la clôture : forcer date_session = aujourd'hui (date réelle de réalisation)
+  // sauf si le frontend envoie explicitement une date_session différente
+  if (statut === 'realisee' && !date_session) {
+    updates.date_session = todayStr
   }
   if (statut === 'en_cours') {
     updates.heure_debut_reel = new Date().toISOString()
@@ -294,6 +301,8 @@ export async function PATCH(req: Request, { params }: Params) {
         .update({ rapport_json, nb_portes: nb_portes })
         .eq('id', params.id)
 
+      // Mettre à jour mois/annee si la clôture est dans un mois différent du planifié
+      const closureDate = new Date(todayStr + 'T12:00:00')
       await supabase.from('planning_sessions')
         .update({
           statut:                 'realisee',
@@ -303,6 +312,8 @@ export async function PATCH(req: Request, { params }: Params) {
           nb_immeubles_qualifies: nb_collectif,
           nb_syndics_qualifies:   nb_syndics,
           nb_adresses_supprimees: nb_commerces,
+          mois:                   closureDate.getMonth() + 1,
+          annee:                  closureDate.getFullYear(),
           updated_at:             new Date().toISOString(),
         })
         .eq('session_id', params.id)
