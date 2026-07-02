@@ -329,15 +329,32 @@ export async function POST(req: Request) {
     // Rafraîchir la vue matérialisée (best effort — la fonction peut ne pas exister)
     await adminDb.rpc('refresh_mv_dpe_stats')
 
-    // Toujours mettre à jour nb_dpe et derniere_verif_dpe : c'est ce qui
-    // permet au prochain passage de fonctionner en mode incrémental.
+    // Mettre à jour nb_dpe et derniere_verif_dpe : c'est ce qui permet au
+    // prochain passage de fonctionner en mode incrémental.
+    // Exception : un passage incrémental à date forcée (filter_date, ex.
+    // sync-secteur depuis la page Courriers) sur une commune qui n'a jamais
+    // eu de chargement complet ne doit PAS poser derniere_verif_dpe — sinon
+    // le cron croirait la commune à jour et le chargement initial 5 ans ne
+    // tournerait jamais (cause du trou d'exhaustivité constaté sur Kerbors).
+    let setVerif = true
+    if (mode === 'incremental' && filterDateOverride) {
+      const { data: c } = await adminDb
+        .from('communes')
+        .select('derniere_verif_dpe')
+        .eq('code_insee', code_insee)
+        .maybeSingle()
+      setVerif = !!c?.derniere_verif_dpe
+    }
+
     const { count } = await adminDb
       .from('dpe_logement')
       .select('id', { count: 'exact', head: true })
       .eq('code_insee', code_insee)
+    const communeUpdate: Record<string, any> = { nb_dpe: count ?? 0 }
+    if (setVerif) communeUpdate.derniere_verif_dpe = new Date().toISOString()
     const { error: communeError } = await adminDb
       .from('communes')
-      .update({ nb_dpe: count ?? 0, derniere_verif_dpe: new Date().toISOString() })
+      .update(communeUpdate)
       .eq('code_insee', code_insee)
     if (communeError) console.error('[DPE] update commune:', communeError.message)
 

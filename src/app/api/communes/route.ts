@@ -99,10 +99,15 @@ export async function POST(req: Request) {
   }).catch((e) => console.error('[BAN] fire & forget error:', e))
 
   // Ingestion DPE ADEME (fire & forget) — déclenche automatiquement après l'ajout de commune
-  // Utilise le mode full (1ère ingestion) puis incrémental les fois suivantes
+  // Utilise le mode full (1ère ingestion) puis incrémental les fois suivantes.
+  // x-cron-secret requis : cet appel serveur→serveur ne transporte pas les
+  // cookies de session, sans lui l'ingestion échoue en 401.
   fetch(`${baseUrl}/api/dpe/ingest`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-cron-secret': process.env.CRON_SECRET ?? '05091974',
+    },
     body: JSON.stringify({ code_postal: code_postal ?? '', code_insee }),
   }).catch((e) => console.error('[DPE] fire & forget error:', e))
 
