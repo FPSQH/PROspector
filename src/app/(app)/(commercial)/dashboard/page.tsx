@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import PeriodeSelector    from './PeriodeSelector'
 import DpePeriodeSelector from './DpePeriodeSelector'
+import MoisSelector       from './MoisSelector'
 import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection'
 
 // ── Design tokens ─────────────────────────────────────────────────────────
@@ -372,7 +373,7 @@ function trendPct(current: number, previous: number): string {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { periode?: string; dpe_periode?: string }
+  searchParams: { periode?: string; dpe_periode?: string; mois_display?: string }
 }) {
   const supabase = await createClient()
   const adminDb  = createAdminClient()
@@ -406,12 +407,20 @@ export default async function DashboardPage({
 
   // ── Dates ──────────────────────────────────────────────────────────────
   const now        = new Date()
-  const month      = now.getMonth()
-  const year       = now.getFullYear()
+  const todayStr   = now.toISOString().split('T')[0]
+
+  // mois_display = 'YYYY-MM' pour naviguer dans le temps, sinon mois courant
+  const moisDisplayRaw = searchParams.mois_display ?? ''
+  const moisDisplayMatch = /^(\d{4})-(\d{2})$/.exec(moisDisplayRaw)
+  const displayYear  = moisDisplayMatch ? parseInt(moisDisplayMatch[1]) : now.getFullYear()
+  const displayMonth = moisDisplayMatch ? parseInt(moisDisplayMatch[2]) - 1 : now.getMonth()
+  const moisDisplayKey = `${displayYear}-${String(displayMonth + 1).padStart(2, '0')}`
+
+  const month      = displayMonth
+  const year       = displayYear
   const monthStart = new Date(year, month, 1).toISOString().split('T')[0]
   const monthEnd   = new Date(year, month + 1, 0).toISOString().split('T')[0]
-  const yearStart  = `${year}-01-01`
-  const todayStr   = now.toISOString().split('T')[0]
+  const yearStart  = `${now.getFullYear()}-01-01`
   const sunDate    = new Date(now)
   sunDate.setDate(now.getDate() + (now.getDay() === 0 ? 0 : 7 - now.getDay()))
   const sundayStr  = sunDate.toISOString().split('T')[0]
@@ -887,7 +896,7 @@ export default async function DashboardPage({
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>Dashboard</span>
           <div style={{ width: 1, height: 18, background: C.border }} />
-          <span style={{ fontSize: 12, color: C.dim, fontWeight: 500 }}>{monthBadge}</span>
+          <MoisSelector current={moisDisplayKey} />
         </div>
         <Link href="/terrain" style={{
           textDecoration: 'none', padding: '6px 14px', borderRadius: 8,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const OPTIONS = [
   { value: 'mois',  label: 'Ce mois' },
@@ -11,8 +11,15 @@ const OPTIONS = [
 const GOLD = '#D97706'
 
 export default function PeriodeSelector({ current }: { current: string }) {
-  const router   = useRouter()
-  const pathname = usePathname()
+  const router      = useRouter()
+  const pathname    = usePathname()
+  const searchParams = useSearchParams()
+
+  const navigate = (val: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('periode', val)
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
   return (
     <div style={{
@@ -26,7 +33,7 @@ export default function PeriodeSelector({ current }: { current: string }) {
         return (
           <button
             key={opt.value}
-            onClick={() => router.push(`${pathname}?periode=${opt.value}`)}
+            onClick={() => navigate(opt.value)}
             style={{
               padding: '4px 10px', borderRadius: 6,
               fontSize: 11, fontWeight: 600,
