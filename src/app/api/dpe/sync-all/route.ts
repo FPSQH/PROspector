@@ -1,16 +1,20 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// GET /api/dpe/sync-all?secret=<CRON_SECRET>
+// GET /api/dpe/sync-all?secret=<CRON_SECRET>[&force=1]
 //
 // Appelé par le cron Vercel quotidiennement (vercel.json).
-// Synchronise les DPE de toutes les communes dont
-// derniere_verif_dpe > VERIF_INTERVAL_DAYS jours, les plus anciennes
-// d'abord. S'arrête proprement avant le timeout Vercel : les communes
-// restantes sont reprises au passage suivant.
+// Synchronise les DPE de toutes les communes dont derniere_verif_dpe
+// est plus ancienne que VERIF_INTERVAL_HOURS, les plus anciennes
+// d'abord. force=1 ignore ce seuil et resynchronise toutes les
+// communes (rattrapage manuel). S'arrête proprement avant le timeout
+// Vercel : les communes restantes sont reprises au passage suivant.
 // Utilise l'endpoint /api/dpe/ingest en boucle pour gérer la pagination.
 
-const VERIF_INTERVAL_DAYS = 2
+// 20h (< cadence quotidienne du cron, tolérant à son jitter) : chaque
+// commune est resynchronisée tous les jours, sans doublonner une sync
+// déclenchée le même jour depuis l'app.
+const VERIF_INTERVAL_HOURS = 20
 const CRON_SECRET = process.env.CRON_SECRET ?? '05091974'
 
 export const maxDuration = 300 // 5 min max (Vercel Pro)
@@ -24,16 +28,20 @@ export async function GET(request: Request) {
 
   const adminDb = createAdminClient()
   const now = Date.now()
-  const maxAge = VERIF_INTERVAL_DAYS * 24 * 3600 * 1000
+  const maxAge = VERIF_INTERVAL_HOURS * 3600 * 1000
+  const force = searchParams.get('force') === '1'
 
   // ── Toutes les communes de tous les commerciaux ──────────────────
   // Les plus anciennes vérifications d'abord (null = jamais vérifiée, en tête)
   // pour qu'aucune commune ne soit indéfiniment sacrifiée si le budget temps
   // est atteint avant la fin de la liste.
-  const { data: allCommunes, error } = await adminDb
+  let query = adminDb
     .from('communes')
     .select('code_insee, code_postal, nom, commercial_id, derniere_verif_dpe')
-    .or(`derniere_verif_dpe.is.null,derniere_verif_dpe.lt.${new Date(now - maxAge).toISOString()}`)
+  if (!force) {
+    query = query.or(`derniere_verif_dpe.is.null,derniere_verif_dpe.lt.${new Date(now - maxAge).toISOString()}`)
+  }
+  const { data: allCommunes, error } = await query
     .order('derniere_verif_dpe', { ascending: true, nullsFirst: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
