@@ -12,20 +12,31 @@ const C = {
   primary:'#1D9E75',
 }
 
+const DPE_COLORS: Record<string, string> = {
+  A: '#16a34a', B: '#4ade80', C: '#84cc16',
+  D: '#facc15', E: '#f97316', F: '#ef4444', G: '#b91c1c',
+}
+
 export type DvfHeatmapMode = '' | 'densite' | 'prix_bati' | 'prix_terrain'
+export type ColorMode = 'type' | 'dpe' | 'statut' | 'recence'
 
 export interface FilterState {
-  type_bien:      string
-  zone_id:        string
-  has_dpe:        boolean
-  has_dvf:        boolean
-  statut:         string
-  showAddresses:  boolean
-  showZones:      boolean
-  showDvf:        DvfHeatmapMode
-  showCadastre:   boolean
-  dvfAnnees:      number[]
-  dvfPeriode:     number
+  type_bien:       string
+  zone_id:         string
+  has_dpe:         boolean
+  has_dvf:         boolean
+  statut:          string
+  dpe_classes:     string[]
+  dpe_recence:     number   // mois, 0 = off
+  has_audit:       boolean
+  non_visitee_mois:number   // mois, 0 = off
+  colorMode:       ColorMode
+  showAddresses:   boolean
+  showZones:       boolean
+  showDvf:         DvfHeatmapMode
+  showCadastre:    boolean
+  dvfAnnees:       number[]
+  dvfPeriode:      number
 }
 
 interface Zone { id: string; nom: string; couleur: string }
@@ -36,10 +47,11 @@ interface ExplorerFiltersProps {
   onChange: (f: Partial<FilterState>) => void
 }
 
-function Chip({ label, active, color, onClick }: { label: string; active: boolean; color?: string; onClick: () => void }) {
+function Chip({ label, active, color, onClick, title }: { label: string; active: boolean; color?: string; onClick: () => void; title?: string }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       style={{
         padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer',
         fontSize: 11, fontWeight: 600,
@@ -83,14 +95,12 @@ function Section({ title, children, defaultOpen = false }: { title: string; chil
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
+          padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: C.text,
         }}
       >
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {title}
-        </span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2"
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+        <span style={{ fontWeight: 600, fontSize: 12 }}>{title}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.mid} strokeWidth="2"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
@@ -114,11 +124,18 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
     onChange({ dvfPeriode: p, dvfAnnees: [] })
   }
 
+  const toggleDpeClasse = (c: string) => {
+    const next = filters.dpe_classes.includes(c)
+      ? filters.dpe_classes.filter(x => x !== c)
+      : [...filters.dpe_classes, c]
+    onChange({ dpe_classes: next })
+  }
+
   return (
     <div style={{
       background: C.bg, borderRight: `1px solid ${C.border}`,
       width: 220, flexShrink: 0, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column', gap: 0,
+      display: 'flex', flexDirection: 'column', gap: 0, height: '100%',
     }}>
       <div style={{ padding: '14px 16px 10px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>
         Filtres
@@ -139,6 +156,57 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
         </div>
       </Section>
 
+      {/* DPE */}
+      <Section title="DPE" defaultOpen={filters.dpe_classes.length > 0 || filters.dpe_recence > 0 || filters.has_audit}>
+        <div style={{ fontSize: 10, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Étiquettes
+        </div>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+          {(['A','B','C','D','E','F','G'] as const).map(c => {
+            const active = filters.dpe_classes.includes(c)
+            return (
+              <button
+                key={c}
+                onClick={() => toggleDpeClasse(c)}
+                style={{
+                  width: 24, height: 24, borderRadius: 5, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 800, color: '#fff',
+                  background: DPE_COLORS[c],
+                  border: 'none',
+                  opacity: active ? 1 : 0.25,
+                  outline: active ? '2px solid #fff' : 'none',
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {c}
+              </button>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Récence du DPE
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {[
+            { v: 0, l: 'Tous' },
+            { v: 3, l: '< 3 mois' },
+            { v: 6, l: '< 6 mois' },
+            { v: 12, l: '< 12 mois' },
+          ].map(({ v, l }) => (
+            <Chip key={v} label={l} active={filters.dpe_recence === v} onClick={() => onChange({ dpe_recence: v })} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Chip
+            label="Avec audit énergétique"
+            active={filters.has_audit}
+            color="#f59e0b"
+            title="Adresses dont un DPE est accompagné d'un audit avec scénarios de travaux"
+            onClick={() => onChange({ has_audit: !filters.has_audit })}
+          />
+        </div>
+      </Section>
+
       {/* Zone */}
       <Section title="Zone">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -151,7 +219,7 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
 
       {/* Statut prospection */}
       <Section title="Statut terrain">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           {[
             { v: '', l: 'Tous' },
             { v: 'jamais_vue', l: 'Jamais vue' },
@@ -163,6 +231,12 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
             <Chip key={v} label={l} active={filters.statut === v} onClick={() => onChange({ statut: v })} />
           ))}
         </div>
+        <Chip
+          label="Non visitée depuis 6 mois"
+          active={filters.non_visitee_mois === 6}
+          title="Adresses sans aucun passage terrain sur les 6 derniers mois"
+          onClick={() => onChange({ non_visitee_mois: filters.non_visitee_mois === 6 ? 0 : 6 })}
+        />
       </Section>
 
       {/* Signaux */}
@@ -172,6 +246,23 @@ export default function ExplorerFilters({ filters, zones, onChange }: ExplorerFi
           <Chip label="Avec transaction DVF" active={filters.has_dvf} onClick={() => onChange({ has_dvf: !filters.has_dvf })} />
         </div>
       </Section>
+
+      {/* Couleur des points */}
+      <div style={{ borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ padding: '10px 16px 4px', fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Couleur des points
+        </div>
+        <div style={{ padding: '4px 16px 12px', display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {([
+            { v: 'type' as const,    l: 'Type de bien' },
+            { v: 'dpe' as const,     l: 'Étiquette DPE' },
+            { v: 'statut' as const,  l: 'Statut terrain' },
+            { v: 'recence' as const, l: 'Récence DPE' },
+          ]).map(({ v, l }) => (
+            <Chip key={v} label={l} active={filters.colorMode === v} onClick={() => onChange({ colorMode: v })} />
+          ))}
+        </div>
+      </div>
 
       {/* Couches carte – non repliable */}
       <div style={{ borderBottom: `1px solid ${C.border}` }}>

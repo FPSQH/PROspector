@@ -6,6 +6,9 @@ import Supercluster from 'supercluster'
 interface Address {
   id: string; lat: number; lon: number
   type_bien: string; zone_id: string | null
+  dpe_etiquette?: string | null
+  latest_dpe_date?: string | null
+  statut_prospection?: string | null
 }
 
 interface Zone {
@@ -24,18 +27,21 @@ interface DvfParcelleAgg {
 }
 
 export type DvfHeatmapMode = '' | 'densite' | 'prix_bati' | 'prix_terrain'
+export type ColorMode = 'type' | 'dpe' | 'statut' | 'recence'
 
 export interface ExplorerMapProps {
   addresses:           Address[]
   zones:               Zone[]
   selectedId:          string | null
   showAddresses:       boolean
+  colorMode:           ColorMode
   dvfHeatmapMode:      DvfHeatmapMode
   showZones:           boolean
   showCadastre:        boolean
   dvfPoints:           DvfPoint[]
   dvfParcellesAgg:     DvfParcelleAgg[]
   highlightedParcelles:string[]
+  flyTarget:           { lat: number; lon: number } | null
   onAddressClick:      (id: string) => void
   onParcelClick:       (idParcelle: string) => void
 }
@@ -75,17 +81,74 @@ const SATELLITE_URL =
   '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal' +
   '&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fjpeg'
 
-const TYPE_LEGEND = [
-  { color: '#1D9E75', label: 'Maison' },
-  { color: '#3B82F6', label: 'Appartement' },
-  { color: '#F59E0B', label: 'Commerce' },
-  { color: '#94A3B8', label: 'Inconnu' },
-]
+const DPE_COLORS: Record<string, string> = {
+  A: '#16a34a', B: '#4ade80', C: '#84cc16',
+  D: '#facc15', E: '#f97316', F: '#ef4444', G: '#b91c1c',
+}
+
+const STATUT_COLORS: Record<string, string> = {
+  jamais_vue:   '#94A3B8',
+  visite:       '#60A5FA',
+  contact:      '#F59E0B',
+  rdv_pris:     '#A78BFA',
+  estimation:   '#FACC15',
+  mandat_signe: '#1D9E75',
+}
+
+const SANS_DPE_COLOR = '#4B5563'
+
+// Couleur d'un point selon le mode choisi
+function addressColor(mode: ColorMode, props: any): string {
+  if (mode === 'dpe') {
+    return DPE_COLORS[(props.dpe_etiquette ?? '').toUpperCase()] ?? SANS_DPE_COLOR
+  }
+  if (mode === 'statut') {
+    return STATUT_COLORS[props.statut_prospection ?? 'jamais_vue'] ?? STATUT_COLORS.jamais_vue
+  }
+  if (mode === 'recence') {
+    if (!props.latest_dpe_date) return SANS_DPE_COLOR
+    const mois = (Date.now() - new Date(props.latest_dpe_date).getTime()) / (30.44 * 24 * 3600 * 1000)
+    if (mois <= 1)  return '#EF4444' // chaud
+    if (mois <= 6)  return '#F97316' // tiède
+    if (mois <= 24) return '#3B82F6'
+    return '#64748B'
+  }
+  return TYPE_COLORS[props.type_bien ?? 'inconnu'] ?? TYPE_COLORS.inconnu
+}
+
+// Légendes par mode de coloration
+const LEGENDS: Record<ColorMode, { color: string; label: string }[]> = {
+  type: [
+    { color: '#1D9E75', label: 'Maison' },
+    { color: '#3B82F6', label: 'Appartement' },
+    { color: '#F59E0B', label: 'Commerce' },
+    { color: '#94A3B8', label: 'Inconnu' },
+  ],
+  dpe: [
+    ...(['A','B','C','D','E','F','G'] as const).map(l => ({ color: DPE_COLORS[l], label: l })),
+    { color: SANS_DPE_COLOR, label: 'Sans DPE' },
+  ],
+  statut: [
+    { color: STATUT_COLORS.jamais_vue,   label: 'Jamais vue' },
+    { color: STATUT_COLORS.visite,       label: 'Visité' },
+    { color: STATUT_COLORS.contact,      label: 'Contact' },
+    { color: STATUT_COLORS.rdv_pris,     label: 'RDV pris' },
+    { color: STATUT_COLORS.estimation,   label: 'Estimation' },
+    { color: STATUT_COLORS.mandat_signe, label: 'Mandat' },
+  ],
+  recence: [
+    { color: '#EF4444', label: 'DPE < 1 mois' },
+    { color: '#F97316', label: 'DPE < 6 mois' },
+    { color: '#3B82F6', label: 'DPE < 2 ans' },
+    { color: '#64748B', label: 'Plus ancien' },
+    { color: SANS_DPE_COLOR, label: 'Sans DPE' },
+  ],
+}
 
 export default function ExplorerMap({
   addresses, zones, selectedId,
-  showAddresses, dvfHeatmapMode, showZones, showCadastre,
-  dvfPoints, dvfParcellesAgg, highlightedParcelles,
+  showAddresses, colorMode, dvfHeatmapMode, showZones, showCadastre,
+  dvfPoints, dvfParcellesAgg, highlightedParcelles, flyTarget,
   onAddressClick, onParcelClick,
 }: ExplorerMapProps) {
   const [showSatellite, setShowSatellite] = useState(false)
@@ -100,6 +163,7 @@ export default function ExplorerMap({
   const dvfParcellesAggRef    = useRef<DvfParcelleAgg[]>(dvfParcellesAgg)
   const highlightedRef        = useRef<string[]>(highlightedParcelles)
   const showAddressesRef      = useRef(showAddresses)
+  const colorModeRef          = useRef<ColorMode>(colorMode)
   const showCadastreRef       = useRef(showCadastre)
   const onParcelClickRef      = useRef(onParcelClick)
   const onAddressClickRef     = useRef(onAddressClick)
@@ -111,6 +175,7 @@ export default function ExplorerMap({
   useEffect(() => { dvfParcellesAggRef.current = dvfParcellesAgg }, [dvfParcellesAgg])
   useEffect(() => { highlightedRef.current     = highlightedParcelles }, [highlightedParcelles])
   useEffect(() => { showAddressesRef.current   = showAddresses   }, [showAddresses])
+  useEffect(() => { colorModeRef.current       = colorMode       }, [colorMode])
   useEffect(() => { showCadastreRef.current    = showCadastre    }, [showCadastre])
   useEffect(() => { onParcelClickRef.current   = onParcelClick   }, [onParcelClick])
   useEffect(() => { onAddressClickRef.current  = onAddressClick  }, [onAddressClick])
@@ -226,8 +291,7 @@ export default function ExplorerMap({
           map.easeTo({ center: [lon, lat], zoom: Math.min(z, 18) })
         })
       } else {
-        const type  = f.properties.type_bien ?? 'inconnu'
-        const color = TYPE_COLORS[type] ?? TYPE_COLORS.inconnu
+        const color = addressColor(colorModeRef.current, f.properties)
         const isSel = f.properties.id === selectedId
         const size  = isSel ? 14 : 10
         el.style.cssText = `
@@ -244,7 +308,7 @@ export default function ExplorerMap({
       }
       markersRef.current.push(new ml.Marker({ element: el }).setLngLat([lon, lat]).addTo(map))
     }
-  }, [selectedId])
+  }, [selectedId, colorMode])
 
   // ── Init map ──────────────────────────────────────────────────
   useEffect(() => {
@@ -302,7 +366,13 @@ export default function ExplorerMap({
     const features = addresses.map(a => ({
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [a.lon, a.lat] },
-      properties: { id: a.id, type_bien: a.type_bien },
+      properties: {
+        id: a.id,
+        type_bien:          a.type_bien,
+        dpe_etiquette:      a.dpe_etiquette ?? null,
+        latest_dpe_date:    a.latest_dpe_date ?? null,
+        statut_prospection: a.statut_prospection ?? null,
+      },
     }))
     scRef.current = new Supercluster({ radius: 40, maxZoom: 16 })
     scRef.current.load(features)
@@ -324,7 +394,14 @@ export default function ExplorerMap({
 
   useEffect(() => {
     if (mapRef.current?.loaded()) renderClusters()
-  }, [showAddresses, renderClusters])
+  }, [showAddresses, colorMode, renderClusters])
+
+  // ── Recentrage (recherche d'adresse) ──────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !flyTarget) return
+    map.flyTo({ center: [flyTarget.lon, flyTarget.lat], zoom: 17, duration: 1200 })
+  }, [flyTarget])
 
   // ── Satellite ────────────────────────────────────────────────
   useEffect(() => {
@@ -497,7 +574,7 @@ export default function ExplorerMap({
         Satellite
       </button>
 
-      {/* Légende adresses */}
+      {/* Légende adresses — dynamique selon le mode de coloration */}
       {showAddresses && (
         <div style={{
           position: 'absolute', top: 12, right: 100,
@@ -505,7 +582,13 @@ export default function ExplorerMap({
           fontSize: 11, color: '#fff', pointerEvents: 'none', backdropFilter: 'blur(4px)',
           border: '1px solid rgba(255,255,255,0.08)',
         }}>
-          {TYPE_LEGEND.map(({ color, label }) => (
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.55)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {colorMode === 'type'    && 'Type de bien'}
+            {colorMode === 'dpe'     && 'Étiquette DPE'}
+            {colorMode === 'statut'  && 'Statut terrain'}
+            {colorMode === 'recence' && 'Récence DPE'}
+          </div>
+          {LEGENDS[colorMode].map(({ color, label }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
               <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
               <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>{label}</span>

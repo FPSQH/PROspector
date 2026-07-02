@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 interface AddressDetail {
   adresse: any
@@ -8,6 +8,15 @@ interface AddressDetail {
   dvf: any[]
   bdnb: any
   interactions: any[]
+  contacts: any[]
+  rendez_vous: any[]
+  marche: {
+    nb_transactions: number
+    prix_median_m2: number | null
+    prix_median_maison: number | null
+    prix_median_appart: number | null
+    surface_mediane_bati: number | null
+  } | null
 }
 
 const C = {
@@ -37,6 +46,19 @@ const ACTION_LABELS: Record<string, string> = {
 const STATUT_LABELS: Record<string, string> = {
   jamais_vue: 'Jamais vue', visite: 'Visité', contact: 'Contact',
   rdv_pris: 'RDV pris', estimation: 'Estimation', mandat_signe: 'Mandat signé',
+}
+
+const TYPE_CONTACT_LABELS: Record<string, string> = {
+  interet_vente: 'Intérêt vente', projet_moyen: 'Projet moyen terme', projet_long: 'Projet long terme',
+  voisin_relais: 'Voisin relais', recommandation: 'Recommandation', commercant: 'Commerçant', autre: 'Autre',
+}
+
+const HORIZON_LABELS: Record<string, string> = {
+  moins_6_mois: '< 6 mois', '6_12_mois': '6-12 mois', '1_2_ans': '1-2 ans', plus_2_ans: '> 2 ans',
+}
+
+const TYPE_RDV_LABELS: Record<string, string> = {
+  estimation: 'Estimation', signature_mandat: 'Signature mandat', prospection: 'Prospection', autre: 'Autre',
 }
 
 function formatPrice(v: number) {
@@ -69,25 +91,128 @@ function Section({ title, children, defaultOpen = false }: { title: string; chil
   )
 }
 
+function DpeBadge({ lettre, size = 28 }: { lettre: string | null; size?: number }) {
+  if (!lettre) return null
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 5, flexShrink: 0,
+      background: DPE_COLORS[lettre] ?? '#64748b',
+      color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontWeight: 800, fontSize: size / 2,
+    }}>
+      {lettre}
+    </div>
+  )
+}
+
+// ── Formulaire création rapide de contact ─────────────────────────
+function QuickContactForm({ adresseId, onCreated, onCancel }: {
+  adresseId: string; onCreated: () => void; onCancel: () => void
+}) {
+  const [prenom, setPrenom]   = useState('')
+  const [nom, setNom]         = useState('')
+  const [tel, setTel]         = useState('')
+  const [type, setType]       = useState('interet_vente')
+  const [horizon, setHorizon] = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 12,
+    background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`,
+    color: C.text, outline: 'none',
+  }
+
+  const submit = async () => {
+    if (!prenom.trim() && !nom.trim() && !tel.trim()) { setError('Renseignez au moins un champ'); return }
+    setSaving(true); setError(null)
+    try {
+      const r = await fetch('/api/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adresse_id:    adresseId,
+          prenom:        prenom.trim() || null,
+          nom:           nom.trim()    || null,
+          tel1:          tel.trim()    || null,
+          type_contact:  type,
+          horizon_vente: horizon || null,
+        }),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        setError(d.error ?? `Erreur ${r.status}`)
+      } else {
+        onCreated()
+      }
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: C.card, borderRadius: 10, padding: 12 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input placeholder="Prénom" value={prenom} onChange={e => setPrenom(e.target.value)} style={inputStyle} />
+        <input placeholder="Nom" value={nom} onChange={e => setNom(e.target.value)} style={inputStyle} />
+      </div>
+      <input placeholder="Téléphone" value={tel} onChange={e => setTel(e.target.value)} style={inputStyle} />
+      <select value={type} onChange={e => setType(e.target.value)} style={inputStyle}>
+        {Object.entries(TYPE_CONTACT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <select value={horizon} onChange={e => setHorizon(e.target.value)} style={inputStyle}>
+        <option value="">Horizon de vente…</option>
+        {Object.entries(HORIZON_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      {error && <div style={{ fontSize: 11, color: '#ef4444' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={submit} disabled={saving} style={{
+          flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: C.primary, color: '#fff', fontSize: 12, fontWeight: 700, opacity: saving ? 0.6 : 1,
+        }}>
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        <button onClick={onCancel} style={{
+          padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: 'rgba(255,255,255,0.06)', color: C.mid, fontSize: 12, fontWeight: 600,
+        }}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AddressCard({
   addressId, onClose,
 }: { addressId: string; onClose: () => void }) {
   const [data, setData] = useState<AddressDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showContactForm, setShowContactForm] = useState(false)
 
-  useEffect(() => {
-    setLoading(true)
-    setData(null)
+  const load = useCallback(() => {
     fetch(`/api/explorer/address/${addressId}`)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [addressId])
 
+  useEffect(() => {
+    setLoading(true)
+    setData(null)
+    setShowContactForm(false)
+    load()
+  }, [addressId, load])
+
   const lastDpe         = data?.dpe?.[0]
   const lastDvf         = data?.dvf?.[0]
   const lastInteraction = data?.interactions?.[0]
   const adresse         = data?.adresse
+  const contacts        = data?.contacts ?? []
+  const rdvs            = data?.rendez_vous ?? []
+  const marche          = data?.marche
 
   const adresseLabel = adresse
     ? `${adresse.numero ?? ''} ${adresse.nom_voie}, ${adresse.code_postal} ${adresse.commune}`.trim()
@@ -154,12 +279,11 @@ export default function AddressCard({
               <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>DPE</div>
               {lastDpe ? (
                 <>
-                  <div style={{
-                    display: 'inline-block', fontSize: 20, fontWeight: 800, width: 32, height: 32,
-                    borderRadius: 6, background: DPE_COLORS[lastDpe.classe_bilan_dpe] ?? '#64748b',
-                    color: '#fff', textAlign: 'center', lineHeight: '32px',
-                  }}>
-                    {lastDpe.classe_bilan_dpe}
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <DpeBadge lettre={lastDpe.etiquette_dpe} size={32} />
+                    {lastDpe.etiquette_ges && (
+                      <span style={{ fontSize: 10, color: C.mid }} title="Étiquette GES">GES {lastDpe.etiquette_ges}</span>
+                    )}
                   </div>
                   <div style={{ fontSize: 10, color: C.mid, marginTop: 4 }}>
                     {formatDate(lastDpe.date_etablissement)}
@@ -210,25 +334,54 @@ export default function AddressCard({
             {data.dpe.length === 0
               ? <p style={{ fontSize: 12, color: C.muted }}>Aucun DPE enregistré.</p>
               : data.dpe.map((d: any) => (
-                <div key={d.id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: 5, flexShrink: 0,
-                    background: DPE_COLORS[d.classe_bilan_dpe] ?? '#64748b',
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 800, fontSize: 14,
-                  }}>
-                    {d.classe_bilan_dpe}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600 }}>{formatDate(d.date_etablissement)}</div>
-                    <div style={{ fontSize: 11, color: C.mid }}>
-                      {d.surface_habitable_logement ? `${d.surface_habitable_logement} m²` : ''}
-                      {d.type_energie_principale_chauffage ? ` · ${d.type_energie_principale_chauffage}` : ''}
+                <div key={d.id} style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <DpeBadge lettre={d.etiquette_dpe} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>
+                        {formatDate(d.date_etablissement)}
+                        {d.etiquette_ges ? <span style={{ color: C.mid, fontWeight: 400 }}> · GES {d.etiquette_ges}</span> : ''}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.mid }}>
+                        {d.surface_habitable ? `${d.surface_habitable} m²` : ''}
+                        {d.energie_principale ? ` · ${d.energie_principale}` : ''}
+                        {d.annee_construction ? ` · constr. ${d.annee_construction}` : ''}
+                      </div>
                     </div>
+                    {d.numero_dpe && (
+                      <div style={{ fontSize: 10, color: C.muted, fontFamily: 'monospace' }}>
+                        #{d.numero_dpe?.slice(-6)}
+                      </div>
+                    )}
                   </div>
-                  {d.numero_dpe && (
-                    <div style={{ fontSize: 10, color: C.muted, fontFamily: 'monospace' }}>
-                      #{d.numero_dpe?.slice(-6)}
+                  {(d.conso_ep_m2 || d.cout_annuel || d.date_fin_validite) && (
+                    <div style={{ fontSize: 11, color: C.mid, marginTop: 6, paddingLeft: 40 }}>
+                      {d.conso_ep_m2 ? `${Math.round(d.conso_ep_m2)} kWh/m²/an` : ''}
+                      {d.cout_annuel ? ` · énergie ~${formatPrice(d.cout_annuel)}/an` : ''}
+                      {d.date_fin_validite ? ` · valide jusqu'au ${formatDate(d.date_fin_validite)}` : ''}
+                    </div>
+                  )}
+                  {/* Scénarios de travaux de l'audit énergétique */}
+                  {d.has_audit && Array.isArray(d.audit_scenarios) && d.audit_scenarios.length > 0 && (
+                    <div style={{ marginTop: 8, marginLeft: 40, background: C.card, borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                        Audit énergétique{d.audit_date ? ` · ${formatDate(d.audit_date)}` : ''}
+                      </div>
+                      {d.audit_scenarios.map((s: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          {s.classe_apres && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.mid }}>
+                              → <DpeBadge lettre={s.classe_apres} size={18} />
+                            </span>
+                          )}
+                          <span style={{ fontSize: 11, color: C.text, flex: 1 }}>
+                            {s.cout_travaux ? `${formatPrice(s.cout_travaux)} de travaux` : (s.categorie ?? 'Scénario')}
+                          </span>
+                          {s.gain_pct != null && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary }}>-{s.gain_pct}% conso</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -296,6 +449,87 @@ export default function AddressCard({
               </Section>
             )
           })()}
+
+          {/* Marché local */}
+          {marche && marche.nb_transactions > 0 && (
+            <Section title="Marché de la commune">
+              {[
+                ['Ventes enregistrées', marche.nb_transactions.toLocaleString('fr-FR')],
+                ['Prix médian', marche.prix_median_m2 ? `${marche.prix_median_m2.toLocaleString('fr-FR')} €/m²` : null],
+                ['Médian maison', marche.prix_median_maison ? formatPrice(marche.prix_median_maison) : null],
+                ['Médian appartement', marche.prix_median_appart ? formatPrice(marche.prix_median_appart) : null],
+                ['Surface médiane', marche.surface_mediane_bati ? `${marche.surface_mediane_bati} m²` : null],
+              ].filter(([, v]) => v != null).map(([k, v]) => (
+                <div key={k as string} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: C.mid }}>{k}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500 }}>{String(v)}</span>
+                </div>
+              ))}
+            </Section>
+          )}
+
+          {/* Contacts */}
+          <Section title={`Contacts (${contacts.length})`} defaultOpen={contacts.length > 0}>
+            {contacts.map((c: any) => (
+              <div key={c.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>
+                    {[c.prenom, c.nom].filter(Boolean).join(' ') || 'Sans nom'}
+                  </span>
+                  <span style={{ fontSize: 11, color: C.mid }}>{formatDate(c.created_at)}</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
+                  {TYPE_CONTACT_LABELS[c.type_contact] ?? c.type_contact ?? ''}
+                  {c.horizon_vente ? ` · vente ${HORIZON_LABELS[c.horizon_vente] ?? c.horizon_vente}` : ''}
+                  {c.tel1 ? ` · ${c.tel1}` : ''}
+                </div>
+                {c.date_relance && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>
+                    Relance le {formatDate(c.date_relance)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {showContactForm ? (
+              <QuickContactForm
+                adresseId={addressId}
+                onCreated={() => { setShowContactForm(false); load() }}
+                onCancel={() => setShowContactForm(false)}
+              />
+            ) : (
+              <button onClick={() => setShowContactForm(true)} style={{
+                width: '100%', padding: '8px 0', borderRadius: 8, cursor: 'pointer',
+                background: 'rgba(29,158,117,0.12)', border: `1px dashed ${C.primary}`,
+                color: C.primary, fontSize: 12, fontWeight: 700,
+              }}>
+                + Créer un contact
+              </button>
+            )}
+          </Section>
+
+          {/* Rendez-vous */}
+          {rdvs.length > 0 && (
+            <Section title={`Rendez-vous (${rdvs.length})`} defaultOpen={rdvs.some((r: any) => new Date(r.date_rdv) >= new Date())}>
+              {rdvs.map((r: any) => {
+                const isFuture = new Date(r.date_rdv) >= new Date()
+                return (
+                  <div key={r.id} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: isFuture ? C.primary : C.text }}>
+                        {isFuture ? '● ' : ''}{TYPE_RDV_LABELS[r.type_rdv] ?? r.type_rdv}
+                      </span>
+                      <span style={{ fontSize: 11, color: C.mid }}>
+                        {new Date(r.date_rdv).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    {r.statut !== 'confirme' && (
+                      <div style={{ fontSize: 11, color: C.mid }}>{r.statut}</div>
+                    )}
+                  </div>
+                )
+              })}
+            </Section>
+          )}
 
           {/* Terrain */}
           <Section title={`Passages terrain (${data.interactions.length})`} defaultOpen={data.interactions.length > 0}>

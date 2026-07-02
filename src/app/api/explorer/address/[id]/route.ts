@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -24,13 +24,19 @@ export async function GET(
   if (!adresse) return NextResponse.json({ error: 'Adresse introuvable' }, { status: 404 })
 
   const a = adresse as any
+  const adminDb = createAdminClient()
 
   // Requêtes parallèles
-  const [dpeRes, dvfRes, bdnbRes, interactionsRes] = await Promise.all([
+  const [dpeRes, dvfRes, bdnbRes, interactionsRes, contactsRes, rdvRes, marcheRes] = await Promise.all([
     // DPE : tous les DPE de cette adresse, triés du plus récent
     supabase
       .from('dpe_logement')
-      .select('id, date_etablissement, classe_bilan_dpe, classe_conso_energie_arrete_2012, surface_habitable_logement, type_energie_principale_chauffage, numero_dpe')
+      .select(`
+        id, numero_dpe, date_etablissement, date_fin_validite,
+        etiquette_dpe, etiquette_ges, surface_habitable, energie_principale,
+        conso_ep_m2, cout_annuel, annee_construction, type_batiment,
+        has_audit, audit_n, audit_date, audit_scenarios
+      `)
       .eq('adresse_id', id)
       .order('date_etablissement', { ascending: false })
       .limit(10),
@@ -64,7 +70,35 @@ export async function GET(
       .eq('adresse_id', id)
       .order('created_at', { ascending: false })
       .limit(20),
+
+    // Contacts rattachés à l'adresse (RLS : ceux du commercial)
+    supabase
+      .from('contacts')
+      .select('id, nom, prenom, tel1, email1, type_contact, horizon_vente, statut_pipeline, date_relance, notes, created_at')
+      .eq('adresse_id', id)
+      .order('created_at', { ascending: false })
+      .limit(10),
+
+    // Rendez-vous liés à l'adresse
+    supabase
+      .from('rendez_vous')
+      .select('id, type_rdv, date_rdv, statut, lieu, notes')
+      .eq('adresse_id', id)
+      .order('date_rdv', { ascending: false })
+      .limit(5),
+
+    // Contexte marché : stats DVF de la commune (prix médians)
+    (adminDb as any).rpc('dvf_stats_communes', { p_codes_insee: [a.code_insee] }),
   ])
+
+  const marcheRow = (marcheRes?.data ?? [])[0] ?? null
+  const marche = marcheRow ? {
+    nb_transactions:      Number(marcheRow.nb_transactions ?? 0),
+    prix_median_m2:       marcheRow.prix_median_m2      ? Number(marcheRow.prix_median_m2)      : null,
+    prix_median_maison:   marcheRow.prix_median_maison  ? Number(marcheRow.prix_median_maison)  : null,
+    prix_median_appart:   marcheRow.prix_median_appart  ? Number(marcheRow.prix_median_appart)  : null,
+    surface_mediane_bati: marcheRow.surface_mediane_bati ? Number(marcheRow.surface_mediane_bati) : null,
+  } : null
 
   return NextResponse.json({
     adresse,
@@ -72,5 +106,8 @@ export async function GET(
     dvf:          dvfRes.data ?? [],
     bdnb:         bdnbRes.data ?? null,
     interactions: interactionsRes.data ?? [],
+    contacts:     contactsRes.data ?? [],
+    rendez_vous:  rdvRes.data ?? [],
+    marche,
   })
 }
