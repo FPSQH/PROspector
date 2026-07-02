@@ -146,6 +146,13 @@ async function fetchAudits(numeroDpes: string[]): Promise<Map<string, any>> {
 // ── Route principale ──────────────────────────────────────────────
 const CRON_SECRET = process.env.CRON_SECRET ?? '05091974'
 
+// Fenêtre de recouvrement pour le mode incrémental : l'ADEME publie les DPE
+// en open data avec plusieurs jours (parfois semaines) de retard, avec une
+// date_derniere_modification_dpe antérieure à la publication. Sans ce
+// recouvrement, un DPE publié tardivement serait raté définitivement.
+// L'upsert sur numero_dpe rend le re-traitement idempotent.
+const RECOUVREMENT_JOURS = 30
+
 export async function POST(req: Request) {
   // Auth : session utilisateur OU appel interne cron
   const cronHeader = req.headers.get('x-cron-secret')
@@ -169,14 +176,18 @@ export async function POST(req: Request) {
 
   const adminDb = createAdminClient()
 
-  // ── Déterminer le mode (full / incremental / pagination) ─────────
+  // ── Déterminer le mode (full / incremental) ──────────────────────
+  // Recalculé à l'identique sur chaque page de pagination : le curseur
+  // `after` de l'ADEME n'est valide que si le qs reste le même entre les
+  // pages, et derniere_verif_dpe n'est mise à jour qu'après la dernière
+  // page — le calcul est donc stable pendant toute la pagination.
   let filterDate: string | null = null
   let mode = 'full'
 
-  if (filterDateOverride && !afterCursor) {
+  if (filterDateOverride) {
     filterDate = filterDateOverride
     mode = 'incremental'
-  } else if (!force_full && !afterCursor) {
+  } else if (!force_full) {
     const { data: commune } = await adminDb
       .from('communes')
       .select('derniere_verif_dpe')
@@ -184,30 +195,33 @@ export async function POST(req: Request) {
       .maybeSingle()
 
     if (commune?.derniere_verif_dpe) {
-      filterDate = new Date(commune.derniere_verif_dpe).toISOString().slice(0, 10)
+      // Recouvrement : repartir RECOUVREMENT_JOURS avant la dernière vérif
+      // pour rattraper les DPE publiés tardivement par l'ADEME.
+      const depuis = new Date(commune.derniere_verif_dpe)
+      depuis.setDate(depuis.getDate() - RECOUVREMENT_JOURS)
+      filterDate = depuis.toISOString().slice(0, 10)
       mode = 'incremental'
-    } else {
-      // 5 ans d'historique pour la 1ère ingestion
-      const fiveYearsAgo = new Date()
-      fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
-      filterDate = fiveYearsAgo.toISOString().slice(0, 10)
-      mode = 'full'
     }
-  } else if (afterCursor) {
-    mode = 'pagination'
+  }
+
+  if (!filterDate) {
+    // 5 ans d'historique pour la 1ère ingestion (ou force_full)
+    const fiveYearsAgo = new Date()
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5)
+    filterDate = fiveYearsAgo.toISOString().slice(0, 10)
+    mode = 'full'
   }
 
   // ── Construction des paramètres ADEME ────────────────────────────
   const params = new URLSearchParams({ size: String(SIZE), select: DPE_FIELDS })
 
-  if (mode === 'incremental' && filterDate) {
-    // Incrémental : DPE modifiés depuis la dernière vérification
-    params.set('qs', `code_insee_ban:"${code_insee}" AND date_derniere_modification_dpe:[${filterDate} TO *]`)
+  if (mode === 'incremental') {
+    // Incrémental : DPE établis OU modifiés depuis filterDate — couvre à la
+    // fois les nouveaux DPE et les DPE existants modifiés.
+    params.set('qs', `code_insee_ban:"${code_insee}" AND (date_etablissement_dpe:[${filterDate} TO *] OR date_derniere_modification_dpe:[${filterDate} TO *])`)
   } else {
-    // Full ou pagination : DPE établis depuis 5 ans
-    const qsParts = [`code_insee_ban:"${code_insee}"`]
-    if (filterDate) qsParts.push(`date_etablissement_dpe:[${filterDate} TO *]`)
-    params.set('qs', qsParts.join(' AND '))
+    // Full : DPE établis depuis 5 ans
+    params.set('qs', `code_insee_ban:"${code_insee}" AND date_etablissement_dpe:[${filterDate} TO *]`)
   }
 
   params.set('sort', '-date_etablissement_dpe')
@@ -306,27 +320,26 @@ export async function POST(req: Request) {
   // ── Post-ingestion : matching + mise à jour commune ───────────────
   const hasMore = nextAfter !== null
   if (!hasMore) {
-    // Matching GPS 50m
-    let nbMatched = 0
-    try {
-      const { data: matchResult } = await adminDb.rpc('match_dpe_to_adresses', { p_code_insee: code_insee })
-      nbMatched = matchResult ?? 0
-    } catch (_) {}
+    // Matching GPS 50m (supabase-js ne lève pas d'exception : lire { error })
+    const { data: matchResult, error: matchError } = await adminDb
+      .rpc('match_dpe_to_adresses', { p_code_insee: code_insee })
+    const nbMatched = matchError ? 0 : (matchResult ?? 0)
+    if (matchError) console.error('[DPE] match_dpe_to_adresses:', matchError.message)
 
-    // Rafraîchir la vue matérialisée
-    try {
-      await adminDb.rpc('refresh_mv_dpe_stats')
-    } catch (_) {
-      // La fonction n'existe pas encore — on met à jour communes.nb_dpe manuellement
-      const { count } = await adminDb
-        .from('dpe_logement')
-        .select('id', { count: 'exact', head: true })
-        .eq('code_insee', code_insee)
-      await adminDb
-        .from('communes')
-        .update({ nb_dpe: count ?? 0, derniere_verif_dpe: new Date().toISOString() })
-        .eq('code_insee', code_insee)
-    }
+    // Rafraîchir la vue matérialisée (best effort — la fonction peut ne pas exister)
+    await adminDb.rpc('refresh_mv_dpe_stats')
+
+    // Toujours mettre à jour nb_dpe et derniere_verif_dpe : c'est ce qui
+    // permet au prochain passage de fonctionner en mode incrémental.
+    const { count } = await adminDb
+      .from('dpe_logement')
+      .select('id', { count: 'exact', head: true })
+      .eq('code_insee', code_insee)
+    const { error: communeError } = await adminDb
+      .from('communes')
+      .update({ nb_dpe: count ?? 0, derniere_verif_dpe: new Date().toISOString() })
+      .eq('code_insee', code_insee)
+    if (communeError) console.error('[DPE] update commune:', communeError.message)
 
     return NextResponse.json({ nb_inserted: nbInserted, nb_audits: nbAudits, nb_matched: nbMatched, after: null, has_more: false, mode })
   }
