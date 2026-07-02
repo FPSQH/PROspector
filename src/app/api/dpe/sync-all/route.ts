@@ -1,14 +1,22 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-// GET /api/dpe/sync-all?secret=<CRON_SECRET>[&force=1]
+// GET /api/dpe/sync-all?secret=<CRON_SECRET>[&force=1][&full=1]
 //
-// Appelé par le cron Vercel quotidiennement (vercel.json).
+// Appelé par le cron Vercel quotidiennement en incrémental et chaque
+// dimanche en complet (vercel.json).
 // Synchronise les DPE de toutes les communes dont derniere_verif_dpe
 // est plus ancienne que VERIF_INTERVAL_HOURS, les plus anciennes
 // d'abord. force=1 ignore ce seuil et resynchronise toutes les
-// communes (rattrapage manuel). S'arrête proprement avant le timeout
-// Vercel : les communes restantes sont reprises au passage suivant.
+// communes (rattrapage manuel). full=1 (implique force) réingère les
+// 5 ans d'historique de chaque commune : filet de sécurité qui comble
+// tout trou d'exhaustivité (commune dont l'ingestion initiale n'a
+// jamais abouti, DPE publié par l'ADEME plus de 30 jours après son
+// établissement, géocodage BAN corrigé a posteriori…).
+// S'arrête proprement avant le timeout Vercel ; les communes
+// restantes sont reprises au passage suivant (l'ordre par
+// derniere_verif_dpe croissant rend le rattrapage résumable : une
+// commune terminée passe en fin de liste).
 // Utilise l'endpoint /api/dpe/ingest en boucle pour gérer la pagination.
 
 // 20h (< cadence quotidienne du cron, tolérant à son jitter) : chaque
@@ -29,7 +37,8 @@ export async function GET(request: Request) {
   const adminDb = createAdminClient()
   const now = Date.now()
   const maxAge = VERIF_INTERVAL_HOURS * 3600 * 1000
-  const force = searchParams.get('force') === '1'
+  const full  = searchParams.get('full') === '1'
+  const force = full || searchParams.get('force') === '1'
 
   // ── Toutes les communes de tous les commerciaux ──────────────────
   // Les plus anciennes vérifications d'abord (null = jamais vérifiée, en tête)
@@ -88,7 +97,7 @@ export async function GET(request: Request) {
           body: JSON.stringify({
             code_postal: commune.code_postal ?? '',
             code_insee: commune.code_insee,
-            force_full: !commune.derniere_verif_dpe,
+            force_full: full || !commune.derniere_verif_dpe,
             after,
           }),
         })
@@ -109,7 +118,7 @@ export async function GET(request: Request) {
   }
 
   const totalInserted = results.reduce((s, r) => s + r.inserted, 0)
-  console.log(`[sync-all] ${results.length}/${communes.length} communes traitées, ${totalInserted} DPE insérés/mis à jour${nbSkippedBudget ? `, ${nbSkippedBudget} reportées (budget temps)` : ''}`)
+  console.log(`[sync-all]${full ? ' [FULL]' : ''} ${results.length}/${communes.length} communes traitées, ${totalInserted} DPE insérés/mis à jour${nbSkippedBudget ? `, ${nbSkippedBudget} reportées (budget temps)` : ''}`)
 
   return NextResponse.json({
     nb_communes: results.length,

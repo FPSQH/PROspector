@@ -3,6 +3,10 @@
     {
       "path": "/api/dpe/sync-all?secret=05091974",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/dpe/sync-all?secret=05091974&full=1",
+      "schedule": "0 3 * * 0"
     }
   ]
 }
